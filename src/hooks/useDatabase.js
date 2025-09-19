@@ -307,8 +307,8 @@ const DatabaseService = {
     try {
       if (category.id) {
         const stmt = db.prepare(`
-          UPDATE staff_categories SET 
-            name=?, hourly_rate=?, design_capacity=?, construction_capacity=?,
+          UPDATE staff_categories SET
+            name=?, hourly_rate=?, pm_capacity=?, design_capacity=?, construction_capacity=?,
             updated_at=CURRENT_TIMESTAMP
           WHERE id=?
         `);
@@ -328,13 +328,14 @@ const DatabaseService = {
         return category.id;
       } else {
         const stmt = db.prepare(`
-          INSERT INTO staff_categories (name, hourly_rate, design_capacity, construction_capacity)
-          VALUES (?,?,?,?)
+          INSERT INTO staff_categories (name, hourly_rate, pm_capacity, design_capacity, construction_capacity)
+          VALUES (?,?,?,?,?)
         `);
 
         const params = safeBindParams([
           category.name || "",
           category.hourlyRate || 0,
+          category.pmCapacity || 0,
           category.designCapacity || 0,
           category.constructionCapacity || 0,
         ]);
@@ -362,10 +363,11 @@ const DatabaseService = {
         id: row[0],
         name: row[1],
         hourlyRate: row[2],
-        designCapacity: row[3],
-        constructionCapacity: row[4],
-        createdAt: row[5],
-        updatedAt: row[6],
+        pmCapacity: row[3],
+        designCapacity: row[4],
+        constructionCapacity: row[5],
+        createdAt: row[6],
+        updatedAt: row[7],
       }));
     } catch (error) {
       console.error("Error getting staff categories:", error);
