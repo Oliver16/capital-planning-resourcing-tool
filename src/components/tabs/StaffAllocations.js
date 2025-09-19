@@ -16,6 +16,28 @@ const formatMonthlyFTE = (hours, durationMonths) => {
   return (monthlyHours / HOURS_PER_FTE).toFixed(2);
 };
 
+const formatBudgetAmount = (budget) => {
+  const numericBudget = Number(budget);
+
+  if (!Number.isFinite(numericBudget) || numericBudget === 0) {
+    return "0";
+  }
+
+  if (Math.abs(numericBudget) >= 1_000_000) {
+    const valueInMillions = numericBudget / 1_000_000;
+    const formattedMillions = Number.isInteger(valueInMillions)
+      ? valueInMillions.toString()
+      : valueInMillions.toFixed(1).replace(/\.0$/, "");
+    return `${formattedMillions}M`;
+  }
+
+  if (Math.abs(numericBudget) >= 1_000) {
+    return `${(numericBudget / 1_000).toFixed(0)}K`;
+  }
+
+  return numericBudget.toLocaleString();
+};
+
 const HoursInput = ({ value, onValueChange, durationMonths, label }) => {
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [monthlyHours, setMonthlyHours] = useState("");
@@ -267,9 +289,10 @@ const StaffAllocations = ({
               <div>
                 <h3 className="text-lg font-semibold">{project.name}</h3>
                 <p className="text-gray-600">
-                  Design Budget: ${(project.designBudget / 1000).toFixed(0)}K |
-                  Construction Budget: $
-                  {(project.constructionBudget / 1000).toFixed(0)}K
+                  Design Budget: ${formatBudgetAmount(project.designBudget)} |
+                  Construction Budget: ${
+                    formatBudgetAmount(project.constructionBudget)
+                  }
                 </p>
                 <p className="text-sm text-gray-500">
                   Design: {new Date(project.designStartDate).toLocaleDateString()} (
