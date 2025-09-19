@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import {
   LineChart,
   Line,
@@ -20,6 +20,63 @@ const ResourceForecast = ({
   timeHorizon,
   setTimeHorizon,
 }) => {
+  const summarySeries = useMemo(
+    () =>
+      resourceForecast.map((month) => {
+        const totalRequired = staffCategories.reduce(
+          (sum, category) => sum + (month[`${category.name}_required`] || 0),
+          0
+        );
+        const totalActual = staffCategories.reduce(
+          (sum, category) => sum + (month[`${category.name}_actual`] || 0),
+          0
+        );
+
+        return {
+          month: month.month,
+          monthLabel: month.monthLabel,
+          totalRequired: Number(totalRequired.toFixed(2)),
+          totalActual: Number(totalActual.toFixed(2)),
+        };
+      }),
+    [resourceForecast, staffCategories]
+  );
+
+  const peakMonth = useMemo(() => {
+    if (summarySeries.length === 0) {
+      return null;
+    }
+    return summarySeries.reduce((max, month) =>
+      month.totalRequired > max.totalRequired ? month : max
+    );
+  }, [summarySeries]);
+
+  const { averageUtilization, utilizationSamples } = useMemo(() => {
+    if (summarySeries.length === 0) {
+      return { averageUtilization: 0, utilizationSamples: 0 };
+    }
+
+    let sum = 0;
+    let samples = 0;
+
+    summarySeries.forEach((month) => {
+      if (month.totalActual > 0) {
+        sum += (month.totalRequired / month.totalActual) * 100;
+        samples += 1;
+      }
+    });
+
+    return {
+      averageUtilization: samples > 0 ? sum / samples : 0,
+      utilizationSamples: samples,
+    };
+  }, [summarySeries]);
+
+  const gapMonthCount = useMemo(
+    () => new Set(staffingGaps.map((gap) => gap.month)).size,
+    [staffingGaps]
+  );
+
   return (
     <div className="space-y-6">
       {/* Time Horizon Control */}
@@ -33,7 +90,7 @@ const ResourceForecast = ({
             <input
               type="number"
               value={timeHorizon}
-              onChange={(e) => setTimeHorizon(parseInt(e.target.value) || 36)}
+              onChange={(e) => setTimeHorizon(parseInt(e.target.value, 10) || 36)}
               className="w-16 border border-gray-300 rounded px-2 py-1"
               min="12"
               max="60"
@@ -45,11 +102,11 @@ const ResourceForecast = ({
       {/* Resource Demand Chart */}
       <div className="bg-white p-6 rounded-lg shadow-sm">
         <h3 className="text-lg font-semibold mb-4">
-          Staff Resource Demand Over Time
+          Allocated vs. Actual Staffing (All Categories)
         </h3>
         <div className="h-96">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={resourceForecast}>
+            <LineChart data={summarySeries}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis
                 dataKey="monthLabel"
@@ -58,23 +115,31 @@ const ResourceForecast = ({
               />
               <YAxis
                 label={{
-                  value: "FTE Required",
+                  value: "FTE",
                   angle: -90,
                   position: "insideLeft",
                 }}
+                allowDecimals
               />
               <Tooltip />
               <Legend />
-              {staffCategories.map((category, index) => (
-                <Line
-                  key={category.id}
-                  type="monotone"
-                  dataKey={`${category.name}_required`}
-                  stroke={`hsl(${index * 60}, 70%, 50%)`}
-                  strokeWidth={2}
-                  name={category.name}
-                />
-              ))}
+              <Line
+                type="monotone"
+                dataKey="totalRequired"
+                stroke="#2563eb"
+                strokeWidth={2}
+                dot={false}
+                name="Allocated (FTE)"
+              />
+              <Line
+                type="monotone"
+                dataKey="totalActual"
+                stroke="#10b981"
+                strokeDasharray="6 4"
+                strokeWidth={2}
+                dot={false}
+                name="Actual Availability (FTE)"
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -83,16 +148,18 @@ const ResourceForecast = ({
       {/* Capacity vs Demand Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {staffCategories.map((category) => {
-          const categoryData = resourceForecast.map((month) => ({
-            month: month.monthLabel,
-            required: month[`${category.name}_required`],
-            capacity: month[`${category.name}_capacity`] / (4.33 * 40),
-            gap: Math.max(
-              0,
-              month[`${category.name}_required`] -
-                month[`${category.name}_capacity`] / (4.33 * 40)
-            ),
-          }));
+          const categoryData = resourceForecast.map((month) => {
+            const required = month[`${category.name}_required`] || 0;
+            const actual = month[`${category.name}_actual`] || 0;
+            const gap = Math.max(0, required - actual);
+
+            return {
+              month: month.monthLabel,
+              required: Number(required.toFixed(2)),
+              actual: Number(actual.toFixed(2)),
+              gap: Number(gap.toFixed(2)),
+            };
+          });
 
           return (
             <div
@@ -113,30 +180,26 @@ const ResourceForecast = ({
                     <Tooltip />
                     <Area
                       type="monotone"
-                      dataKey="capacity"
-                      stackId="1"
+                      dataKey="actual"
                       stroke="#10b981"
                       fill="#10b981"
-                      fillOpacity={0.3}
-                      name="Available Capacity"
+                      fillOpacity={0.25}
+                      name="Actual Availability"
                     />
-                    <Area
+                    <Line
                       type="monotone"
                       dataKey="required"
-                      stackId="2"
-                      stroke="#3b82f6"
-                      fill="#3b82f6"
-                      fillOpacity={0.6}
-                      name="Required"
+                      stroke="#2563eb"
+                      strokeWidth={2}
+                      name="Allocated (FTE)"
                     />
                     <Area
                       type="monotone"
                       dataKey="gap"
-                      stackId="3"
                       stroke="#ef4444"
                       fill="#ef4444"
-                      fillOpacity={0.8}
-                      name="Staffing Gap"
+                      fillOpacity={0.4}
+                      name="Gap (FTE)"
                     />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -162,8 +225,8 @@ const ResourceForecast = ({
                   <tr>
                     <th className="text-left p-3">Month</th>
                     <th className="text-left p-3">Staff Category</th>
-                    <th className="text-left p-3">Required (FTE)</th>
-                    <th className="text-left p-3">Available (FTE)</th>
+                    <th className="text-left p-3">Allocated (FTE)</th>
+                    <th className="text-left p-3">Actual (FTE)</th>
                     <th className="text-left p-3">Gap (FTE)</th>
                     <th className="text-left p-3">Severity</th>
                   </tr>
@@ -174,7 +237,7 @@ const ResourceForecast = ({
                       <td className="p-3">{gap.monthLabel}</td>
                       <td className="p-3 font-medium">{gap.category}</td>
                       <td className="p-3">{gap.required}</td>
-                      <td className="p-3">{gap.capacity}</td>
+                      <td className="p-3">{gap.available}</td>
                       <td className="p-3 text-red-600 font-medium">
                         {gap.gap}
                       </td>
@@ -203,7 +266,8 @@ const ResourceForecast = ({
                 No Staffing Gaps Identified
               </h4>
               <p className="text-gray-600">
-                Current staff capacity appears sufficient for planned projects.
+                Current actual availability appears sufficient for planned
+                allocations.
               </p>
             </div>
           )}
@@ -225,12 +289,12 @@ const ResourceForecast = ({
                   </h4>
                   <ul className="text-blue-800 space-y-1">
                     <li>
-                      • Consider hiring additional staff for categories with
-                      critical gaps
+                      • Prioritize hiring or reallocating staff for categories
+                      with critical gaps
                     </li>
                     <li>
                       • Evaluate contractor resources to supplement internal
-                      capacity
+                      availability
                     </li>
                     <li>
                       • Review project schedules for potential timeline
@@ -272,13 +336,17 @@ const ResourceForecast = ({
                   Optimization Opportunities
                 </h4>
                 <ul className="text-green-800 space-y-1">
-                  <li>• Current capacity appears adequate for planned work</li>
                   <li>
-                    • Consider accelerating project timelines if resources allow
+                    • Actual availability appears adequate for current
+                    allocations
+                  </li>
+                  <li>
+                    • Consider accelerating project timelines if resources
+                    allow
                   </li>
                   <li>
                     • Evaluate opportunities for additional projects within
-                    capacity
+                    available capacity
                   </li>
                   <li>
                     • Review annual program funding for potential expansion
@@ -302,31 +370,23 @@ const ResourceForecast = ({
                 Peak Resource Demand
               </h4>
               <p className="text-blue-800 text-sm mt-1">
-                {resourceForecast.length > 0 && (
+                {peakMonth ? (
                   <>
-                    Month:{" "}
-                    {
-                      resourceForecast.reduce((max, month) => {
-                        const totalRequired = staffCategories.reduce(
-                          (sum, cat) => sum + month[`${cat.name}_required`],
-                          0
-                        );
-                        const maxRequired = staffCategories.reduce(
-                          (sum, cat) => sum + max[`${cat.name}_required`],
-                          0
-                        );
-                        return totalRequired > maxRequired ? month : max;
-                      }, resourceForecast[0]).monthLabel
-                    }
+                    Month: {peakMonth.monthLabel}
+                    <br />
+                    Allocated: {peakMonth.totalRequired.toFixed(2)} FTE
+                    <br />
+                    Actual: {peakMonth.totalActual.toFixed(2)} FTE
                   </>
+                ) : (
+                  "No forecast data available"
                 )}
               </p>
             </div>
             <div className="bg-red-50 p-4 rounded-lg">
               <h4 className="font-medium text-red-900">Critical Periods</h4>
               <p className="text-red-800 text-sm mt-1">
-                {staffingGaps.length} gaps identified across{" "}
-                {new Set(staffingGaps.map((g) => g.month)).size} months
+                {staffingGaps.length} gaps identified across {gapMonthCount} months
               </p>
             </div>
             <div className="bg-green-50 p-4 rounded-lg">
@@ -334,7 +394,9 @@ const ResourceForecast = ({
                 Resource Utilization
               </h4>
               <p className="text-green-800 text-sm mt-1">
-                Average utilization varies by category and time period
+                {utilizationSamples > 0
+                  ? `${averageUtilization.toFixed(1)}% average utilization of actual availability`
+                  : "Enter people availability data to calculate utilization."}
               </p>
             </div>
           </div>

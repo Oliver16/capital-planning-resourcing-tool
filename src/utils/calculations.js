@@ -38,7 +38,8 @@ export const generateResourceForecast = (
   projectTimelines,
   staffAllocations,
   staffCategories,
-  timeHorizon
+  timeHorizon,
+  staffAvailabilityByCategory = {}
 ) => {
   // Validate inputs
   if (!Array.isArray(projectTimelines) || projectTimelines.length === 0) {
@@ -63,7 +64,8 @@ export const generateResourceForecast = (
       timeHorizon,
       projectTimelines,
       staffAllocations,
-      staffCategories
+      staffCategories,
+      staffAvailabilityByCategory
     );
   }
 
@@ -75,7 +77,8 @@ export const generateResourceForecast = (
     timeHorizon,
     projectTimelines,
     staffAllocations,
-    staffCategories
+    staffCategories,
+    staffAvailabilityByCategory
   );
 };
 
@@ -84,7 +87,8 @@ const generateForecastFromDate = (
   timeHorizon,
   projectTimelines,
   staffAllocations,
-  staffCategories
+  staffCategories,
+  staffAvailabilityByCategory = {}
 ) => {
   const forecast = [];
   const safeTimeHorizon = Math.max(1, Math.min(timeHorizon || 36, 120)); // Limit to reasonable range
@@ -111,10 +115,18 @@ const generateForecastFromDate = (
     staffCategories.forEach((category) => {
       if (category && category.name) {
         monthData[`${category.name}_required`] = 0;
-        monthData[`${category.name}_capacity`] =
+        const availability = staffAvailabilityByCategory[category.id];
+        const fallbackTotal =
           (category.pmCapacity || 0) +
           (category.designCapacity || 0) +
           (category.constructionCapacity || 0);
+        const totalHours =
+          availability && typeof availability.total === "number"
+            ? availability.total
+            : fallbackTotal;
+
+        monthData[`${category.name}_actual`] =
+          (totalHours || 0) / (4.33 * 40);
       }
     });
 
@@ -228,8 +240,8 @@ export const calculateStaffingGaps = (resourceForecast, staffCategories) => {
       if (!category || !category.name) return;
 
       const required = month[`${category.name}_required`] || 0;
-      const capacity = (month[`${category.name}_capacity`] || 0) / (4.33 * 40);
-      const gap = required - capacity;
+      const actual = month[`${category.name}_actual`] || 0;
+      const gap = required - actual;
 
       if (gap > 0.1) {
         // Threshold for significant gap
@@ -238,7 +250,7 @@ export const calculateStaffingGaps = (resourceForecast, staffCategories) => {
           monthLabel: month.monthLabel,
           category: category.name,
           required: required.toFixed(2),
-          capacity: capacity.toFixed(2),
+          available: actual.toFixed(2),
           gap: gap.toFixed(2),
         });
       }

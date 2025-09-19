@@ -107,7 +107,7 @@ const createTables = (database) => {
       construction_hours REAL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      
+
       FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
       FOREIGN KEY (category_id) REFERENCES staff_categories(id) ON DELETE CASCADE,
       UNIQUE(project_id, category_id)
@@ -123,6 +123,20 @@ const createTables = (database) => {
       console.warn("PM hours migration warning:", error);
     }
   }
+
+  database.run(`
+    CREATE TABLE IF NOT EXISTS staff_members (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      category_id INTEGER,
+      pm_availability REAL DEFAULT 0,
+      design_availability REAL DEFAULT 0,
+      construction_availability REAL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (category_id) REFERENCES staff_categories(id) ON DELETE SET NULL
+    );
+  `);
 };
 
 // Helper function to safely bind parameters
@@ -613,6 +627,97 @@ const DatabaseService = {
     }
   },
 
+  // Staff Members
+  async saveStaffMember(member) {
+    await this.initDatabase();
+
+    try {
+      if (member.id) {
+        const stmt = db.prepare(`
+          UPDATE staff_members SET
+            name=?, category_id=?, pm_availability=?, design_availability=?, construction_availability=?,
+            updated_at=CURRENT_TIMESTAMP
+          WHERE id=?
+        `);
+
+        const params = safeBindParams([
+          member.name || "",
+          member.categoryId || null,
+          member.pmAvailability || 0,
+          member.designAvailability || 0,
+          member.constructionAvailability || 0,
+          member.id,
+        ]);
+
+        stmt.run(params);
+        stmt.free();
+        await this.saveDatabase();
+        return member.id;
+      }
+
+      const stmt = db.prepare(`
+        INSERT INTO staff_members (name, category_id, pm_availability, design_availability, construction_availability)
+        VALUES (?,?,?,?,?)
+      `);
+
+      const params = safeBindParams([
+        member.name || "",
+        member.categoryId || null,
+        member.pmAvailability || 0,
+        member.designAvailability || 0,
+        member.constructionAvailability || 0,
+      ]);
+
+      stmt.run(params);
+      const newId = db.exec("SELECT last_insert_rowid()")[0].values[0][0];
+      stmt.free();
+      await this.saveDatabase();
+      return newId;
+    } catch (error) {
+      console.error("Error saving staff member:", error);
+      throw error;
+    }
+  },
+
+  async getStaffMembers() {
+    await this.initDatabase();
+    try {
+      const results = db.exec(`
+        SELECT id, name, category_id, pm_availability, design_availability, construction_availability
+        FROM staff_members
+        ORDER BY name COLLATE NOCASE
+      `);
+
+      if (!results.length) return [];
+
+      return results[0].values.map((row) => ({
+        id: row[0],
+        name: row[1],
+        categoryId: row[2],
+        pmAvailability: row[3] ?? 0,
+        designAvailability: row[4] ?? 0,
+        constructionAvailability: row[5] ?? 0,
+      }));
+    } catch (error) {
+      console.error("Error getting staff members:", error);
+      return [];
+    }
+  },
+
+  async deleteStaffMember(id) {
+    await this.initDatabase();
+    try {
+      const stmt = db.prepare("DELETE FROM staff_members WHERE id = ?");
+      stmt.run([id]);
+      stmt.free();
+      await this.saveDatabase();
+      return true;
+    } catch (error) {
+      console.error("Error deleting staff member:", error);
+      throw error;
+    }
+  },
+
   // Export/Import
   async exportDatabase() {
     await this.initDatabase();
@@ -661,6 +766,7 @@ const initializeDatabase = async (defaultData) => {
 
       const projectTypeIdMap = {};
       const fundingSourceIdMap = {};
+      const staffCategoryIdMap = {};
 
       // Insert project types
       for (const type of defaultData.projectTypes || []) {
@@ -685,14 +791,33 @@ const initializeDatabase = async (defaultData) => {
 
       // Insert staff categories
       for (const category of defaultData.staffCategories || []) {
-        const { name, hourlyRate, pmCapacity, designCapacity, constructionCapacity } =
-          category;
-        await DatabaseService.saveStaffCategory({
+        const {
+          id: originalId,
           name,
           hourlyRate,
           pmCapacity,
           designCapacity,
           constructionCapacity,
+        } = category;
+        const newId = await DatabaseService.saveStaffCategory({
+          name,
+          hourlyRate,
+          pmCapacity,
+          designCapacity,
+          constructionCapacity,
+        });
+
+        if (originalId != null) {
+          staffCategoryIdMap[originalId] = newId;
+        }
+      }
+
+      // Insert staff members
+      for (const member of defaultData.staffMembers || []) {
+        const { id: _originalId, categoryId, ...memberData } = member;
+        await DatabaseService.saveStaffMember({
+          ...memberData,
+          categoryId: staffCategoryIdMap[categoryId] ?? categoryId ?? null,
         });
       }
 
@@ -803,6 +928,15 @@ export const useDatabase = (defaultData) => {
       ),
       getStaffAllocations: withErrorHandling(
         DatabaseService.getStaffAllocations.bind(DatabaseService)
+      ),
+      saveStaffMember: withErrorHandling(
+        DatabaseService.saveStaffMember.bind(DatabaseService)
+      ),
+      getStaffMembers: withErrorHandling(
+        DatabaseService.getStaffMembers.bind(DatabaseService)
+      ),
+      deleteStaffMember: withErrorHandling(
+        DatabaseService.deleteStaffMember.bind(DatabaseService)
       ),
       exportDatabase: withErrorHandling(
         DatabaseService.exportDatabase.bind(DatabaseService)
