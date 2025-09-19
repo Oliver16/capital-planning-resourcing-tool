@@ -156,6 +156,11 @@ const safeBindParams = (params) => {
     if (param === undefined || param === null) {
       return null;
     }
+
+    if (typeof param === "number" && !Number.isFinite(param)) {
+      return null;
+    }
+
     return param;
   });
 };

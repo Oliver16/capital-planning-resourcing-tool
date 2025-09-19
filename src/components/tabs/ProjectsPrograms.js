@@ -443,12 +443,13 @@ const ProjectsPrograms = ({
                                 updateProject(
                                   program.id,
                                   "continuousPmHours",
-                                  parseInt(e.target.value, 10) || 0
+                                  parseFloat(e.target.value) || 0
                                 )
                               }
                               className="w-16 border border-gray-300 rounded px-1 py-1"
                               placeholder="PM"
                               min="0"
+                              step="0.1"
                             />
                           </div>
                           <div className="flex items-center gap-1">
@@ -460,12 +461,13 @@ const ProjectsPrograms = ({
                                 updateProject(
                                   program.id,
                                   "continuousDesignHours",
-                                  parseInt(e.target.value, 10) || 0
+                                  parseFloat(e.target.value) || 0
                                 )
                               }
                               className="w-16 border border-gray-300 rounded px-1 py-1"
                               placeholder="Design"
                               min="0"
+                              step="0.1"
                             />
                           </div>
                           <div className="flex items-center gap-1">
@@ -477,12 +479,13 @@ const ProjectsPrograms = ({
                                 updateProject(
                                   program.id,
                                   "continuousConstructionHours",
-                                  parseInt(e.target.value, 10) || 0
+                                  parseFloat(e.target.value) || 0
                                 )
                               }
                               className="w-16 border border-gray-300 rounded px-1 py-1"
                               placeholder="Const"
                               min="0"
+                              step="0.1"
                             />
                           </div>
                         </div>
