@@ -9,6 +9,7 @@ import {
   Edit3,
   Download,
   Upload,
+  CalendarClock,
 } from "lucide-react";
 
 // Import components
@@ -17,6 +18,7 @@ import ProjectsPrograms from "./tabs/ProjectsPrograms";
 import StaffCategories from "./tabs/StaffCategories";
 import StaffAllocations from "./tabs/StaffAllocations";
 import ResourceForecast from "./tabs/ResourceForecast";
+import ScheduleView from "./tabs/ScheduleView";
 import SettingsTab from "./tabs/SettingsTab";
 
 // Import data and utilities
@@ -96,6 +98,7 @@ const CapitalPlanningTool = () => {
   const [staffAllocations, setStaffAllocations] = useState({});
   const [activeTab, setActiveTab] = useState("overview");
   const [timeHorizon, setTimeHorizon] = useState(36);
+  const [scheduleHorizon, setScheduleHorizon] = useState(36);
   const [isSaving, setIsSaving] = useState(false);
   const [categoryCapacityWarnings, setCategoryCapacityWarnings] = useState({});
 
@@ -610,7 +613,7 @@ const CapitalPlanningTool = () => {
         <div className="bg-white rounded-lg shadow-sm mb-6">
           <div className="border-b border-gray-200">
             <nav className="flex space-x-8 px-6">
-              {[
+              {[ 
                 { id: "overview", label: "Overview", icon: Calendar },
                 {
                   id: "projects",
@@ -619,6 +622,11 @@ const CapitalPlanningTool = () => {
                 },
                 { id: "staff", label: "Staff Categories", icon: Users },
                 { id: "allocations", label: "Staff Allocations", icon: Edit3 },
+                {
+                  id: "schedule",
+                  label: "Schedule View",
+                  icon: CalendarClock,
+                },
                 {
                   id: "forecast",
                   label: "Resource Forecast",
@@ -687,6 +695,17 @@ const CapitalPlanningTool = () => {
               staffAllocations={staffAllocations}
               updateStaffAllocation={updateStaffAllocation}
               fundingSources={fundingSources}
+            />
+          )}
+
+          {activeTab === "schedule" && (
+            <ScheduleView
+              projectTimelines={projectTimelines}
+              projectTypes={projectTypes}
+              staffCategories={staffCategories}
+              staffAllocations={staffAllocations}
+              scheduleHorizon={scheduleHorizon}
+              setScheduleHorizon={setScheduleHorizon}
             />
           )}
 
