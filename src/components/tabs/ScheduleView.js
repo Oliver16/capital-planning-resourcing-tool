@@ -57,6 +57,7 @@ const ScheduleView = ({
   projectTypes,
   staffCategories,
   staffAllocations,
+  staffAvailabilityByCategory,
   scheduleHorizon,
   setScheduleHorizon,
 }) => {
@@ -86,9 +87,16 @@ const ScheduleView = ({
         projectTimelines,
         staffAllocations,
         staffCategories,
-        Math.max(1, scheduleHorizon)
+        Math.max(1, scheduleHorizon),
+        staffAvailabilityByCategory
       ),
-    [projectTimelines, staffAllocations, staffCategories, scheduleHorizon]
+    [
+      projectTimelines,
+      staffAllocations,
+      staffCategories,
+      scheduleHorizon,
+      staffAvailabilityByCategory,
+    ]
   );
 
   const scheduleGaps = useMemo(
@@ -102,23 +110,21 @@ const ScheduleView = ({
     }
 
     return scheduleForecast.slice(0, scheduleHorizon).map((month) => {
-      const capacity = staffCategories.reduce(
-        (sum, category) =>
-          sum +
-          ((month[`${category.name}_capacity`] || 0) / (4.33 * 40)),
+      const actual = staffCategories.reduce(
+        (sum, category) => sum + (month[`${category.name}_actual`] || 0),
         0
       );
       const required = staffCategories.reduce(
         (sum, category) => sum + (month[`${category.name}_required`] || 0),
         0
       );
-      const shortage = Math.max(0, required - capacity);
+      const shortage = Math.max(0, required - actual);
 
       return {
         month: month.month,
         monthLabel: month.monthLabel,
         required: Number(required.toFixed(2)),
-        capacity: Number(capacity.toFixed(2)),
+        actual: Number(actual.toFixed(2)),
         shortage: Number(shortage.toFixed(2)),
       };
     });
@@ -154,8 +160,8 @@ const ScheduleView = ({
         shortageCount += 1;
       }
 
-      if (month.capacity > 0) {
-        utilizationSum += (month.required / month.capacity) * 100;
+      if (month.actual > 0) {
+        utilizationSum += (month.required / month.actual) * 100;
         utilizationSamples += 1;
       }
     });
@@ -456,11 +462,11 @@ const ScheduleView = ({
                 <Legend />
                 <Area
                   type="monotone"
-                  dataKey="capacity"
+                  dataKey="actual"
                   stroke="#10b981"
                   fill="#10b981"
                   fillOpacity={0.25}
-                  name="Available Capacity"
+                  name="Actual Availability"
                 />
                 <Area
                   type="monotone"
@@ -502,7 +508,9 @@ const ScheduleView = ({
               <div className="text-2xl font-semibold">
                 {summary.averageUtilization.toFixed(0)}%
               </div>
-              <div className="text-xs mt-1">Average required vs available capacity</div>
+              <div className="text-xs mt-1">
+                Average allocated vs actual availability
+              </div>
             </div>
           </div>
         </div>
@@ -537,8 +545,8 @@ const ScheduleView = ({
                         <div className="font-semibold text-gray-900">{gap.required}</div>
                       </div>
                       <div>
-                        <div className="text-gray-500">Available</div>
-                        <div className="font-semibold text-gray-900">{gap.capacity}</div>
+                        <div className="text-gray-500">Actual</div>
+                        <div className="font-semibold text-gray-900">{gap.available}</div>
                       </div>
                       <div>
                         <div className="text-gray-500">Gap</div>

@@ -119,3 +119,46 @@ export const defaultProjects = [
     description: "Ongoing maintenance and small improvements",
   },
 ];
+
+export const defaultStaffMembers = [
+  {
+    id: 1,
+    name: "Alex Johnson",
+    categoryId: 1,
+    pmAvailability: 160,
+    designAvailability: 0,
+    constructionAvailability: 0,
+  },
+  {
+    id: 2,
+    name: "Maria Chen",
+    categoryId: 2,
+    pmAvailability: 0,
+    designAvailability: 120,
+    constructionAvailability: 24,
+  },
+  {
+    id: 3,
+    name: "Devon Patel",
+    categoryId: 3,
+    pmAvailability: 0,
+    designAvailability: 110,
+    constructionAvailability: 20,
+  },
+  {
+    id: 4,
+    name: "Sofia Ramirez",
+    categoryId: 4,
+    pmAvailability: 32,
+    designAvailability: 16,
+    constructionAvailability: 96,
+  },
+  {
+    id: 5,
+    name: "Liam O'Connor",
+    categoryId: 5,
+    pmAvailability: 0,
+    designAvailability: 0,
+    constructionAvailability: 152,
+  },
+];

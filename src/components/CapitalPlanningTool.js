@@ -10,6 +10,7 @@ import {
   Download,
   Upload,
   CalendarClock,
+  UserCircle,
 } from "lucide-react";
 
 // Import components
@@ -20,6 +21,7 @@ import StaffAllocations from "./tabs/StaffAllocations";
 import ResourceForecast from "./tabs/ResourceForecast";
 import ScheduleView from "./tabs/ScheduleView";
 import SettingsTab from "./tabs/SettingsTab";
+import PeopleTab from "./tabs/PeopleTab";
 
 // Import data and utilities
 import {
@@ -27,6 +29,7 @@ import {
   defaultProjectTypes,
   defaultFundingSources,
   defaultProjects,
+  defaultStaffMembers,
 } from "../data/defaultData";
 import {
   calculateTimelines,
@@ -41,6 +44,11 @@ const CAPACITY_FIELDS = [
   "pmCapacity",
   "designCapacity",
   "constructionCapacity",
+];
+const AVAILABILITY_FIELDS = [
+  "pmAvailability",
+  "designAvailability",
+  "constructionAvailability",
 ];
 
 const getNumericValue = (value) => {
@@ -61,6 +69,7 @@ const CapitalPlanningTool = () => {
       projectTypes: defaultProjectTypes,
       fundingSources: defaultFundingSources,
       staffAllocations: {},
+      staffMembers: defaultStaffMembers,
     }),
     []
   );
@@ -84,6 +93,9 @@ const CapitalPlanningTool = () => {
     deleteFundingSource: dbDeleteFundingSource,
     saveStaffAllocation,
     getStaffAllocations,
+    saveStaffMember,
+    getStaffMembers,
+    deleteStaffMember: dbDeleteStaffMember,
     exportDatabase,
     importDatabase,
   } = useDatabase(defaultData);
@@ -96,6 +108,7 @@ const CapitalPlanningTool = () => {
   const [fundingSources, setFundingSources] = useState(defaultFundingSources);
   const [projects, setProjects] = useState(defaultProjects);
   const [staffAllocations, setStaffAllocations] = useState({});
+  const [staffMembers, setStaffMembers] = useState(defaultStaffMembers);
   const [activeTab, setActiveTab] = useState("overview");
   const [timeHorizon, setTimeHorizon] = useState(36);
   const [scheduleHorizon, setScheduleHorizon] = useState(36);
@@ -113,12 +126,14 @@ const CapitalPlanningTool = () => {
             projectTypesData,
             fundingSourcesData,
             allocationsData,
+            staffMembersData,
           ] = await Promise.all([
             getProjects(),
             getStaffCategories(),
             getProjectTypes(),
             getFundingSources(),
             getStaffAllocations(),
+            getStaffMembers(),
           ]);
 
           // Only update if we got actual data
@@ -138,6 +153,10 @@ const CapitalPlanningTool = () => {
           }
           if (fundingSourcesData && fundingSourcesData.length > 0) {
             setFundingSources(fundingSourcesData);
+          }
+
+          if (staffMembersData && staffMembersData.length > 0) {
+            setStaffMembers(staffMembersData);
           }
 
           // Convert allocations array to object format
@@ -169,7 +188,44 @@ const CapitalPlanningTool = () => {
     getProjectTypes,
     getFundingSources,
     getStaffAllocations,
+    getStaffMembers,
   ]);
+
+  const staffAvailabilityByCategory = useMemo(() => {
+    const availability = {};
+
+    staffMembers.forEach((member) => {
+      if (!member || !member.categoryId) {
+        return;
+      }
+
+      const categoryId = parseInt(member.categoryId, 10);
+
+      if (!Number.isFinite(categoryId)) {
+        return;
+      }
+
+      if (!availability[categoryId]) {
+        availability[categoryId] = {
+          pm: 0,
+          design: 0,
+          construction: 0,
+          total: 0,
+        };
+      }
+
+      const pm = getNumericValue(member.pmAvailability);
+      const design = getNumericValue(member.designAvailability);
+      const construction = getNumericValue(member.constructionAvailability);
+
+      availability[categoryId].pm += pm;
+      availability[categoryId].design += design;
+      availability[categoryId].construction += construction;
+      availability[categoryId].total += pm + design + construction;
+    });
+
+    return availability;
+  }, [staffMembers]);
 
   // Initialize staff allocations when projects or staff categories change
   useEffect(() => {
@@ -206,15 +262,27 @@ const CapitalPlanningTool = () => {
         projectTimelines,
         staffAllocations,
         staffCategories,
-        timeHorizon
+        timeHorizon,
+        staffAvailabilityByCategory
       ),
-    [projectTimelines, staffAllocations, staffCategories, timeHorizon]
+    [
+      projectTimelines,
+      staffAllocations,
+      staffCategories,
+      timeHorizon,
+      staffAvailabilityByCategory,
+    ]
   );
 
   // Calculate gaps
   const staffingGaps = useMemo(
-    () => calculateStaffingGaps(resourceForecast, staffCategories),
-    [resourceForecast, staffCategories]
+    () =>
+      calculateStaffingGaps(
+        resourceForecast,
+        staffCategories,
+        staffAvailabilityByCategory
+      ),
+    [resourceForecast, staffCategories, staffAvailabilityByCategory]
   );
 
   // Project management functions
@@ -443,6 +511,67 @@ const CapitalPlanningTool = () => {
     }
   };
 
+  // Staff Members Management
+  const addStaffMember = async () => {
+    const defaultCategoryId = staffCategories[0]?.id ?? null;
+    const newMember = {
+      name: "New Team Member",
+      categoryId: defaultCategoryId,
+      pmAvailability: 0,
+      designAvailability: 0,
+      constructionAvailability: 0,
+    };
+
+    try {
+      const savedMemberId = await saveStaffMember(newMember);
+      const memberWithId = { ...newMember, id: savedMemberId };
+      setStaffMembers((prev) => [...prev, memberWithId]);
+    } catch (error) {
+      console.error("Error adding staff member:", error);
+    }
+  };
+
+  const updateStaffMember = async (id, field, value) => {
+    const existingMember = staffMembers.find((member) => member.id === id);
+
+    if (!existingMember) {
+      return;
+    }
+
+    let sanitizedValue = value;
+
+    if (field === "categoryId") {
+      const parsed = parseInt(value, 10);
+      sanitizedValue = Number.isFinite(parsed) ? parsed : null;
+    } else if (AVAILABILITY_FIELDS.includes(field)) {
+      sanitizedValue = Math.max(0, getNumericValue(value));
+    }
+
+    const updatedMember = {
+      ...existingMember,
+      [field]: sanitizedValue,
+    };
+
+    setStaffMembers((prev) =>
+      prev.map((member) => (member.id === id ? updatedMember : member))
+    );
+
+    try {
+      await saveStaffMember(updatedMember);
+    } catch (error) {
+      console.error("Error updating staff member:", error);
+    }
+  };
+
+  const deleteStaffMember = async (id) => {
+    try {
+      await dbDeleteStaffMember(id);
+      setStaffMembers((prev) => prev.filter((member) => member.id !== id));
+    } catch (error) {
+      console.error("Error deleting staff member:", error);
+    }
+  };
+
   // Project Types Management
   const addProjectType = async () => {
     const colors = [
@@ -631,6 +760,7 @@ const CapitalPlanningTool = () => {
                   icon: FolderOpen,
                 },
                 { id: "staff", label: "Staff Categories", icon: Users },
+                { id: "people", label: "People", icon: UserCircle },
                 { id: "allocations", label: "Staff Allocations", icon: Edit3 },
                 {
                   id: "schedule",
@@ -687,16 +817,27 @@ const CapitalPlanningTool = () => {
             />
           )}
 
-      {activeTab === "staff" && (
-        <StaffCategories
-          staffCategories={staffCategories}
-          addStaffCategory={addStaffCategory}
-          updateStaffCategory={updateStaffCategory}
-          deleteStaffCategory={deleteStaffCategory}
-          capacityWarnings={categoryCapacityWarnings}
-          maxMonthlyFteHours={MAX_MONTHLY_FTE_HOURS}
-        />
-      )}
+          {activeTab === "staff" && (
+            <StaffCategories
+              staffCategories={staffCategories}
+              addStaffCategory={addStaffCategory}
+              updateStaffCategory={updateStaffCategory}
+              deleteStaffCategory={deleteStaffCategory}
+              capacityWarnings={categoryCapacityWarnings}
+              maxMonthlyFteHours={MAX_MONTHLY_FTE_HOURS}
+            />
+          )}
+
+          {activeTab === "people" && (
+            <PeopleTab
+              staffMembers={staffMembers}
+              staffCategories={staffCategories}
+              addStaffMember={addStaffMember}
+              updateStaffMember={updateStaffMember}
+              deleteStaffMember={deleteStaffMember}
+              staffAvailabilityByCategory={staffAvailabilityByCategory}
+            />
+          )}
 
           {activeTab === "allocations" && (
             <StaffAllocations
@@ -714,6 +855,7 @@ const CapitalPlanningTool = () => {
               projectTypes={projectTypes}
               staffCategories={staffCategories}
               staffAllocations={staffAllocations}
+              staffAvailabilityByCategory={staffAvailabilityByCategory}
               scheduleHorizon={scheduleHorizon}
               setScheduleHorizon={setScheduleHorizon}
             />
