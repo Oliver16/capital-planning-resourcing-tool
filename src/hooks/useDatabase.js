@@ -113,6 +113,16 @@ const createTables = (database) => {
       UNIQUE(project_id, category_id)
     );
   `);
+
+  try {
+    database.run(
+      "ALTER TABLE staff_allocations ADD COLUMN pm_hours REAL DEFAULT 0"
+    );
+  } catch (error) {
+    if (!error.message?.includes("duplicate column name")) {
+      console.warn("PM hours migration warning:", error);
+    }
+  }
 };
 
 // Helper function to safely bind parameters
@@ -555,14 +565,15 @@ const DatabaseService = {
 
     try {
       const stmt = db.prepare(`
-        INSERT OR REPLACE INTO staff_allocations 
-        (project_id, category_id, design_hours, construction_hours, updated_at)
-        VALUES (?,?,?,?,CURRENT_TIMESTAMP)
+        INSERT OR REPLACE INTO staff_allocations
+        (project_id, category_id, pm_hours, design_hours, construction_hours, updated_at)
+        VALUES (?,?,?,?,?,CURRENT_TIMESTAMP)
       `);
 
       const params = safeBindParams([
         allocation.projectId || 0,
         allocation.categoryId || 0,
+        allocation.pmHours || 0,
         allocation.designHours || 0,
         allocation.constructionHours || 0,
       ]);
@@ -580,7 +591,9 @@ const DatabaseService = {
   async getStaffAllocations() {
     await this.initDatabase();
     try {
-      const results = db.exec("SELECT * FROM staff_allocations");
+      const results = db.exec(
+        "SELECT id, project_id, category_id, pm_hours, design_hours, construction_hours, created_at, updated_at FROM staff_allocations"
+      );
 
       if (!results.length) return [];
 
@@ -588,10 +601,11 @@ const DatabaseService = {
         id: row[0],
         projectId: row[1],
         categoryId: row[2],
-        designHours: row[3],
-        constructionHours: row[4],
-        createdAt: row[5],
-        updatedAt: row[6],
+        pmHours: row[3] ?? 0,
+        designHours: row[4] ?? 0,
+        constructionHours: row[5] ?? 0,
+        createdAt: row[6],
+        updatedAt: row[7],
       }));
     } catch (error) {
       console.error("Error getting staff allocations:", error);

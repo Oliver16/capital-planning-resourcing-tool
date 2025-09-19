@@ -112,7 +112,9 @@ const generateForecastFromDate = (
       if (category && category.name) {
         monthData[`${category.name}_required`] = 0;
         monthData[`${category.name}_capacity`] =
-          (category.designCapacity || 0) + (category.constructionCapacity || 0);
+          (category.pmCapacity || 0) +
+          (category.designCapacity || 0) +
+          (category.constructionCapacity || 0);
       }
     });
 
@@ -133,13 +135,39 @@ const generateForecastFromDate = (
 
             const allocation = staffAllocations[project.id]?.[category.id];
             if (allocation) {
-              if (isInDesign && allocation.designHours) {
+              if (
+                isInDesign &&
+                allocation.designHours &&
+                (project.designDuration || 0) > 0
+              ) {
                 monthData[`${category.name}_required`] +=
-                  (allocation.designHours || 0) / (4.33 * 40);
+                  allocation.designHours /
+                  project.designDuration /
+                  (4.33 * 40);
               }
-              if (isInConstruction && allocation.constructionHours) {
+              if (
+                isInConstruction &&
+                allocation.constructionHours &&
+                (project.constructionDuration || 0) > 0
+              ) {
                 monthData[`${category.name}_required`] +=
-                  (allocation.constructionHours || 0) / (4.33 * 40);
+                  allocation.constructionHours /
+                  project.constructionDuration /
+                  (4.33 * 40);
+              }
+
+              const totalDurationMonths =
+                (project.designDuration || 0) +
+                (project.constructionDuration || 0);
+              if (
+                (isInDesign || isInConstruction) &&
+                allocation.pmHours &&
+                totalDurationMonths > 0
+              ) {
+                monthData[`${category.name}_required`] +=
+                  allocation.pmHours /
+                  totalDurationMonths /
+                  (4.33 * 40);
               }
             }
           });
@@ -167,6 +195,13 @@ const generateForecastFromDate = (
             ) {
               monthData[`${category.name}_required`] +=
                 (project.continuousConstructionHours || 0) / (4.33 * 40);
+            }
+            if (
+              project.continuousPmHours &&
+              (category.pmCapacity || 0) > 0
+            ) {
+              monthData[`${category.name}_required`] +=
+                (project.continuousPmHours || 0) / (4.33 * 40);
             }
           });
         }

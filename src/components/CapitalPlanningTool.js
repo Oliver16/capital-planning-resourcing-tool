@@ -145,6 +145,7 @@ const CapitalPlanningTool = () => {
                 allocationsObject[allocation.projectId] = {};
               }
               allocationsObject[allocation.projectId][allocation.categoryId] = {
+                pmHours: allocation.pmHours || 0,
                 designHours: allocation.designHours || 0,
                 constructionHours: allocation.constructionHours || 0,
               };
@@ -178,6 +179,7 @@ const CapitalPlanningTool = () => {
         staffCategories.forEach((category) => {
           if (!allocations[project.id][category.id]) {
             allocations[project.id][category.id] = {
+              pmHours: 0,
               designHours: 0,
               constructionHours: 0,
             };
@@ -292,12 +294,19 @@ const CapitalPlanningTool = () => {
 
   // Staff management functions
   const updateStaffAllocation = async (projectId, categoryId, phase, hours) => {
+    const existingAllocation =
+      staffAllocations[projectId]?.[categoryId] || {
+        pmHours: 0,
+        designHours: 0,
+        constructionHours: 0,
+      };
+
     const newAllocations = {
       ...staffAllocations,
       [projectId]: {
         ...staffAllocations[projectId],
         [categoryId]: {
-          ...staffAllocations[projectId]?.[categoryId],
+          ...existingAllocation,
           [`${phase}Hours`]: parseFloat(hours) || 0,
         },
       },
@@ -309,6 +318,7 @@ const CapitalPlanningTool = () => {
       await saveStaffAllocation({
         projectId: parseInt(projectId),
         categoryId: parseInt(categoryId),
+        pmHours: newAllocations[projectId][categoryId].pmHours || 0,
         designHours: newAllocations[projectId][categoryId].designHours || 0,
         constructionHours:
           newAllocations[projectId][categoryId].constructionHours || 0,
