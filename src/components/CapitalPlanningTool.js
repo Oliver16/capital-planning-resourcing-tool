@@ -1000,6 +1000,7 @@ const CapitalPlanningTool = () => {
           {activeTab === "allocations" && (
             <StaffAllocations
               projects={projects.filter((p) => p.type === "project")}
+              projectTypes={projectTypes}
               staffCategories={staffCategories}
               staffAllocations={staffAllocations}
               updateStaffAllocation={updateStaffAllocation}
