@@ -56,7 +56,7 @@ const createTables = (database) => {
       type TEXT NOT NULL CHECK (type IN ('project', 'program')),
       project_type_id INTEGER,
       funding_source_id INTEGER,
-      
+
       total_budget REAL,
       design_budget REAL,
       construction_budget REAL,
@@ -64,7 +64,7 @@ const createTables = (database) => {
       construction_duration INTEGER,
       design_start_date DATE,
       construction_start_date DATE,
-      
+
       annual_budget REAL,
       design_budget_percent REAL,
       construction_budget_percent REAL,
@@ -72,16 +72,30 @@ const createTables = (database) => {
       continuous_construction_hours INTEGER,
       program_start_date DATE,
       program_end_date DATE,
-      
+
       priority TEXT CHECK (priority IN ('High', 'Medium', 'Low')),
       description TEXT,
+      delivery_type TEXT NOT NULL DEFAULT 'self-perform' CHECK (delivery_type IN ('self-perform','hybrid','consultant')),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      
+
       FOREIGN KEY (project_type_id) REFERENCES project_types(id),
       FOREIGN KEY (funding_source_id) REFERENCES funding_sources(id)
     );
   `);
+
+  try {
+    database.run(
+      "ALTER TABLE projects ADD COLUMN delivery_type TEXT DEFAULT 'self-perform'"
+    );
+    database.run(
+      "UPDATE projects SET delivery_type = 'self-perform' WHERE delivery_type IS NULL"
+    );
+  } catch (error) {
+    if (!error.message?.includes("duplicate column name")) {
+      console.warn("Delivery type migration warning:", error);
+    }
+  }
 
   database.run(`
     CREATE TABLE IF NOT EXISTS staff_allocations (
@@ -161,15 +175,15 @@ const DatabaseService = {
       if (project.id) {
         // Update existing project
         const stmt = db.prepare(`
-          UPDATE projects SET 
-            name=?, type=?, project_type_id=?, funding_source_id=?, 
+          UPDATE projects SET
+            name=?, type=?, project_type_id=?, funding_source_id=?,
             total_budget=?, design_budget=?, construction_budget=?,
-            design_duration=?, construction_duration=?, 
+            design_duration=?, construction_duration=?,
             design_start_date=?, construction_start_date=?,
             annual_budget=?, design_budget_percent=?, construction_budget_percent=?,
             continuous_design_hours=?, continuous_construction_hours=?,
             program_start_date=?, program_end_date=?,
-            priority=?, description=?, updated_at=CURRENT_TIMESTAMP
+            priority=?, description=?, delivery_type=?, updated_at=CURRENT_TIMESTAMP
           WHERE id=?
         `);
 
@@ -194,6 +208,7 @@ const DatabaseService = {
           project.programEndDate || null,
           project.priority || "Medium",
           project.description || "",
+          project.deliveryType || "self-perform",
           project.id,
         ]);
 
@@ -212,8 +227,8 @@ const DatabaseService = {
             annual_budget, design_budget_percent, construction_budget_percent,
             continuous_design_hours, continuous_construction_hours,
             program_start_date, program_end_date,
-            priority, description
-          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            priority, description, delivery_type
+          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         `);
 
         const params = safeBindParams([
@@ -237,6 +252,7 @@ const DatabaseService = {
           project.programEndDate || null,
           project.priority || "Medium",
           project.description || "",
+          project.deliveryType || "self-perform",
         ]);
 
         stmt.run(params);

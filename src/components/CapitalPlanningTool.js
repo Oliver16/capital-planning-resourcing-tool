@@ -103,7 +103,12 @@ const CapitalPlanningTool = () => {
 
           // Only update if we got actual data
           if (projectsData && projectsData.length > 0) {
-            setProjects(projectsData);
+            setProjects(
+              projectsData.map((project) => ({
+                ...project,
+                deliveryType: project.deliveryType || "self-perform",
+              }))
+            );
           }
           if (staffCategoriesData && staffCategoriesData.length > 0) {
             setStaffCategories(staffCategoriesData);
@@ -199,6 +204,7 @@ const CapitalPlanningTool = () => {
             type: "project",
             projectTypeId: projectTypes[0]?.id || 1,
             fundingSourceId: fundingSources[0]?.id || 1,
+            deliveryType: "self-perform",
             totalBudget: 1000000,
             designBudget: 100000,
             constructionBudget: 900000,
@@ -214,6 +220,7 @@ const CapitalPlanningTool = () => {
             type: "program",
             projectTypeId: projectTypes[0]?.id || 1,
             fundingSourceId: fundingSources[0]?.id || 1,
+            deliveryType: "self-perform",
             annualBudget: 500000,
             designBudgetPercent: 15,
             constructionBudgetPercent: 85,
@@ -235,8 +242,14 @@ const CapitalPlanningTool = () => {
   };
 
   const updateProject = async (id, field, value) => {
+    const normalizedValue =
+      field === "deliveryType"
+        ? ["self-perform", "hybrid", "consultant"].includes(value)
+          ? value
+          : "self-perform"
+        : value;
     const updatedProjects = projects.map((p) =>
-      p.id === id ? { ...p, [field]: value } : p
+      p.id === id ? { ...p, [field]: normalizedValue } : p
     );
     setProjects(updatedProjects);
 
@@ -585,6 +598,7 @@ const CapitalPlanningTool = () => {
               staffCategories={staffCategories}
               staffAllocations={staffAllocations}
               updateStaffAllocation={updateStaffAllocation}
+              fundingSources={fundingSources}
             />
           )}
 

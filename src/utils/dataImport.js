@@ -1,3 +1,25 @@
+const normalizeDeliveryType = (value) => {
+  if (!value) {
+    return "self-perform";
+  }
+
+  const normalized = value.toString().trim().toLowerCase();
+
+  if (normalized.includes("consult")) {
+    return "consultant";
+  }
+
+  if (normalized.includes("hybrid")) {
+    return "hybrid";
+  }
+
+  if (normalized.includes("self")) {
+    return "self-perform";
+  }
+
+  return "self-perform";
+};
+
 export const handleCSVImport = async (file, projects, setProjects) => {
   try {
     const text = await file.text();
@@ -24,6 +46,7 @@ export const handleCSVImport = async (file, projects, setProjects) => {
             row["Type"]?.toLowerCase() === "program" ? "program" : "project",
           projectTypeId: 1, // Default, user can change
           fundingSourceId: 1, // Default, user can change
+          deliveryType: normalizeDeliveryType(row["Delivery Type"]),
           totalBudget: parseFloat(row["Total Budget"] || row["Budget"] || 0),
           designBudget: parseFloat(row["Design Budget"] || 0),
           constructionBudget: parseFloat(row["Construction Budget"] || 0),
@@ -73,11 +96,52 @@ export const exportData = (data) => {
 };
 
 export const downloadCSVTemplate = () => {
-  const templateData = [
-    "Project Name,Type,Total Budget,Design Budget,Construction Budget,Design Duration,Construction Duration,Design Start,Construction Start,Priority,Description",
-    "Sample Water Main Project,project,1500000,150000,1350000,4,10,2025-01-01,2025-05-01,High,Sample project description",
-    "Distribution System Annual Program,program,750000,,,,,2025-01-01,2027-12-31,Medium,Ongoing distribution system improvements",
-  ].join("\n");
+  const templateRows = [
+    [
+      "Project Name",
+      "Type",
+      "Total Budget",
+      "Design Budget",
+      "Construction Budget",
+      "Design Duration",
+      "Construction Duration",
+      "Design Start",
+      "Construction Start",
+      "Priority",
+      "Description",
+      "Delivery Type",
+    ],
+    [
+      "Sample Water Main Project",
+      "project",
+      "1500000",
+      "150000",
+      "1350000",
+      "4",
+      "10",
+      "2025-01-01",
+      "2025-05-01",
+      "High",
+      "Sample project description",
+      "self-perform",
+    ],
+    [
+      "Distribution System Annual Program",
+      "program",
+      "750000",
+      "",
+      "",
+      "",
+      "",
+      "2025-01-01",
+      "2027-12-31",
+      "Medium",
+      "Ongoing distribution system improvements",
+      "hybrid",
+    ],
+  ];
+
+  const templateData = templateRows.map((row) => row.join(",")).join("\n");
 
   const blob = new Blob([templateData], { type: "text/csv" });
   const url = URL.createObjectURL(blob);

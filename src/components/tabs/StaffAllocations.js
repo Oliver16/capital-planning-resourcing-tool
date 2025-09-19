@@ -1,29 +1,170 @@
 import React from "react";
-import { Repeat } from "lucide-react";
+import { Repeat, AlertTriangle, Info } from "lucide-react";
 
 const StaffAllocations = ({
   projects,
   staffCategories,
   staffAllocations,
   updateStaffAllocation,
+  fundingSources = [],
 }) => {
+  const deliveryGuidance = {
+    "self-perform": {
+      title: "Self-Perform Delivery",
+      details: [
+        "Utility staff complete design tasks and provide day-to-day construction oversight.",
+        "Confirm LoE includes engineering, inspection, and project controls coverage from internal teams.",
+      ],
+      container: "bg-blue-50 border-blue-400 text-blue-900",
+      iconClass: "text-blue-500",
+      Icon: Info,
+    },
+    hybrid: {
+      title: "Hybrid Delivery",
+      details: [
+        "Design and construction oversight are shared between utility and consultant resources.",
+        "Clarify which scope items the utility is covering so LoE reflects only in-house responsibilities.",
+      ],
+      container: "bg-amber-50 border-amber-400 text-amber-900",
+      iconClass: "text-amber-500",
+      Icon: AlertTriangle,
+    },
+    consultant: {
+      title: "Consultant Delivery",
+      details: [
+        "Utility role is focused on owner-side PM, design reviews, bidding coordination, and limited construction administration.",
+        "Allocate LoE toward oversight touchpoints; consultant hours are managed outside of the internal staffing plan.",
+      ],
+      container: "bg-purple-50 border-purple-400 text-purple-900",
+      iconClass: "text-purple-500",
+      Icon: AlertTriangle,
+    },
+  };
+
+  const deliveryLabels = {
+    "self-perform": "Self-Perform",
+    hybrid: "Hybrid",
+    consultant: "Consultant-Led",
+  };
+
+  const deliveryBadgeStyles = {
+    "self-perform": "bg-blue-100 text-blue-800",
+    hybrid: "bg-amber-100 text-amber-800",
+    consultant: "bg-purple-100 text-purple-800",
+  };
+
+  const requiresExternalCoordination = (fundingSource) => {
+    if (!fundingSource || !fundingSource.name) return true;
+    const name = fundingSource.name.toLowerCase();
+    const description = (fundingSource.description || "").toLowerCase();
+
+    const isCash =
+      name.includes("cash") ||
+      name.includes("general fund") ||
+      description.includes("cash") ||
+      description.includes("general fund");
+    const isRevenueBond =
+      name.includes("revenue bond") || description.includes("revenue bond");
+
+    return !(isCash || isRevenueBond);
+  };
+
   return (
     <div className="space-y-6">
       {projects.map((project) => (
         <div key={project.id} className="bg-white rounded-lg shadow-sm">
           <div className="p-6 border-b border-gray-200">
-            <h3 className="text-lg font-semibold">{project.name}</h3>
-            <p className="text-gray-600">
-              Design Budget: ${(project.designBudget / 1000).toFixed(0)}K |
-              Construction Budget: $
-              {(project.constructionBudget / 1000).toFixed(0)}K
-            </p>
-            <p className="text-sm text-gray-500">
-              Design: {new Date(project.designStartDate).toLocaleDateString()} (
-              {project.designDuration} months) | Construction:{" "}
-              {new Date(project.constructionStartDate).toLocaleDateString()} (
-              {project.constructionDuration} months)
-            </p>
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">{project.name}</h3>
+                <p className="text-gray-600">
+                  Design Budget: ${(project.designBudget / 1000).toFixed(0)}K |
+                  Construction Budget: $
+                  {(project.constructionBudget / 1000).toFixed(0)}K
+                </p>
+                <p className="text-sm text-gray-500">
+                  Design: {new Date(project.designStartDate).toLocaleDateString()} (
+                  {project.designDuration} months) | Construction:{" "}
+                  {new Date(project.constructionStartDate).toLocaleDateString()} (
+                  {project.constructionDuration} months)
+                </p>
+              </div>
+              <div className="flex flex-col items-start gap-2 md:items-end">
+                {(() => {
+                  const key = project.deliveryType || "self-perform";
+                  const label = deliveryLabels[key] || "Delivery";
+                  const badgeClass =
+                    deliveryBadgeStyles[key] || "bg-gray-100 text-gray-700";
+                  return (
+                    <span
+                      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${badgeClass}`}
+                    >
+                      {label} Delivery
+                    </span>
+                  );
+                })()}
+                <p className="text-xs text-gray-500">
+                  Funding: {
+                    fundingSources.find(
+                      (source) => source.id === project.fundingSourceId
+                    )?.name || "Unassigned"
+                  }
+                </p>
+              </div>
+            </div>
+
+            {(() => {
+              const key = project.deliveryType || "self-perform";
+              const guidance = deliveryGuidance[key];
+              if (!guidance) return null;
+              const GuidanceIcon = guidance.Icon;
+              return (
+                <div
+                  className={`mt-4 rounded-md border-l-4 p-4 ${guidance.container}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <GuidanceIcon
+                      size={20}
+                      className={`${guidance.iconClass} mt-0.5 flex-shrink-0`}
+                    />
+                    <div className="space-y-1 text-sm leading-snug">
+                      <p className="font-semibold">{guidance.title}</p>
+                      {guidance.details.map((detail, index) => (
+                        <p key={index}>{detail}</p>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {(() => {
+              const fundingSource = fundingSources.find(
+                (source) => source.id === project.fundingSourceId
+              );
+              if (!requiresExternalCoordination(fundingSource)) {
+                return null;
+              }
+              return (
+                <div className="mt-3 rounded-md border-l-4 border-orange-500 bg-orange-50 p-4 text-orange-900">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle
+                      size={20}
+                      className="mt-0.5 flex-shrink-0 text-orange-500"
+                    />
+                    <div className="space-y-1 text-sm leading-snug">
+                      <p className="font-semibold">External Coordination Needed</p>
+                      <p>
+                        This project is funded through {" "}
+                        <strong>{fundingSource?.name || "external sources"}</strong>
+                        , so align LoE planning with state or partner agency
+                        requirements before finalizing allocations.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
           <div className="p-6">
             <div className="overflow-x-auto">
