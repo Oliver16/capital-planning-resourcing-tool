@@ -12,8 +12,8 @@ export const defaultStaffCategories = [
     name: "Civil Engineer",
     hourlyRate: 75,
     pmCapacity: 0,
-    designCapacity: 160,
-    constructionCapacity: 40,
+    designCapacity: 139,
+    constructionCapacity: 34,
   },
   {
     id: 3,
@@ -29,7 +29,7 @@ export const defaultStaffCategories = [
     hourlyRate: 80,
     pmCapacity: 40,
     designCapacity: 20,
-    constructionCapacity: 120,
+    constructionCapacity: 113,
   },
   {
     id: 5,
