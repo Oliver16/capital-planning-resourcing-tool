@@ -1,6 +1,22 @@
 import React from "react";
 import { Repeat, AlertTriangle, Info } from "lucide-react";
 
+const HOURS_PER_FTE = 4.33 * 40;
+
+const formatMonthlyFTE = (hours, isPhaseActive) => {
+  if (!isPhaseActive) {
+    return "0.00";
+  }
+
+  const numericHours = Number(hours) || 0;
+
+  if (numericHours === 0) {
+    return "0.00";
+  }
+
+  return (numericHours / HOURS_PER_FTE).toFixed(2);
+};
+
 const StaffAllocations = ({
   projects,
   staffCategories,
@@ -207,33 +223,21 @@ const StaffAllocations = ({
                     const totalCost = pmCost + designCost + constructionCost;
 
                     // Calculate monthly FTE during active phases
-                    const designFTE =
+                    const designFTE = formatMonthlyFTE(
+                      allocation.designHours,
                       project.designDuration > 0
-                        ? (
-                            (allocation.designHours || 0) /
-                            project.designDuration /
-                            (4.33 * 40)
-                          ).toFixed(2)
-                        : 0;
-                    const constructionFTE =
+                    );
+                    const constructionFTE = formatMonthlyFTE(
+                      allocation.constructionHours,
                       project.constructionDuration > 0
-                        ? (
-                            (allocation.constructionHours || 0) /
-                            project.constructionDuration /
-                            (4.33 * 40)
-                          ).toFixed(2)
-                        : 0;
+                    );
                     const totalDuration =
                       (project.designDuration || 0) +
                       (project.constructionDuration || 0);
-                    const pmFTE =
+                    const pmFTE = formatMonthlyFTE(
+                      allocation.pmHours,
                       totalDuration > 0
-                        ? (
-                            (allocation.pmHours || 0) /
-                            totalDuration /
-                            (4.33 * 40)
-                          ).toFixed(2)
-                        : 0;
+                    );
 
                     return (
                       <tr
