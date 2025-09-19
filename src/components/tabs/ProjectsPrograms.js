@@ -207,9 +207,39 @@ const ProjectsPrograms = ({
                         />
                       </td>
                       <td className="p-4">
-                        <div className="text-sm">
-                          <div>D: {project.designDuration}</div>
-                          <div>C: {project.constructionDuration}</div>
+                        <div className="flex flex-col gap-2 text-sm">
+                          <label className="flex items-center gap-2">
+                            <span className="text-gray-600">D:</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={project.designDuration || 0}
+                              onChange={(e) =>
+                                updateProject(
+                                  project.id,
+                                  "designDuration",
+                                  parseInt(e.target.value, 10) || 0
+                                )
+                              }
+                              className="w-20 border border-gray-300 rounded px-2 py-1"
+                            />
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <span className="text-gray-600">C:</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={project.constructionDuration || 0}
+                              onChange={(e) =>
+                                updateProject(
+                                  project.id,
+                                  "constructionDuration",
+                                  parseInt(e.target.value, 10) || 0
+                                )
+                              }
+                              className="w-20 border border-gray-300 rounded px-2 py-1"
+                            />
+                          </label>
                         </div>
                       </td>
                       <td className="p-4">
