@@ -66,6 +66,11 @@ export const handleCSVImport = async (file, projects, setProjects) => {
           annualBudget: parseFloat(row["Annual Budget"] || 0),
           designBudgetPercent: parseFloat(row["Design %"] || 15),
           constructionBudgetPercent: parseFloat(row["Construction %"] || 85),
+          continuousPmHours: parseFloat(row["PM Hours"] || 0) || 0,
+          continuousDesignHours:
+            parseFloat(row["Design Hours"] || row["Design Hrs"] || 0) || 0,
+          continuousConstructionHours:
+            parseFloat(row["Construction Hours"] || row["Construction Hrs"] || 0) || 0,
           programStartDate: row["Program Start"] || "2025-01-01",
           programEndDate: row["Program End"] || "2027-12-31",
         };
@@ -110,6 +115,9 @@ export const downloadCSVTemplate = () => {
       "Priority",
       "Description",
       "Delivery Type",
+      "PM Hours",
+      "Design Hours",
+      "Construction Hours",
     ],
     [
       "Sample Water Main Project",
@@ -124,6 +132,9 @@ export const downloadCSVTemplate = () => {
       "High",
       "Sample project description",
       "self-perform",
+      "",
+      "",
+      "",
     ],
     [
       "Distribution System Annual Program",
@@ -138,6 +149,9 @@ export const downloadCSVTemplate = () => {
       "Medium",
       "Ongoing distribution system improvements",
       "hybrid",
+      "20",
+      "30",
+      "80",
     ],
   ];
 
