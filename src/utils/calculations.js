@@ -82,6 +82,95 @@ export const generateResourceForecast = (
   );
 };
 
+const HOURS_PER_FTE_MONTH = 4.33 * 40;
+
+const sanitizePositiveNumber = (value) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+};
+
+const normalizeProgramCategoryHours = (config) => {
+  if (!config) {
+    return {};
+  }
+
+  if (typeof config === "string") {
+    try {
+      const parsed = JSON.parse(config);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (error) {
+      console.warn("Unable to parse program hours config:", error);
+      return {};
+    }
+  }
+
+  return typeof config === "object" ? config : {};
+};
+
+const buildProgramCategoryHours = (project, staffCategories) => {
+  const normalized = normalizeProgramCategoryHours(
+    project?.continuousHoursByCategory
+  );
+  const result = {};
+  let hasValues = false;
+
+  (staffCategories || []).forEach((category) => {
+    if (!category || category.id == null) {
+      return;
+    }
+
+    const entry =
+      normalized[String(category.id)] ?? normalized[category.id] ?? null;
+    if (!entry || typeof entry !== "object") {
+      return;
+    }
+
+    const pmHours = sanitizePositiveNumber(entry.pmHours);
+    const designHours = sanitizePositiveNumber(entry.designHours);
+    const constructionHours = sanitizePositiveNumber(entry.constructionHours);
+
+    if (pmHours > 0 || designHours > 0 || constructionHours > 0) {
+      hasValues = true;
+      result[String(category.id)] = {
+        pmHours,
+        designHours,
+        constructionHours,
+      };
+    }
+  });
+
+  return hasValues ? result : null;
+};
+
+const getProgramHoursForCategory = (project, category, categoryHours) => {
+  if (!category || category.id == null) {
+    return 0;
+  }
+
+  if (categoryHours) {
+    const entry =
+      categoryHours[String(category.id)] ?? categoryHours[category.id];
+    if (entry) {
+      return (
+        (entry.pmHours || 0) +
+        (entry.designHours || 0) +
+        (entry.constructionHours || 0)
+      );
+    }
+    return 0;
+  }
+
+  let total = 0;
+  total += sanitizePositiveNumber(project?.continuousDesignHours) *
+    ((category.designCapacity || 0) > 0 ? 1 : 0);
+  total += sanitizePositiveNumber(project?.continuousConstructionHours) *
+    ((category.constructionCapacity || 0) > 0 ? 1 : 0);
+  total += sanitizePositiveNumber(project?.continuousPmHours) *
+    ((category.pmCapacity || 0) > 0 ? 1 : 0);
+
+  return total;
+};
+
 const generateForecastFromDate = (
   startDate,
   timeHorizon,
@@ -126,7 +215,7 @@ const generateForecastFromDate = (
             : fallbackTotal;
 
         monthData[`${category.name}_actual`] =
-          (totalHours || 0) / (4.33 * 40);
+          (totalHours || 0) / HOURS_PER_FTE_MONTH;
       }
     });
 
@@ -155,7 +244,7 @@ const generateForecastFromDate = (
                 monthData[`${category.name}_required`] +=
                   allocation.designHours /
                   project.designDuration /
-                  (4.33 * 40);
+                  HOURS_PER_FTE_MONTH;
               }
               if (
                 isInConstruction &&
@@ -165,7 +254,7 @@ const generateForecastFromDate = (
                 monthData[`${category.name}_required`] +=
                   allocation.constructionHours /
                   project.constructionDuration /
-                  (4.33 * 40);
+                  HOURS_PER_FTE_MONTH;
               }
 
               const totalDurationMonths =
@@ -179,7 +268,7 @@ const generateForecastFromDate = (
                 monthData[`${category.name}_required`] +=
                   allocation.pmHours /
                   totalDurationMonths /
-                  (4.33 * 40);
+                  HOURS_PER_FTE_MONTH;
               }
             }
           });
@@ -190,30 +279,23 @@ const generateForecastFromDate = (
           currentDate >= project.designStart &&
           currentDate <= project.constructionEnd;
         if (isActive) {
+          const categoryHours = buildProgramCategoryHours(
+            project,
+            staffCategories
+          );
+
           staffCategories.forEach((category) => {
             if (!category || !category.name) return;
 
-            // Use predefined continuous hours for programs
-            if (
-              project.continuousDesignHours &&
-              (category.designCapacity || 0) > 0
-            ) {
+            const totalHours = getProgramHoursForCategory(
+              project,
+              category,
+              categoryHours
+            );
+
+            if (totalHours > 0) {
               monthData[`${category.name}_required`] +=
-                (project.continuousDesignHours || 0) / (4.33 * 40);
-            }
-            if (
-              project.continuousConstructionHours &&
-              (category.constructionCapacity || 0) > 0
-            ) {
-              monthData[`${category.name}_required`] +=
-                (project.continuousConstructionHours || 0) / (4.33 * 40);
-            }
-            if (
-              project.continuousPmHours &&
-              (category.pmCapacity || 0) > 0
-            ) {
-              monthData[`${category.name}_required`] +=
-                (project.continuousPmHours || 0) / (4.33 * 40);
+                totalHours / HOURS_PER_FTE_MONTH;
             }
           });
         }
@@ -259,8 +341,6 @@ export const calculateStaffingGaps = (resourceForecast, staffCategories) => {
 
   return gaps;
 };
-
-const HOURS_PER_FTE_MONTH = 4.33 * 40;
 
 const safeDate = (value) => {
   if (!value) {
@@ -550,6 +630,11 @@ export const generateScenarioForecastDetails = (
           return;
         }
 
+        const categoryHours = buildProgramCategoryHours(
+          project,
+          staffCategories
+        );
+
         staffCategories.forEach((category) => {
           if (!category || !category.name) {
             return;
@@ -561,30 +646,14 @@ export const generateScenarioForecastDetails = (
             categoryAvailability[category.id]
           );
 
-          let totalFte = 0;
+          const totalHours = getProgramHoursForCategory(
+            project,
+            category,
+            categoryHours
+          );
 
-          if (
-            project.continuousDesignHours &&
-            (category.designCapacity || 0) > 0
-          ) {
-            totalFte +=
-              (project.continuousDesignHours || 0) / HOURS_PER_FTE_MONTH;
-          }
-
-          if (
-            project.continuousConstructionHours &&
-            (category.constructionCapacity || 0) > 0
-          ) {
-            totalFte +=
-              (project.continuousConstructionHours || 0) /
-              HOURS_PER_FTE_MONTH;
-          }
-
-          if (project.continuousPmHours && (category.pmCapacity || 0) > 0) {
-            totalFte += (project.continuousPmHours || 0) / HOURS_PER_FTE_MONTH;
-          }
-
-          if (totalFte > 0) {
+          if (totalHours > 0) {
+            const totalFte = totalHours / HOURS_PER_FTE_MONTH;
             addContribution(
               monthData,
               category,

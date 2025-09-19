@@ -88,7 +88,7 @@ const ProjectsPrograms = ({
           </h2>
           <div className="flex gap-4">
             <button
-              onClick={downloadCSVTemplate}
+              onClick={handleDownloadTemplate}
               className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 flex items-center gap-2"
             >
               <Download size={16} />
@@ -124,7 +124,6 @@ const ProjectsPrograms = ({
           </div>
         </div>
       </div>
-
       {projectGroups.length === 0 ? (
         <div className="bg-white rounded-lg shadow-sm p-6 text-center text-sm text-gray-500">
           No projects or programs have been added yet. Use the controls above to
@@ -669,12 +668,13 @@ const ProjectsPrograms = ({
           <p>
             <strong>Required columns for Programs:</strong> Project Name, Type
             (program), Annual Budget, Design %, Construction %, Program Start,
-            Program End. Include optional PM, design, and construction monthly
-            hours to pre-populate staffing needs.
+            Program End. Use <em>PM/Design/Construction Hours - Category</em>
+            columns to define monthly effort for each staff category.
           </p>
           <p>
             <strong>Optional columns:</strong> Priority, Description
           </p>
+
           <p>
             Download the CSV template above to see the exact format required.
           </p>
