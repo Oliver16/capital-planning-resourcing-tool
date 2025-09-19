@@ -2,6 +2,12 @@ import React from "react";
 import { Plus, Upload, Trash2, Repeat, Download } from "lucide-react";
 import { downloadCSVTemplate } from "../../utils/dataImport";
 
+const deliveryOptions = [
+  { value: "self-perform", label: "Self-Perform" },
+  { value: "hybrid", label: "Hybrid" },
+  { value: "consultant", label: "Consultant" },
+];
+
 const ProjectsPrograms = ({
   projects,
   projectTypes,
@@ -70,6 +76,7 @@ const ProjectsPrograms = ({
                 <th className="text-left p-4">Name</th>
                 <th className="text-left p-4">Type</th>
                 <th className="text-left p-4">Funding</th>
+                <th className="text-left p-4">Delivery</th>
                 <th className="text-left p-4">Total Budget</th>
                 <th className="text-left p-4">Design Start</th>
                 <th className="text-left p-4">Construction Start</th>
@@ -134,6 +141,25 @@ const ProjectsPrograms = ({
                           {fundingSources.map((source) => (
                             <option key={source.id} value={source.id}>
                               {source.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="p-4">
+                        <select
+                          value={project.deliveryType || "self-perform"}
+                          onChange={(e) =>
+                            updateProject(
+                              project.id,
+                              "deliveryType",
+                              e.target.value
+                            )
+                          }
+                          className="border border-gray-300 rounded px-2 py-1"
+                        >
+                          {deliveryOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
                             </option>
                           ))}
                         </select>
