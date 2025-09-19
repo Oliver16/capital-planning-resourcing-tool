@@ -20,11 +20,50 @@ const normalizeDeliveryType = (value) => {
   return "self-perform";
 };
 
-export const handleCSVImport = async (file, projects, setProjects) => {
+const normalizeCategoryName = (value = "") =>
+  value.toString().toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+const sanitizeHourValue = (value) => {
+  const parsed = parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return 0;
+  }
+  return Math.round(parsed * 10) / 10;
+};
+
+const sumContinuousHours = (config = {}) => {
+  return Object.values(config).reduce(
+    (totals, entry = {}) => {
+      const pm = Number(entry.pmHours);
+      const design = Number(entry.designHours);
+      const construction = Number(entry.constructionHours);
+
+      totals.pm += Number.isFinite(pm) ? pm : 0;
+      totals.design += Number.isFinite(design) ? design : 0;
+      totals.construction += Number.isFinite(construction) ? construction : 0;
+
+      return totals;
+    },
+    { pm: 0, design: 0, construction: 0 }
+  );
+};
+
+export const handleCSVImport = async (
+  file,
+  projects,
+  setProjects,
+  staffCategories = []
+) => {
   try {
     const text = await file.text();
     const lines = text.split("\n");
     const headers = lines[0].split(",");
+
+    const categoryMap = new Map();
+    (Array.isArray(staffCategories) ? staffCategories : []).forEach((category) => {
+      if (!category || !category.name) return;
+      categoryMap.set(normalizeCategoryName(category.name), category.id);
+    });
 
     const importedProjects = lines
       .slice(1)
@@ -35,6 +74,56 @@ export const handleCSVImport = async (file, projects, setProjects) => {
         headers.forEach((header, i) => {
           row[header.trim()] = values[i]?.trim() || "";
         });
+
+        const continuousHoursByCategory = {};
+        Object.entries(row).forEach(([header, rawValue]) => {
+          const normalizedHeader = header.toLowerCase();
+          const match = normalizedHeader.match(
+            /^(pm|design|construction)\s*hours\s*-\s*(.+)$/
+          );
+          if (!match) {
+            return;
+          }
+
+          const [, discipline, categoryName] = match;
+          const normalizedCategory = normalizeCategoryName(categoryName);
+          if (!normalizedCategory) {
+            return;
+          }
+
+          const categoryId = categoryMap.get(normalizedCategory);
+          if (!categoryId) {
+            return;
+          }
+
+          const fieldKey =
+            discipline === "pm"
+              ? "pmHours"
+              : discipline === "design"
+              ? "designHours"
+              : "constructionHours";
+
+          const sanitized = sanitizeHourValue(rawValue);
+          if (sanitized <= 0) {
+            return;
+          }
+
+          const entryKey = String(categoryId);
+          const existingEntry = continuousHoursByCategory[entryKey] || {
+            pmHours: 0,
+            designHours: 0,
+            constructionHours: 0,
+          };
+
+          continuousHoursByCategory[entryKey] = {
+            ...existingEntry,
+            [fieldKey]: sanitized,
+          };
+        });
+
+        const totalsFromCategories = sumContinuousHours(
+          continuousHoursByCategory
+        );
 
         return {
           id: Math.max(...projects.map((p) => p.id), 0) + index + 1,
@@ -68,11 +157,16 @@ export const handleCSVImport = async (file, projects, setProjects) => {
           constructionBudgetPercent: parseFloat(row["Construction %"] || 85),
           programStartDate: row["Program Start"] || "2025-01-01",
           programEndDate: row["Program End"] || "2027-12-31",
-          continuousPmHours: parseFloat(row["Continuous PM Hours"] || 0),
-          continuousDesignHours: parseFloat(row["Continuous Design Hours"] || 0),
-          continuousConstructionHours: parseFloat(
-            row["Continuous Construction Hours"] || 0
-          ),
+          continuousPmHours:
+            totalsFromCategories.pm ||
+            sanitizeHourValue(row["Continuous PM Hours"] || 0),
+          continuousDesignHours:
+            totalsFromCategories.design ||
+            sanitizeHourValue(row["Continuous Design Hours"] || 0),
+          continuousConstructionHours:
+            totalsFromCategories.construction ||
+            sanitizeHourValue(row["Continuous Construction Hours"] || 0),
+          continuousHoursByCategory,
         };
       });
 
@@ -100,12 +194,22 @@ export const exportData = (data) => {
   URL.revokeObjectURL(url);
 };
 
-export const downloadCSVTemplate = () => {
-  const templateRows = [
-    [
-      "Project Name",
-      "Type",
-      "Total Budget",
+export const downloadCSVTemplate = (staffCategories = []) => {
+  const fallbackCategories = [
+    { name: "Project Manager" },
+    { name: "Civil Engineer" },
+    { name: "Construction Manager" },
+  ];
+
+  const categories = (Array.isArray(staffCategories) && staffCategories.length
+    ? staffCategories
+    : fallbackCategories
+  ).filter((category) => category && category.name);
+
+  const baseHeaders = [
+    "Project Name",
+    "Type",
+    "Total Budget",
       "Design Budget",
       "Construction Budget",
       "Design Duration",
@@ -118,12 +222,23 @@ export const downloadCSVTemplate = () => {
       "Annual Budget",
       "Design %",
       "Construction %",
-      "Program Start",
-      "Program End",
-      "Continuous PM Hours",
-      "Continuous Design Hours",
-      "Continuous Construction Hours",
-    ],
+    "Program Start",
+    "Program End",
+    "Continuous PM Hours",
+    "Continuous Design Hours",
+    "Continuous Construction Hours",
+  ];
+
+  const categoryHeaders = categories.flatMap((category) => [
+    `PM Hours - ${category.name}`,
+    `Design Hours - ${category.name}`,
+    `Construction Hours - ${category.name}`,
+  ]);
+
+  const headers = [...baseHeaders, ...categoryHeaders];
+
+  const templateRows = [
+    headers,
     [
       "Sample Water Main Project",
       "project",
@@ -167,6 +282,18 @@ export const downloadCSVTemplate = () => {
       "20",
       "30",
       "80",
+      ...categories.flatMap((category, index) => {
+        if (index === 0) {
+          return ["20", "0", "0"];
+        }
+        if (index === 1) {
+          return ["0", "30", "0"];
+        }
+        if (index === 2) {
+          return ["0", "0", "80"];
+        }
+        return ["0", "0", "0"];
+      }),
     ],
   ];
 

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import { Plus, Upload, Trash2, Repeat, Download } from "lucide-react";
 import { downloadCSVTemplate } from "../../utils/dataImport";
 
@@ -12,11 +12,140 @@ const ProjectsPrograms = ({
   projects,
   projectTypes,
   fundingSources,
+  staffCategories = [],
   addProject,
   updateProject,
   deleteProject,
   handleImport,
 }) => {
+  const [expandedPrograms, setExpandedPrograms] = useState([]);
+  const categories = useMemo(
+    () => (Array.isArray(staffCategories) ? staffCategories : []),
+    [staffCategories]
+  );
+
+  const handleDownloadTemplate = () => {
+    downloadCSVTemplate(categories);
+  };
+
+  const parseContinuousCategoryConfig = (config) => {
+    if (!config) return {};
+    if (typeof config === "string") {
+      try {
+        const parsed = JSON.parse(config);
+        return parsed && typeof parsed === "object" ? parsed : {};
+      } catch (error) {
+        console.warn("Unable to parse continuous hours config", error);
+        return {};
+      }
+    }
+    if (typeof config === "object") {
+      return config;
+    }
+    return {};
+  };
+
+  const computeTotalsFromConfig = (config) => {
+    const normalized = parseContinuousCategoryConfig(config);
+    return Object.values(normalized).reduce(
+      (
+        totals,
+        entry = { pmHours: 0, designHours: 0, constructionHours: 0 }
+      ) => {
+        const pm = Number(entry.pmHours);
+        const design = Number(entry.designHours);
+        const construction = Number(entry.constructionHours);
+
+        totals.pm += Number.isFinite(pm) ? pm : 0;
+        totals.design += Number.isFinite(design) ? design : 0;
+        totals.construction += Number.isFinite(construction)
+          ? construction
+          : 0;
+
+        return totals;
+      },
+      { pm: 0, design: 0, construction: 0 }
+    );
+  };
+
+  const getProgramTotals = (program) => {
+    const totalsFromConfig = computeTotalsFromConfig(
+      program.continuousHoursByCategory
+    );
+    const hasConfiguredValues =
+      totalsFromConfig.pm > 0 ||
+      totalsFromConfig.design > 0 ||
+      totalsFromConfig.construction > 0;
+
+    if (hasConfiguredValues) {
+      return totalsFromConfig;
+    }
+
+    return {
+      pm: Number(program.continuousPmHours) || 0,
+      design: Number(program.continuousDesignHours) || 0,
+      construction: Number(program.continuousConstructionHours) || 0,
+    };
+  };
+
+  const toggleProgramExpansion = (programId) => {
+    setExpandedPrograms((prev) =>
+      prev.includes(programId)
+        ? prev.filter((id) => id !== programId)
+        : [...prev, programId]
+    );
+  };
+
+  const formatHours = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || Math.abs(numeric) < 0.05) {
+      return "0.0";
+    }
+    return numeric.toFixed(1);
+  };
+
+  const handleCategoryHoursChange = (program, categoryId, field, rawValue) => {
+    const parsedValue = parseFloat(rawValue);
+    const sanitizedValue = Number.isFinite(parsedValue)
+      ? Math.max(0, Math.round(parsedValue * 10) / 10)
+      : 0;
+
+    const normalizedConfig = parseContinuousCategoryConfig(
+      program.continuousHoursByCategory
+    );
+    const key = String(categoryId);
+    const existingEntry = normalizedConfig[key] || {
+      pmHours: 0,
+      designHours: 0,
+      constructionHours: 0,
+    };
+
+    const nextEntry = {
+      ...existingEntry,
+      [field]: sanitizedValue,
+    };
+
+    const updatedConfig = { ...normalizedConfig };
+    if (
+      (nextEntry.pmHours || 0) > 0 ||
+      (nextEntry.designHours || 0) > 0 ||
+      (nextEntry.constructionHours || 0) > 0
+    ) {
+      updatedConfig[key] = nextEntry;
+    } else {
+      delete updatedConfig[key];
+    }
+
+    const totals = computeTotalsFromConfig(updatedConfig);
+
+    updateProject(program.id, {
+      continuousHoursByCategory: updatedConfig,
+      continuousPmHours: totals.pm,
+      continuousDesignHours: totals.design,
+      continuousConstructionHours: totals.construction,
+    });
+  };
+
   return (
     <div className="space-y-6">
       {/* Import/Export Controls */}
@@ -27,7 +156,7 @@ const ProjectsPrograms = ({
           </h2>
           <div className="flex gap-4">
             <button
-              onClick={downloadCSVTemplate}
+              onClick={handleDownloadTemplate}
               className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 flex items-center gap-2"
             >
               <Download size={16} />
@@ -302,203 +431,275 @@ const ProjectsPrograms = ({
               {projects
                 .filter((p) => p.type === "program")
                 .map((program) => {
-                  const projectType = projectTypes.find(
-                    (t) => t.id === program.projectTypeId
+                  const totals = getProgramTotals(program);
+                  const categoryConfig = parseContinuousCategoryConfig(
+                    program.continuousHoursByCategory
                   );
-                  const fundingSource = fundingSources.find(
-                    (f) => f.id === program.fundingSourceId
-                  );
+                  const isExpanded = expandedPrograms.includes(program.id);
                   return (
-                    <tr key={program.id} className="border-b border-gray-200">
-                      <td className="p-4 min-w-[16rem]">
-                        <input
-                          type="text"
-                          value={program.name}
-                          onChange={(e) =>
-                            updateProject(program.id, "name", e.target.value)
-                          }
-                          className="w-full border border-gray-300 rounded px-2 py-1"
-                        />
-                      </td>
-                      <td className="p-4">
-                        <select
-                          value={program.projectTypeId}
-                          onChange={(e) =>
-                            updateProject(
-                              program.id,
-                              "projectTypeId",
-                              parseInt(e.target.value)
-                            )
-                          }
-                          className="border border-gray-300 rounded px-2 py-1"
-                        >
-                          {projectTypes.map((type) => (
-                            <option key={type.id} value={type.id}>
-                              {type.name}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="p-4">
-                        <select
-                          value={program.fundingSourceId}
-                          onChange={(e) =>
-                            updateProject(
-                              program.id,
-                              "fundingSourceId",
-                              parseInt(e.target.value)
-                            )
-                          }
-                          className="border border-gray-300 rounded px-2 py-1"
-                        >
-                          {fundingSources.map((source) => (
-                            <option key={source.id} value={source.id}>
-                              {source.name}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="p-4">
-                        <input
-                          type="number"
-                          value={program.annualBudget}
-                          onChange={(e) =>
-                            updateProject(
-                              program.id,
-                              "annualBudget",
-                              parseInt(e.target.value)
-                            )
-                          }
-                          className="w-28 border border-gray-300 rounded px-2 py-1"
-                        />
-                      </td>
-                      <td className="p-4">
-                        <input
-                          type="number"
-                          value={program.designBudgetPercent}
-                          onChange={(e) =>
-                            updateProject(
-                              program.id,
-                              "designBudgetPercent",
-                              parseFloat(e.target.value)
-                            )
-                          }
-                          className="w-16 border border-gray-300 rounded px-2 py-1"
-                          min="0"
-                          max="100"
-                        />
-                      </td>
-                      <td className="p-4">
-                        <input
-                          type="number"
-                          value={program.constructionBudgetPercent}
-                          onChange={(e) =>
-                            updateProject(
-                              program.id,
-                              "constructionBudgetPercent",
-                              parseFloat(e.target.value)
-                            )
-                          }
-                          className="w-16 border border-gray-300 rounded px-2 py-1"
-                          min="0"
-                          max="100"
-                        />
-                      </td>
-                      <td className="p-4">
-                        <div className="space-y-1">
+                    <React.Fragment key={program.id}>
+                      <tr className="border-b border-gray-200">
+                        <td className="p-4 min-w-[16rem]">
                           <input
-                            type="date"
-                            value={program.programStartDate}
+                            type="text"
+                            value={program.name}
+                            onChange={(e) =>
+                              updateProject(program.id, "name", e.target.value)
+                            }
+                            className="w-full border border-gray-300 rounded px-2 py-1"
+                          />
+                        </td>
+                        <td className="p-4">
+                          <select
+                            value={program.projectTypeId}
                             onChange={(e) =>
                               updateProject(
                                 program.id,
-                                "programStartDate",
-                                e.target.value
+                                "projectTypeId",
+                                parseInt(e.target.value)
                               )
                             }
-                            className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
-                          />
-                          <input
-                            type="date"
-                            value={program.programEndDate}
+                            className="border border-gray-300 rounded px-2 py-1"
+                          >
+                            {projectTypes.map((type) => (
+                              <option key={type.id} value={type.id}>
+                                {type.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="p-4">
+                          <select
+                            value={program.fundingSourceId}
                             onChange={(e) =>
                               updateProject(
                                 program.id,
-                                "programEndDate",
-                                e.target.value
+                                "fundingSourceId",
+                                parseInt(e.target.value)
                               )
                             }
-                            className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
+                            className="border border-gray-300 rounded px-2 py-1"
+                          >
+                            {fundingSources.map((source) => (
+                              <option key={source.id} value={source.id}>
+                                {source.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="p-4">
+                          <input
+                            type="number"
+                            value={program.annualBudget}
+                            onChange={(e) =>
+                              updateProject(
+                                program.id,
+                                "annualBudget",
+                                parseInt(e.target.value)
+                              )
+                            }
+                            className="w-28 border border-gray-300 rounded px-2 py-1"
                           />
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="space-y-1 text-xs">
-                          <div className="flex items-center gap-1">
-                            <span className="text-gray-600">PM</span>
+                        </td>
+                        <td className="p-4">
+                          <input
+                            type="number"
+                            value={program.designBudgetPercent}
+                            onChange={(e) =>
+                              updateProject(
+                                program.id,
+                                "designBudgetPercent",
+                                parseFloat(e.target.value)
+                              )
+                            }
+                            className="w-16 border border-gray-300 rounded px-2 py-1"
+                            min="0"
+                            max="100"
+                          />
+                        </td>
+                        <td className="p-4">
+                          <input
+                            type="number"
+                            value={program.constructionBudgetPercent}
+                            onChange={(e) =>
+                              updateProject(
+                                program.id,
+                                "constructionBudgetPercent",
+                                parseFloat(e.target.value)
+                              )
+                            }
+                            className="w-16 border border-gray-300 rounded px-2 py-1"
+                            min="0"
+                            max="100"
+                          />
+                        </td>
+                        <td className="p-4">
+                          <div className="space-y-1">
                             <input
-                              type="number"
-                              value={program.continuousPmHours || 0}
+                              type="date"
+                              value={program.programStartDate}
                               onChange={(e) =>
                                 updateProject(
                                   program.id,
-                                  "continuousPmHours",
-                                  parseFloat(e.target.value) || 0
+                                  "programStartDate",
+                                  e.target.value
                                 )
                               }
-                              className="w-16 border border-gray-300 rounded px-1 py-1"
-                              placeholder="PM"
-                              min="0"
-                              step="0.1"
+                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
                             />
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <span className="text-gray-600">D</span>
                             <input
-                              type="number"
-                              value={program.continuousDesignHours || 0}
+                              type="date"
+                              value={program.programEndDate}
                               onChange={(e) =>
                                 updateProject(
                                   program.id,
-                                  "continuousDesignHours",
-                                  parseFloat(e.target.value) || 0
+                                  "programEndDate",
+                                  e.target.value
                                 )
                               }
-                              className="w-16 border border-gray-300 rounded px-1 py-1"
-                              placeholder="Design"
-                              min="0"
-                              step="0.1"
+                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
                             />
                           </div>
-                          <div className="flex items-center gap-1">
-                            <span className="text-gray-600">C</span>
-                            <input
-                              type="number"
-                              value={program.continuousConstructionHours || 0}
-                              onChange={(e) =>
-                                updateProject(
-                                  program.id,
-                                  "continuousConstructionHours",
-                                  parseFloat(e.target.value) || 0
-                                )
-                              }
-                              className="w-16 border border-gray-300 rounded px-1 py-1"
-                              placeholder="Const"
-                              min="0"
-                              step="0.1"
-                            />
+                        </td>
+                        <td className="p-4">
+                          <div className="space-y-2 text-xs">
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-600 font-medium">PM</span>
+                              <span className="font-semibold">
+                                {formatHours(totals.pm)} hrs/mo
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-600 font-medium">Design</span>
+                              <span className="font-semibold">
+                                {formatHours(totals.design)} hrs/mo
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-600 font-medium">Construction</span>
+                              <span className="font-semibold">
+                                {formatHours(totals.construction)} hrs/mo
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => toggleProgramExpansion(program.id)}
+                              className="text-purple-600 hover:text-purple-800 font-medium"
+                            >
+                              {isExpanded ? "Hide Category Hours" : "Edit Category Hours"}
+                            </button>
                           </div>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <button
-                          onClick={() => deleteProject(program.id)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="p-4">
+                          <button
+                            onClick={() => deleteProject(program.id)}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="bg-purple-50">
+                          <td colSpan={9} className="p-4">
+                            <div className="space-y-3">
+                              <p className="text-xs text-purple-900">
+                                Assign monthly hours for each staff category. Totals
+                                update automatically and feed resource forecasts.
+                              </p>
+                              {categories.length === 0 ? (
+                                <p className="text-xs text-purple-800">
+                                  Add staff categories in the Staff tab to
+                                  configure per-category program hours.
+                                </p>
+                              ) : (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs">
+                                    <thead>
+                                      <tr className="text-left text-purple-900">
+                                        <th className="p-2">Staff Category</th>
+                                        <th className="p-2">PM Hours / Month</th>
+                                        <th className="p-2">Design Hours / Month</th>
+                                        <th className="p-2">Construction Hours / Month</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {categories.map((category) => {
+                                        const entry =
+                                          categoryConfig[String(category.id)] || {};
+                                        return (
+                                          <tr
+                                            key={category.id}
+                                            className="border-t border-purple-100"
+                                          >
+                                            <td className="p-2 font-medium text-purple-900">
+                                              {category.name}
+                                            </td>
+                                            <td className="p-2">
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                step="0.1"
+                                                value={Number(entry.pmHours || 0)}
+                                                onChange={(e) =>
+                                                  handleCategoryHoursChange(
+                                                    program,
+                                                    category.id,
+                                                    "pmHours",
+                                                    e.target.value
+                                                  )
+                                                }
+                                                className="w-24 border border-purple-200 rounded px-2 py-1"
+                                              />
+                                            </td>
+                                            <td className="p-2">
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                step="0.1"
+                                                value={Number(entry.designHours || 0)}
+                                                onChange={(e) =>
+                                                  handleCategoryHoursChange(
+                                                    program,
+                                                    category.id,
+                                                    "designHours",
+                                                    e.target.value
+                                                  )
+                                                }
+                                                className="w-24 border border-purple-200 rounded px-2 py-1"
+                                              />
+                                            </td>
+                                            <td className="p-2">
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                step="0.1"
+                                                value={Number(
+                                                  entry.constructionHours || 0
+                                                )}
+                                                onChange={(e) =>
+                                                  handleCategoryHoursChange(
+                                                    program,
+                                                    category.id,
+                                                    "constructionHours",
+                                                    e.target.value
+                                                  )
+                                                }
+                                                className="w-24 border border-purple-200 rounded px-2 py-1"
+                                              />
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
             </tbody>
@@ -521,8 +722,8 @@ const ProjectsPrograms = ({
           <p>
             <strong>Required columns for Programs:</strong> Project Name, Type
             (program), Annual Budget, Design %, Construction %, Program Start,
-            Program End, Continuous PM Hours, Continuous Design Hours,
-            Continuous Construction Hours
+            Program End. Use <em>PM/Design/Construction Hours - Category</em>
+            columns to define monthly effort for each staff category.
           </p>
           <p>
             <strong>Optional columns:</strong> Priority, Description

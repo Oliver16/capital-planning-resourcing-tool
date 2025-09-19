@@ -26,7 +26,7 @@ The application runs entirely in the browser using SQLite compiled to WebAssembl
 | `project_types` | Lookup values for theming and filtering. | `name`, `color` |
 | `funding_sources` | Catalog of funding mechanisms. | `name`, `description` |
 | `staff_categories` | Labor roles with capacity and rate data. | `hourly_rate`, `pm_capacity`, `design_capacity`, `construction_capacity` |
-| `projects` | Capital projects and annual programs. | Budgets, durations, start dates, `delivery_type`, continuous PM/design/construction hours |
+| `projects` | Capital projects and annual programs. | Budgets, durations, start dates, `delivery_type`, continuous PM/design/construction hours, per-category continuous hours config |
 | `staff_allocations` | Level-of-effort assignments per project/category. | `pm_hours`, `design_hours`, `construction_hours` |
 | `staff_members` | Named individuals and their availability. | `category_id`, per-phase availability hours |
 
@@ -35,7 +35,7 @@ Foreign key constraints and unique indices preserve referential integrity betwee
 ## 3. Data ingestion & editing workflows
 
 - **Projects & programs** – Inline editable tables allow the planner to change names, types, funding sources, budgets, durations, priorities, and delivery strategies. Buttons add new project or program templates.
-- **CSV import** – `handleCSVImport` maps template headers to project fields, normalizes delivery types (`self-perform`, `hybrid`, `consultant`), assigns default IDs, and appends the new records. A downloadable template accelerates adoption.
+- **CSV import** – `handleCSVImport` maps template headers to project fields, normalizes delivery types (`self-perform`, `hybrid`, `consultant`), assigns default IDs, and captures any `PM/Design/Construction Hours - Category` columns before appending the new records. A downloadable template accelerates adoption.
 - **Staff categories** – Editing capacity or rate fields triggers validation to keep the sum of project management, design, and construction hours at or below one FTE (173.33 monthly hours). Warnings explain when thresholds are exceeded.
 - **People roster** – Planners record per-person availability by phase. Totals aggregate into category-level actual availability and FTE counts, which drive dashboards.
 - **Staff allocations** – For each project-category combination planners enter hours per phase. The screen contextualizes delivery guidance (self-perform vs. hybrid vs. consultant) and flags funding sources that require external coordination.
@@ -55,7 +55,7 @@ Foreign key constraints and unique indices preserve referential integrity betwee
 3. **Availability baseline** – For each staff category the function pre-populates `*_actual` values based on either recorded staff availability or fallback capacity totals.
 4. **Project demand** –
    - *Discrete projects*: Design allocations are spread evenly across design months, construction allocations across construction months, and project management allocations across the combined duration.
-   - *Annual programs*: Continuous monthly hours for PM, design, and construction are applied whenever the program is active.
+   - *Annual programs*: When per-category hours are defined, each category consumes its configured monthly PM/design/construction hours; otherwise the legacy aggregated totals apply to every category with matching capacity.
 5. **FTE normalization** – All hours are converted to FTE using `hours ÷ (4.33 × 40)` (173.33 hours per month).
 
 The resulting array lists each month label along with per-category required versus actual FTE.

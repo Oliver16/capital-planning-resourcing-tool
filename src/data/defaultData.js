@@ -113,6 +113,11 @@ export const defaultProjects = [
     continuousPmHours: 20,
     continuousDesignHours: 30,
     continuousConstructionHours: 80,
+    continuousHoursByCategory: {
+      1: { pmHours: 20, designHours: 0, constructionHours: 0 },
+      2: { pmHours: 0, designHours: 30, constructionHours: 0 },
+      4: { pmHours: 0, designHours: 0, constructionHours: 80 },
+    },
     programStartDate: "2025-01-01",
     programEndDate: "2027-12-31",
     priority: "High",

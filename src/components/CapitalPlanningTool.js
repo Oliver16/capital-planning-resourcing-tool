@@ -376,6 +376,7 @@ const CapitalPlanningTool = () => {
             continuousPmHours: 20,
             continuousDesignHours: 40,
             continuousConstructionHours: 80,
+            continuousHoursByCategory: {},
             programStartDate: "2025-01-01",
             programEndDate: "2027-12-31",
             priority: "Medium",
@@ -391,15 +392,27 @@ const CapitalPlanningTool = () => {
     }
   };
 
-  const updateProject = async (id, field, value) => {
-    const normalizedValue =
-      field === "deliveryType"
-        ? ["self-perform", "hybrid", "consultant"].includes(value)
-          ? value
-          : "self-perform"
-        : value;
+  const updateProject = async (id, fieldOrUpdates, value) => {
+    const normalizeDeliveryType = (input) =>
+      ["self-perform", "hybrid", "consultant"].includes(input)
+        ? input
+        : "self-perform";
+
+    const updates =
+      fieldOrUpdates && typeof fieldOrUpdates === "object"
+        ? Object.entries(fieldOrUpdates).reduce((acc, [key, val]) => {
+            acc[key] = key === "deliveryType" ? normalizeDeliveryType(val) : val;
+            return acc;
+          }, {})
+        : {
+            [fieldOrUpdates]:
+              fieldOrUpdates === "deliveryType"
+                ? normalizeDeliveryType(value)
+                : value,
+          };
+
     const updatedProjects = projects.map((p) =>
-      p.id === id ? { ...p, [field]: normalizedValue } : p
+      p.id === id ? { ...p, ...updates } : p
     );
     setProjects(updatedProjects);
 
@@ -825,7 +838,7 @@ const CapitalPlanningTool = () => {
 
   // Data import/export
   const handleImport = (file) => {
-    handleCSVImport(file, projects, setProjects);
+    handleCSVImport(file, projects, setProjects, staffCategories);
   };
 
   const handleExport = async () => {
@@ -968,6 +981,7 @@ const CapitalPlanningTool = () => {
               projects={projects}
               projectTypes={projectTypes}
               fundingSources={fundingSources}
+              staffCategories={staffCategories}
               addProject={addProject}
               updateProject={updateProject}
               deleteProject={deleteProject}

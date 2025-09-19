@@ -53,7 +53,7 @@ capital-planning-resourcing-tool/
 ## Core workflows
 
 ### Projects & programs
-Use the **Projects & Programs** tab to add capital projects or annual programs, edit attributes inline, and import portfolios from CSV using the bundled template. Delivery approaches (self-perform, hybrid, consultant) feed guidance messaging and help planners document outsourcing assumptions. Annual programs also capture continuous monthly project management, design, and construction hours so ongoing workloads are tied directly to staff categories.
+Use the **Projects & Programs** tab to add capital projects or annual programs, edit attributes inline, and import portfolios from CSV using the bundled template. Delivery approaches (self-perform, hybrid, consultant) feed guidance messaging and help planners document outsourcing assumptions. Annual programs capture monthly project management, design, and construction demand totals and let you assign that effort across each staff category so ongoing workloads roll directly into resource forecasts.
 
 ### Staff categories
 Define labor categories with phase-specific monthly capacities and hourly rates. Capacity edits are validated against a one-FTE (2080 hours/year ÷ 12) ceiling to keep workload assumptions realistic.
