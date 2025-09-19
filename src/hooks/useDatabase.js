@@ -659,24 +659,54 @@ const initializeDatabase = async (defaultData) => {
     ) {
       console.log("Initializing database with default data...");
 
+      const projectTypeIdMap = {};
+      const fundingSourceIdMap = {};
+
       // Insert project types
       for (const type of defaultData.projectTypes || []) {
-        await DatabaseService.saveProjectType(type);
+        const { id: originalId, name, color } = type;
+        const newId = await DatabaseService.saveProjectType({ name, color });
+        if (originalId != null) {
+          projectTypeIdMap[originalId] = newId;
+        }
       }
 
       // Insert funding sources
       for (const source of defaultData.fundingSources || []) {
-        await DatabaseService.saveFundingSource(source);
+        const { id: originalId, name, description } = source;
+        const newId = await DatabaseService.saveFundingSource({
+          name,
+          description,
+        });
+        if (originalId != null) {
+          fundingSourceIdMap[originalId] = newId;
+        }
       }
 
       // Insert staff categories
       for (const category of defaultData.staffCategories || []) {
-        await DatabaseService.saveStaffCategory(category);
+        const { name, hourlyRate, pmCapacity, designCapacity, constructionCapacity } =
+          category;
+        await DatabaseService.saveStaffCategory({
+          name,
+          hourlyRate,
+          pmCapacity,
+          designCapacity,
+          constructionCapacity,
+        });
       }
 
       // Insert projects
       for (const project of defaultData.projects || []) {
-        await DatabaseService.saveProject(project);
+        const { id: _originalId, ...projectData } = project;
+        const mappedProject = {
+          ...projectData,
+          projectTypeId:
+            projectTypeIdMap[project.projectTypeId] ?? project.projectTypeId,
+          fundingSourceId:
+            fundingSourceIdMap[project.fundingSourceId] ?? project.fundingSourceId,
+        };
+        await DatabaseService.saveProject(mappedProject);
       }
 
       console.log("Database initialized successfully");
