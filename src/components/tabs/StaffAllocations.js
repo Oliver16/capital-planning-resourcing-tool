@@ -3,18 +3,17 @@ import { Repeat, AlertTriangle, Info } from "lucide-react";
 
 const HOURS_PER_FTE = 4.33 * 40;
 
-const formatMonthlyFTE = (hours, isPhaseActive) => {
-  if (!isPhaseActive) {
-    return "0.00";
-  }
-
+const formatMonthlyFTE = (hours, durationMonths) => {
   const numericHours = Number(hours) || 0;
+  const numericDuration = Number(durationMonths) || 0;
 
-  if (numericHours === 0) {
+  if (numericHours <= 0 || numericDuration <= 0) {
     return "0.00";
   }
 
-  return (numericHours / HOURS_PER_FTE).toFixed(2);
+  const monthlyHours = numericHours / numericDuration;
+
+  return (monthlyHours / HOURS_PER_FTE).toFixed(2);
 };
 
 const StaffAllocations = ({
@@ -222,21 +221,21 @@ const StaffAllocations = ({
                       (allocation.constructionHours || 0);
                     const totalCost = pmCost + designCost + constructionCost;
 
-                    // Calculate monthly FTE during active phases
+                    // Calculate average monthly FTE during active phases
                     const designFTE = formatMonthlyFTE(
                       allocation.designHours,
-                      project.designDuration > 0
+                      project.designDuration
                     );
                     const constructionFTE = formatMonthlyFTE(
                       allocation.constructionHours,
-                      project.constructionDuration > 0
+                      project.constructionDuration
                     );
                     const totalDuration =
                       (project.designDuration || 0) +
                       (project.constructionDuration || 0);
                     const pmFTE = formatMonthlyFTE(
                       allocation.pmHours,
-                      totalDuration > 0
+                      totalDuration
                     );
 
                     return (
