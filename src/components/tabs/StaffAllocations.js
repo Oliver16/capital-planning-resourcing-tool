@@ -173,6 +173,8 @@ const StaffAllocations = ({
                   <tr>
                     <th className="text-left p-3">Staff Category</th>
                     <th className="text-left p-3">Hourly Rate</th>
+                    <th className="text-left p-3">PM Hours</th>
+                    <th className="text-left p-3">PM Cost</th>
                     <th className="text-left p-3">Design Hours</th>
                     <th className="text-left p-3">Design Cost</th>
                     <th className="text-left p-3">Construction Hours</th>
@@ -186,20 +188,29 @@ const StaffAllocations = ({
                   {staffCategories.map((category) => {
                     const allocation = staffAllocations[project.id]?.[
                       category.id
-                    ] || { designHours: 0, constructionHours: 0 };
+                    ] || {
+                      pmHours: 0,
+                      designHours: 0,
+                      constructionHours: 0,
+                    };
+                    const pmCost =
+                      (allocation.pmHours || 0) * category.hourlyRate;
                     const designCost =
-                      allocation.designHours * category.hourlyRate;
+                      (allocation.designHours || 0) * category.hourlyRate;
                     const constructionCost =
-                      allocation.constructionHours * category.hourlyRate;
+                      (allocation.constructionHours || 0) *
+                      category.hourlyRate;
                     const totalHours =
-                      allocation.designHours + allocation.constructionHours;
-                    const totalCost = designCost + constructionCost;
+                      (allocation.pmHours || 0) +
+                      (allocation.designHours || 0) +
+                      (allocation.constructionHours || 0);
+                    const totalCost = pmCost + designCost + constructionCost;
 
                     // Calculate monthly FTE during active phases
                     const designFTE =
                       project.designDuration > 0
                         ? (
-                            allocation.designHours /
+                            (allocation.designHours || 0) /
                             project.designDuration /
                             (4.33 * 40)
                           ).toFixed(2)
@@ -207,8 +218,19 @@ const StaffAllocations = ({
                     const constructionFTE =
                       project.constructionDuration > 0
                         ? (
-                            allocation.constructionHours /
+                            (allocation.constructionHours || 0) /
                             project.constructionDuration /
+                            (4.33 * 40)
+                          ).toFixed(2)
+                        : 0;
+                    const totalDuration =
+                      (project.designDuration || 0) +
+                      (project.constructionDuration || 0);
+                    const pmFTE =
+                      totalDuration > 0
+                        ? (
+                            (allocation.pmHours || 0) /
+                            totalDuration /
                             (4.33 * 40)
                           ).toFixed(2)
                         : 0;
@@ -223,7 +245,24 @@ const StaffAllocations = ({
                         <td className="p-3">
                           <input
                             type="number"
-                            value={allocation.designHours}
+                            value={allocation.pmHours || 0}
+                            onChange={(e) =>
+                              updateStaffAllocation(
+                                project.id,
+                                category.id,
+                                "pm",
+                                e.target.value
+                              )
+                            }
+                            className="w-20 border border-gray-300 rounded px-2 py-1"
+                            min="0"
+                          />
+                        </td>
+                        <td className="p-3">${pmCost.toLocaleString()}</td>
+                        <td className="p-3">
+                          <input
+                            type="number"
+                            value={allocation.designHours || 0}
                             onChange={(e) =>
                               updateStaffAllocation(
                                 project.id,
@@ -262,6 +301,7 @@ const StaffAllocations = ({
                         </td>
                         <td className="p-3">
                           <div className="text-xs">
+                            <div>PM: {pmFTE}</div>
                             <div>D: {designFTE}</div>
                             <div>C: {constructionFTE}</div>
                           </div>
@@ -272,8 +312,42 @@ const StaffAllocations = ({
                 </tbody>
                 <tfoot className="bg-gray-50">
                   <tr>
-                    <td colSpan="3" className="p-3 font-semibold">
+                    <td colSpan="2" className="p-3 font-semibold">
                       Project Totals:
+                    </td>
+                    <td className="p-3 font-semibold">
+                      {staffCategories
+                        .reduce((sum, cat) => {
+                          const allocation = staffAllocations[project.id]?.[
+                            cat.id
+                          ] || { pmHours: 0 };
+                          return sum + (allocation.pmHours || 0);
+                        }, 0)
+                        .toLocaleString()}
+                    </td>
+                    <td className="p-3 font-semibold">
+                      $
+                      {staffCategories
+                        .reduce((sum, cat) => {
+                          const allocation = staffAllocations[project.id]?.[
+                            cat.id
+                          ] || { pmHours: 0 };
+                          return (
+                            sum +
+                            ((allocation.pmHours || 0) * cat.hourlyRate || 0)
+                          );
+                        }, 0)
+                        .toLocaleString()}
+                    </td>
+                    <td className="p-3 font-semibold">
+                      {staffCategories
+                        .reduce((sum, cat) => {
+                          const allocation = staffAllocations[project.id]?.[
+                            cat.id
+                          ] || { designHours: 0 };
+                          return sum + (allocation.designHours || 0);
+                        }, 0)
+                        .toLocaleString()}
                     </td>
                     <td className="p-3 font-semibold">
                       $
@@ -282,11 +356,23 @@ const StaffAllocations = ({
                           const allocation = staffAllocations[project.id]?.[
                             cat.id
                           ] || { designHours: 0 };
-                          return sum + allocation.designHours * cat.hourlyRate;
+                          return (
+                            sum +
+                            ((allocation.designHours || 0) * cat.hourlyRate || 0)
+                          );
                         }, 0)
                         .toLocaleString()}
                     </td>
-                    <td className="p-3"></td>
+                    <td className="p-3 font-semibold">
+                      {staffCategories
+                        .reduce((sum, cat) => {
+                          const allocation = staffAllocations[project.id]?.[
+                            cat.id
+                          ] || { constructionHours: 0 };
+                          return sum + (allocation.constructionHours || 0);
+                        }, 0)
+                        .toLocaleString()}
+                    </td>
                     <td className="p-3 font-semibold">
                       $
                       {staffCategories
@@ -295,7 +381,10 @@ const StaffAllocations = ({
                             cat.id
                           ] || { constructionHours: 0 };
                           return (
-                            sum + allocation.constructionHours * cat.hourlyRate
+                            sum +
+                            ((allocation.constructionHours || 0) *
+                              cat.hourlyRate ||
+                              0)
                           );
                         }, 0)
                         .toLocaleString()}
@@ -304,13 +393,18 @@ const StaffAllocations = ({
                       {staffCategories.reduce((sum, cat) => {
                         const allocation = staffAllocations[project.id]?.[
                           cat.id
-                        ] || { designHours: 0, constructionHours: 0 };
+                        ] || {
+                          pmHours: 0,
+                          designHours: 0,
+                          constructionHours: 0,
+                        };
                         return (
                           sum +
-                          allocation.designHours +
-                          allocation.constructionHours
+                          (allocation.pmHours || 0) +
+                          (allocation.designHours || 0) +
+                          (allocation.constructionHours || 0)
                         );
-                      }, 0)}
+                      }, 0).toLocaleString()}
                     </td>
                     <td className="p-3 font-semibold">
                       $
@@ -318,11 +412,16 @@ const StaffAllocations = ({
                         .reduce((sum, cat) => {
                           const allocation = staffAllocations[project.id]?.[
                             cat.id
-                          ] || { designHours: 0, constructionHours: 0 };
+                          ] || {
+                            pmHours: 0,
+                            designHours: 0,
+                            constructionHours: 0,
+                          };
                           return (
                             sum +
-                            (allocation.designHours +
-                              allocation.constructionHours) *
+                            ((allocation.pmHours || 0) +
+                              (allocation.designHours || 0) +
+                              (allocation.constructionHours || 0)) *
                               cat.hourlyRate
                           );
                         }, 0)
@@ -354,6 +453,10 @@ const StaffAllocations = ({
       <div className="bg-green-50 p-6 rounded-lg">
         <h4 className="font-medium text-green-900 mb-2">Allocation Tips</h4>
         <div className="text-green-800 text-sm space-y-1">
+          <p>
+            • <strong>PM Hours:</strong> Capture project management oversight
+            that spans both design and construction phases
+          </p>
           <p>
             • <strong>Design Hours:</strong> Include planning, engineering,
             permits, and design review

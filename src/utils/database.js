@@ -35,6 +35,27 @@ class CapitalPlanningDB extends Dexie {
           project.deliveryType = project.deliveryType || "self-perform";
         });
       });
+
+    this.version(3)
+      .stores({
+        projects:
+          "++id, name, type, projectTypeId, fundingSourceId, deliveryType, totalBudget, designBudget, constructionBudget, designDuration, constructionDuration, designStartDate, constructionStartDate, priority, description, annualBudget, designBudgetPercent, constructionBudgetPercent, continuousDesignHours, continuousConstructionHours, programStartDate, programEndDate, createdAt, updatedAt",
+        staffCategories:
+          "++id, name, hourlyRate, designCapacity, constructionCapacity, createdAt, updatedAt",
+        projectTypes: "++id, name, color, createdAt, updatedAt",
+        fundingSources: "++id, name, description, createdAt, updatedAt",
+        staffAllocations:
+          "++id, projectId, categoryId, pmHours, designHours, constructionHours, createdAt, updatedAt",
+        appSettings: "key, value, updatedAt",
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table("staffAllocations")
+          .toCollection()
+          .modify((allocation) => {
+            allocation.pmHours = allocation.pmHours || 0;
+          });
+      });
   }
 }
 
@@ -153,6 +174,7 @@ export const DatabaseService = {
     const timestamp = new Date().toISOString();
     const allocationData = {
       ...allocation,
+      pmHours: allocation.pmHours || 0,
       updatedAt: timestamp,
       createdAt: allocation.createdAt || timestamp,
     };
@@ -171,7 +193,11 @@ export const DatabaseService = {
   },
 
   async getStaffAllocations() {
-    return await db.staffAllocations.toArray();
+    const allocations = await db.staffAllocations.toArray();
+    return allocations.map((allocation) => ({
+      ...allocation,
+      pmHours: allocation.pmHours || 0,
+    }));
   },
 
   async deleteStaffAllocation(projectId, categoryId) {
