@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 
 let SQL = null;
 let db = null;
@@ -700,6 +700,60 @@ export const useDatabase = (defaultData) => {
     setError(null);
   }, []);
 
+  const operations = useMemo(
+    () => ({
+      saveProject: withErrorHandling(
+        DatabaseService.saveProject.bind(DatabaseService)
+      ),
+      getProjects: withErrorHandling(
+        DatabaseService.getProjects.bind(DatabaseService)
+      ),
+      deleteProject: withErrorHandling(
+        DatabaseService.deleteProject.bind(DatabaseService)
+      ),
+      saveStaffCategory: withErrorHandling(
+        DatabaseService.saveStaffCategory.bind(DatabaseService)
+      ),
+      getStaffCategories: withErrorHandling(
+        DatabaseService.getStaffCategories.bind(DatabaseService)
+      ),
+      deleteStaffCategory: withErrorHandling(
+        DatabaseService.deleteStaffCategory.bind(DatabaseService)
+      ),
+      saveProjectType: withErrorHandling(
+        DatabaseService.saveProjectType.bind(DatabaseService)
+      ),
+      getProjectTypes: withErrorHandling(
+        DatabaseService.getProjectTypes.bind(DatabaseService)
+      ),
+      deleteProjectType: withErrorHandling(
+        DatabaseService.deleteProjectType.bind(DatabaseService)
+      ),
+      saveFundingSource: withErrorHandling(
+        DatabaseService.saveFundingSource.bind(DatabaseService)
+      ),
+      getFundingSources: withErrorHandling(
+        DatabaseService.getFundingSources.bind(DatabaseService)
+      ),
+      deleteFundingSource: withErrorHandling(
+        DatabaseService.deleteFundingSource.bind(DatabaseService)
+      ),
+      saveStaffAllocation: withErrorHandling(
+        DatabaseService.saveStaffAllocation.bind(DatabaseService)
+      ),
+      getStaffAllocations: withErrorHandling(
+        DatabaseService.getStaffAllocations.bind(DatabaseService)
+      ),
+      exportDatabase: withErrorHandling(
+        DatabaseService.exportDatabase.bind(DatabaseService)
+      ),
+      importDatabase: withErrorHandling(
+        DatabaseService.importDatabase.bind(DatabaseService)
+      ),
+    }),
+    [withErrorHandling]
+  );
+
   return {
     // State
     isLoading,
@@ -708,53 +762,6 @@ export const useDatabase = (defaultData) => {
     clearError,
 
     // Operations
-    saveProject: withErrorHandling(
-      DatabaseService.saveProject.bind(DatabaseService)
-    ),
-    getProjects: withErrorHandling(
-      DatabaseService.getProjects.bind(DatabaseService)
-    ),
-    deleteProject: withErrorHandling(
-      DatabaseService.deleteProject.bind(DatabaseService)
-    ),
-    saveStaffCategory: withErrorHandling(
-      DatabaseService.saveStaffCategory.bind(DatabaseService)
-    ),
-    getStaffCategories: withErrorHandling(
-      DatabaseService.getStaffCategories.bind(DatabaseService)
-    ),
-    deleteStaffCategory: withErrorHandling(
-      DatabaseService.deleteStaffCategory.bind(DatabaseService)
-    ),
-    saveProjectType: withErrorHandling(
-      DatabaseService.saveProjectType.bind(DatabaseService)
-    ),
-    getProjectTypes: withErrorHandling(
-      DatabaseService.getProjectTypes.bind(DatabaseService)
-    ),
-    deleteProjectType: withErrorHandling(
-      DatabaseService.deleteProjectType.bind(DatabaseService)
-    ),
-    saveFundingSource: withErrorHandling(
-      DatabaseService.saveFundingSource.bind(DatabaseService)
-    ),
-    getFundingSources: withErrorHandling(
-      DatabaseService.getFundingSources.bind(DatabaseService)
-    ),
-    deleteFundingSource: withErrorHandling(
-      DatabaseService.deleteFundingSource.bind(DatabaseService)
-    ),
-    saveStaffAllocation: withErrorHandling(
-      DatabaseService.saveStaffAllocation.bind(DatabaseService)
-    ),
-    getStaffAllocations: withErrorHandling(
-      DatabaseService.getStaffAllocations.bind(DatabaseService)
-    ),
-    exportDatabase: withErrorHandling(
-      DatabaseService.exportDatabase.bind(DatabaseService)
-    ),
-    importDatabase: withErrorHandling(
-      DatabaseService.importDatabase.bind(DatabaseService)
-    ),
+    ...operations,
   };
 };
