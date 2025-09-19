@@ -6,6 +6,8 @@ const StaffCategories = ({
   addStaffCategory,
   updateStaffCategory,
   deleteStaffCategory,
+  capacityWarnings = {},
+  maxMonthlyFteHours = 2080 / 12,
 }) => {
   return (
     <div className="bg-white rounded-lg shadow-sm">
@@ -40,95 +42,120 @@ const StaffCategories = ({
                 (category.pmCapacity || 0) +
                 (category.designCapacity || 0) +
                 (category.constructionCapacity || 0);
-              const totalFTE = (totalHours / (2080 / 12)).toFixed(2); // Using correct FTE calculation
+              const totalFTE = (totalHours / maxMonthlyFteHours).toFixed(2);
 
               return (
-                <tr key={category.id} className="border-b border-gray-200">
-                  <td className="p-4">
-                    <input
-                      type="text"
-                      value={category.name}
-                      onChange={(e) =>
-                        updateStaffCategory(category.id, "name", e.target.value)
-                      }
-                      className="w-full border border-gray-300 rounded px-2 py-1"
-                    />
-                  </td>
-                  <td className="p-4">
-                    <input
-                      type="number"
-                      value={category.hourlyRate}
-                      onChange={(e) =>
-                        updateStaffCategory(
-                          category.id,
-                          "hourlyRate",
-                          parseFloat(e.target.value)
-                        )
-                      }
-                      className="w-24 border border-gray-300 rounded px-2 py-1"
-                      min="0"
-                      step="0.01"
-                    />
-                  </td>
-                  <td className="p-4">
-                    <input
-                      type="number"
-                      value={category.pmCapacity || 0}
-                      onChange={(e) =>
-                        updateStaffCategory(
-                          category.id,
-                          "pmCapacity",
-                          parseInt(e.target.value)
-                        )
-                      }
-                      className="w-24 border border-gray-300 rounded px-2 py-1"
-                      min="0"
-                    />
-                  </td>
-                  <td className="p-4">
-                    <input
-                      type="number"
-                      value={category.designCapacity || 0}
-                      onChange={(e) =>
-                        updateStaffCategory(
-                          category.id,
-                          "designCapacity",
-                          parseInt(e.target.value)
-                        )
-                      }
-                      className="w-24 border border-gray-300 rounded px-2 py-1"
-                      min="0"
-                    />
-                  </td>
-                  <td className="p-4">
-                    <input
-                      type="number"
-                      value={category.constructionCapacity || 0}
-                      onChange={(e) =>
-                        updateStaffCategory(
-                          category.id,
-                          "constructionCapacity",
-                          parseInt(e.target.value)
-                        )
-                      }
-                      className="w-24 border border-gray-300 rounded px-2 py-1"
-                      min="0"
-                    />
-                  </td>
-                  <td className="p-4">
-                    <span className="font-medium text-blue-600">
-                      {totalFTE}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <button
-                      onClick={() => deleteStaffCategory(category.id)}
-                      className="text-red-600 hover:text-red-800"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </td>
-                </tr>
+                <React.Fragment key={category.id}>
+                  <tr className="border-b border-gray-200">
+                    <td className="p-4">
+                      <input
+                        type="text"
+                        value={category.name}
+                        onChange={(e) =>
+                          updateStaffCategory(
+                            category.id,
+                            "name",
+                            e.target.value
+                          )
+                        }
+                        className="w-full border border-gray-300 rounded px-2 py-1"
+                      />
+                    </td>
+                    <td className="p-4">
+                      <input
+                        type="number"
+                        value={category.hourlyRate}
+                        onChange={(e) =>
+                          updateStaffCategory(
+                            category.id,
+                            "hourlyRate",
+                            parseFloat(e.target.value)
+                          )
+                        }
+                        className="w-24 border border-gray-300 rounded px-2 py-1"
+                        min="0"
+                        step="0.01"
+                      />
+                    </td>
+                    <td className="p-4">
+                      <input
+                        type="number"
+                        value={category.pmCapacity || 0}
+                        onChange={(e) =>
+                          updateStaffCategory(
+                            category.id,
+                            "pmCapacity",
+                            parseFloat(e.target.value)
+                          )
+                        }
+                        className="w-24 border border-gray-300 rounded px-2 py-1"
+                        min="0"
+                        step="0.01"
+                      />
+                    </td>
+                    <td className="p-4">
+                      <input
+                        type="number"
+                        value={category.designCapacity || 0}
+                        onChange={(e) =>
+                          updateStaffCategory(
+                            category.id,
+                            "designCapacity",
+                            parseFloat(e.target.value)
+                          )
+                        }
+                        className="w-24 border border-gray-300 rounded px-2 py-1"
+                        min="0"
+                        step="0.01"
+                      />
+                    </td>
+                    <td className="p-4">
+                      <input
+                        type="number"
+                        value={category.constructionCapacity || 0}
+                        onChange={(e) =>
+                          updateStaffCategory(
+                            category.id,
+                            "constructionCapacity",
+                            parseFloat(e.target.value)
+                          )
+                        }
+                        className="w-24 border border-gray-300 rounded px-2 py-1"
+                        min="0"
+                        step="0.01"
+                      />
+                    </td>
+                    <td className="p-4">
+                      <span
+                        className={`font-medium ${
+                          parseFloat(totalFTE) >= 1
+                            ? "text-red-600"
+                            : "text-blue-600"
+                        }`}
+                      >
+                        {totalFTE}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <button
+                        onClick={() => deleteStaffCategory(category.id)}
+                        className="text-red-600 hover:text-red-800"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                  {capacityWarnings[category.id] && (
+                    <tr className="bg-red-50">
+                      <td
+                        colSpan="7"
+                        className="p-4 text-sm text-red-700 border-b border-gray-200"
+                      >
+                        {capacityWarnings[category.id]}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
           </tbody>
@@ -156,6 +183,10 @@ const StaffCategories = ({
           <p>
             • <strong>FTE Calculation:</strong> 1 FTE = 173.33 hours/month (2080
             hours/year ÷ 12 months)
+          </p>
+          <p>
+            • <strong>Capacity Limit:</strong> The combined PM, design, and
+            construction capacity for a role cannot exceed 1 FTE per month.
           </p>
           <p>
             • Staff can have capacity across multiple phases based on their role

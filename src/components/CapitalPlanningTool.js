@@ -34,6 +34,22 @@ import {
 import { handleCSVImport } from "../utils/dataImport";
 import { useDatabase } from "../hooks/useDatabase";
 
+const MAX_MONTHLY_FTE_HOURS = 2080 / 12;
+const CAPACITY_FIELDS = [
+  "pmCapacity",
+  "designCapacity",
+  "constructionCapacity",
+];
+
+const getNumericValue = (value) => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 const CapitalPlanningTool = () => {
   // Database hook with fixed default data
   const defaultData = useMemo(
@@ -81,6 +97,7 @@ const CapitalPlanningTool = () => {
   const [activeTab, setActiveTab] = useState("overview");
   const [timeHorizon, setTimeHorizon] = useState(36);
   const [isSaving, setIsSaving] = useState(false);
+  const [categoryCapacityWarnings, setCategoryCapacityWarnings] = useState({});
 
   // Load data from database only once when initialized
   useEffect(() => {
@@ -305,6 +322,7 @@ const CapitalPlanningTool = () => {
     const newCategory = {
       name: "New Category",
       hourlyRate: 65,
+      pmCapacity: 0,
       designCapacity: 40,
       constructionCapacity: 40,
     };
@@ -319,19 +337,82 @@ const CapitalPlanningTool = () => {
   };
 
   const updateStaffCategory = async (id, field, value) => {
-    const updatedCategories = staffCategories.map((c) =>
-      c.id === id ? { ...c, [field]: value } : c
-    );
-    setStaffCategories(updatedCategories);
+    const currentCategory = staffCategories.find((category) => category.id === id);
 
-    // Save to database
-    const updatedCategory = updatedCategories.find((c) => c.id === id);
-    if (updatedCategory) {
-      try {
-        await saveStaffCategory(updatedCategory);
-      } catch (error) {
-        console.error("Error updating staff category:", error);
-      }
+    if (!currentCategory) {
+      return;
+    }
+
+    const isCapacityField = CAPACITY_FIELDS.includes(field);
+    let sanitizedValue;
+
+    if (field === "hourlyRate") {
+      sanitizedValue = Math.max(0, getNumericValue(value));
+    } else if (isCapacityField) {
+      sanitizedValue = Math.max(0, getNumericValue(value));
+    } else {
+      sanitizedValue = value;
+    }
+
+    const updatedCategory = {
+      ...currentCategory,
+      [field]: sanitizedValue,
+    };
+
+    updatedCategory.hourlyRate = getNumericValue(updatedCategory.hourlyRate);
+    CAPACITY_FIELDS.forEach((capacityField) => {
+      updatedCategory[capacityField] = getNumericValue(
+        updatedCategory[capacityField]
+      );
+    });
+
+    const finalTotalHours = CAPACITY_FIELDS.reduce(
+      (sum, capacityField) => sum + updatedCategory[capacityField],
+      0
+    );
+    const remainingCapacity = Math.max(
+      0,
+      MAX_MONTHLY_FTE_HOURS -
+        CAPACITY_FIELDS.reduce((sum, capacityField) => {
+          if (capacityField === field) {
+            return sum;
+          }
+          return sum + getNumericValue(currentCategory[capacityField]);
+        }, 0)
+    );
+
+    if (isCapacityField && finalTotalHours > MAX_MONTHLY_FTE_HOURS) {
+      const fieldLabels = {
+        pmCapacity: "project management",
+        designCapacity: "design",
+        constructionCapacity: "construction",
+      };
+
+      setCategoryCapacityWarnings((prev) => ({
+        ...prev,
+        [id]: `Exceeds the 1 FTE (${MAX_MONTHLY_FTE_HOURS.toFixed(
+          2
+        )} hrs) limit. Only ${remainingCapacity.toFixed(2)} hrs remain for ${
+          fieldLabels[field]
+        } capacity. Reduce other phases or lower this value.`,
+      }));
+      return;
+    }
+
+    setStaffCategories((prev) =>
+      prev.map((category) => (category.id === id ? updatedCategory : category))
+    );
+
+    setCategoryCapacityWarnings((prev) => {
+      const nextWarnings = { ...prev };
+      delete nextWarnings[id];
+      return nextWarnings;
+    });
+
+    try {
+      await saveStaffCategory(updatedCategory);
+    } catch (error) {
+      console.error("Error updating staff category:", error);
     }
   };
 
@@ -339,6 +420,11 @@ const CapitalPlanningTool = () => {
     try {
       await dbDeleteStaffCategory(id);
       setStaffCategories(staffCategories.filter((c) => c.id !== id));
+      setCategoryCapacityWarnings((prev) => {
+        const nextWarnings = { ...prev };
+        delete nextWarnings[id];
+        return nextWarnings;
+      });
     } catch (error) {
       console.error("Error deleting staff category:", error);
     }
@@ -583,14 +669,16 @@ const CapitalPlanningTool = () => {
             />
           )}
 
-          {activeTab === "staff" && (
-            <StaffCategories
-              staffCategories={staffCategories}
-              addStaffCategory={addStaffCategory}
-              updateStaffCategory={updateStaffCategory}
-              deleteStaffCategory={deleteStaffCategory}
-            />
-          )}
+      {activeTab === "staff" && (
+        <StaffCategories
+          staffCategories={staffCategories}
+          addStaffCategory={addStaffCategory}
+          updateStaffCategory={updateStaffCategory}
+          deleteStaffCategory={deleteStaffCategory}
+          capacityWarnings={categoryCapacityWarnings}
+          maxMonthlyFteHours={MAX_MONTHLY_FTE_HOURS}
+        />
+      )}
 
           {activeTab === "allocations" && (
             <StaffAllocations
