@@ -11,6 +11,7 @@ import {
   Upload,
   CalendarClock,
   UserCircle,
+  GitBranch,
 } from "lucide-react";
 
 // Import components
@@ -22,6 +23,7 @@ import ResourceForecast from "./tabs/ResourceForecast";
 import ScheduleView from "./tabs/ScheduleView";
 import SettingsTab from "./tabs/SettingsTab";
 import PeopleTab from "./tabs/PeopleTab";
+import ScenariosTab from "./tabs/ScenariosTab";
 
 // Import data and utilities
 import {
@@ -114,6 +116,17 @@ const CapitalPlanningTool = () => {
   const [scheduleHorizon, setScheduleHorizon] = useState(36);
   const [isSaving, setIsSaving] = useState(false);
   const [categoryCapacityWarnings, setCategoryCapacityWarnings] = useState({});
+  const [scenarios, setScenarios] = useState(() => [
+    {
+      id: "baseline",
+      name: "Baseline",
+      description: "Current approved schedule and staffing plan.",
+      isBaseline: true,
+      adjustments: {},
+      createdAt: new Date().toISOString(),
+    },
+  ]);
+  const [activeScenarioId, setActiveScenarioId] = useState("baseline");
 
   // Load data from database only once when initialized
   useEffect(() => {
@@ -248,6 +261,52 @@ const CapitalPlanningTool = () => {
     });
     setStaffAllocations(allocations);
   }, [projects, staffCategories]);
+
+  useEffect(() => {
+    setScenarios((prevScenarios) => {
+      const validProjectIds = new Set(projects.map((project) => project.id));
+      let hasChanges = false;
+
+      const cleanedScenarios = prevScenarios.map((scenario) => {
+        if (
+          !scenario.adjustments ||
+          Object.keys(scenario.adjustments).length === 0
+        ) {
+          return scenario;
+        }
+
+        const nextAdjustments = {};
+        let scenarioChanged = false;
+
+        Object.entries(scenario.adjustments).forEach(
+          ([projectId, adjustment]) => {
+            const numericId = Number(projectId);
+            if (validProjectIds.has(numericId)) {
+              nextAdjustments[numericId] = adjustment;
+            } else {
+              scenarioChanged = true;
+            }
+          }
+        );
+
+        if (!scenarioChanged) {
+          const originalKeys = Object.keys(scenario.adjustments).length;
+          const nextKeys = Object.keys(nextAdjustments).length;
+          if (originalKeys === nextKeys) {
+            return scenario;
+          }
+        }
+
+        hasChanges = true;
+        return {
+          ...scenario,
+          adjustments: nextAdjustments,
+        };
+      });
+
+      return hasChanges ? cleanedScenarios : prevScenarios;
+    });
+  }, [projects]);
 
   // Calculate project timelines
   const projectTimelines = useMemo(
@@ -666,6 +725,103 @@ const CapitalPlanningTool = () => {
     }
   };
 
+  // Scenario planning helpers
+  const createScenario = () => {
+    const timestamp = Date.now();
+    const newScenario = {
+      id: `scenario-${timestamp}`,
+      name: `Scenario ${scenarios.length}`,
+      description: "Describe the goal for this scenario.",
+      adjustments: {},
+      createdAt: new Date().toISOString(),
+    };
+    setScenarios((prev) => [...prev, newScenario]);
+    setActiveScenarioId(newScenario.id);
+  };
+
+  const duplicateScenario = (scenarioId) => {
+    const sourceScenario = scenarios.find((scenario) => scenario.id === scenarioId);
+    if (!sourceScenario) {
+      return;
+    }
+
+    const timestamp = Date.now();
+    const clonedScenario = {
+      id: `scenario-${timestamp}`,
+      name: `${sourceScenario.name} Copy`,
+      description: sourceScenario.description,
+      adjustments: JSON.parse(JSON.stringify(sourceScenario.adjustments || {})),
+      createdAt: new Date().toISOString(),
+    };
+
+    setScenarios((prev) => [...prev, clonedScenario]);
+    setActiveScenarioId(clonedScenario.id);
+  };
+
+  const updateScenarioMeta = (scenarioId, updates) => {
+    setScenarios((prev) =>
+      prev.map((scenario) =>
+        scenario.id === scenarioId && !scenario.isBaseline
+          ? { ...scenario, ...updates }
+          : scenario
+      )
+    );
+  };
+
+  const updateScenarioAdjustment = (scenarioId, projectId, fields) => {
+    setScenarios((prev) =>
+      prev.map((scenario) => {
+        if (scenario.id !== scenarioId || scenario.isBaseline) {
+          return scenario;
+        }
+
+        const nextAdjustments = { ...(scenario.adjustments || {}) };
+        const currentAdjustment = { ...(nextAdjustments[projectId] || {}) };
+
+        Object.entries(fields).forEach(([key, value]) => {
+          if (!value) {
+            delete currentAdjustment[key];
+          } else {
+            currentAdjustment[key] = value;
+          }
+        });
+
+        if (Object.keys(currentAdjustment).length > 0) {
+          nextAdjustments[projectId] = currentAdjustment;
+        } else {
+          delete nextAdjustments[projectId];
+        }
+
+        return {
+          ...scenario,
+          adjustments: nextAdjustments,
+        };
+      })
+    );
+  };
+
+  const resetScenarioProject = (scenarioId, projectId) => {
+    setScenarios((prev) =>
+      prev.map((scenario) => {
+        if (scenario.id !== scenarioId || scenario.isBaseline) {
+          return scenario;
+        }
+
+        if (!scenario.adjustments || !scenario.adjustments[projectId]) {
+          return scenario;
+        }
+
+        const nextAdjustments = { ...scenario.adjustments };
+        delete nextAdjustments[projectId];
+
+        return {
+          ...scenario,
+          adjustments: nextAdjustments,
+        };
+      })
+    );
+  };
+
   // Data import/export
   const handleImport = (file) => {
     handleCSVImport(file, projects, setProjects);
@@ -762,6 +918,7 @@ const CapitalPlanningTool = () => {
                 { id: "staff", label: "Staff Categories", icon: Users },
                 { id: "people", label: "People", icon: UserCircle },
                 { id: "allocations", label: "Staff Allocations", icon: Edit3 },
+                { id: "scenarios", label: "Scenarios", icon: GitBranch },
                 {
                   id: "schedule",
                   label: "Schedule View",
@@ -846,6 +1003,25 @@ const CapitalPlanningTool = () => {
               staffAllocations={staffAllocations}
               updateStaffAllocation={updateStaffAllocation}
               fundingSources={fundingSources}
+            />
+          )}
+
+          {activeTab === "scenarios" && (
+            <ScenariosTab
+              projects={projects}
+              projectTypes={projectTypes}
+              staffCategories={staffCategories}
+              staffAllocations={staffAllocations}
+              staffAvailabilityByCategory={staffAvailabilityByCategory}
+              scenarios={scenarios}
+              activeScenarioId={activeScenarioId}
+              onSelectScenario={setActiveScenarioId}
+              onCreateScenario={createScenario}
+              onDuplicateScenario={duplicateScenario}
+              onUpdateScenarioMeta={updateScenarioMeta}
+              onUpdateScenarioAdjustment={updateScenarioAdjustment}
+              onResetScenarioProject={resetScenarioProject}
+              timeHorizon={timeHorizon}
             />
           )}
 
