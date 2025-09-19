@@ -294,7 +294,7 @@ const ProjectsPrograms = ({
                 <th className="text-left p-4">Design %</th>
                 <th className="text-left p-4">Construction %</th>
                 <th className="text-left p-4">Program Period</th>
-                <th className="text-left p-4">Monthly Hours (D/C)</th>
+                <th className="text-left p-4">Monthly Hours (PM/D/C)</th>
                 <th className="text-left p-4">Actions</th>
               </tr>
             </thead>
@@ -433,33 +433,58 @@ const ProjectsPrograms = ({
                         </div>
                       </td>
                       <td className="p-4">
-                        <div className="space-y-1">
-                          <input
-                            type="number"
-                            value={program.continuousDesignHours}
-                            onChange={(e) =>
-                              updateProject(
-                                program.id,
-                                "continuousDesignHours",
-                                parseInt(e.target.value)
-                              )
-                            }
-                            className="w-16 border border-gray-300 rounded px-1 py-1 text-xs"
-                            placeholder="Design"
-                          />
-                          <input
-                            type="number"
-                            value={program.continuousConstructionHours}
-                            onChange={(e) =>
-                              updateProject(
-                                program.id,
-                                "continuousConstructionHours",
-                                parseInt(e.target.value)
-                              )
-                            }
-                            className="w-16 border border-gray-300 rounded px-1 py-1 text-xs"
-                            placeholder="Const"
-                          />
+                        <div className="space-y-1 text-xs">
+                          <div className="flex items-center gap-1">
+                            <span className="text-gray-600">PM</span>
+                            <input
+                              type="number"
+                              value={program.continuousPmHours || 0}
+                              onChange={(e) =>
+                                updateProject(
+                                  program.id,
+                                  "continuousPmHours",
+                                  parseInt(e.target.value, 10) || 0
+                                )
+                              }
+                              className="w-16 border border-gray-300 rounded px-1 py-1"
+                              placeholder="PM"
+                              min="0"
+                            />
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-gray-600">D</span>
+                            <input
+                              type="number"
+                              value={program.continuousDesignHours || 0}
+                              onChange={(e) =>
+                                updateProject(
+                                  program.id,
+                                  "continuousDesignHours",
+                                  parseInt(e.target.value, 10) || 0
+                                )
+                              }
+                              className="w-16 border border-gray-300 rounded px-1 py-1"
+                              placeholder="Design"
+                              min="0"
+                            />
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-gray-600">C</span>
+                            <input
+                              type="number"
+                              value={program.continuousConstructionHours || 0}
+                              onChange={(e) =>
+                                updateProject(
+                                  program.id,
+                                  "continuousConstructionHours",
+                                  parseInt(e.target.value, 10) || 0
+                                )
+                              }
+                              className="w-16 border border-gray-300 rounded px-1 py-1"
+                              placeholder="Const"
+                              min="0"
+                            />
+                          </div>
                         </div>
                       </td>
                       <td className="p-4">
@@ -493,7 +518,8 @@ const ProjectsPrograms = ({
           <p>
             <strong>Required columns for Programs:</strong> Project Name, Type
             (program), Annual Budget, Design %, Construction %, Program Start,
-            Program End
+            Program End, Continuous PM Hours, Continuous Design Hours,
+            Continuous Construction Hours
           </p>
           <p>
             <strong>Optional columns:</strong> Priority, Description

@@ -68,6 +68,7 @@ const createTables = (database) => {
       annual_budget REAL,
       design_budget_percent REAL,
       construction_budget_percent REAL,
+      continuous_pm_hours INTEGER,
       continuous_design_hours INTEGER,
       continuous_construction_hours INTEGER,
       program_start_date DATE,
@@ -94,6 +95,16 @@ const createTables = (database) => {
   } catch (error) {
     if (!error.message?.includes("duplicate column name")) {
       console.warn("Delivery type migration warning:", error);
+    }
+  }
+
+  try {
+    database.run(
+      "ALTER TABLE projects ADD COLUMN continuous_pm_hours INTEGER DEFAULT 0"
+    );
+  } catch (error) {
+    if (!error.message?.includes("duplicate column name")) {
+      console.warn("Continuous PM hours migration warning:", error);
     }
   }
 
@@ -205,7 +216,7 @@ const DatabaseService = {
             design_duration=?, construction_duration=?,
             design_start_date=?, construction_start_date=?,
             annual_budget=?, design_budget_percent=?, construction_budget_percent=?,
-            continuous_design_hours=?, continuous_construction_hours=?,
+            continuous_pm_hours=?, continuous_design_hours=?, continuous_construction_hours=?,
             program_start_date=?, program_end_date=?,
             priority=?, description=?, delivery_type=?, updated_at=CURRENT_TIMESTAMP
           WHERE id=?
@@ -226,6 +237,7 @@ const DatabaseService = {
           project.annualBudget || null,
           project.designBudgetPercent || null,
           project.constructionBudgetPercent || null,
+          project.continuousPmHours || null,
           project.continuousDesignHours || null,
           project.continuousConstructionHours || null,
           project.programStartDate || null,
@@ -249,10 +261,10 @@ const DatabaseService = {
             design_duration, construction_duration,
             design_start_date, construction_start_date,
             annual_budget, design_budget_percent, construction_budget_percent,
-            continuous_design_hours, continuous_construction_hours,
+            continuous_pm_hours, continuous_design_hours, continuous_construction_hours,
             program_start_date, program_end_date,
             priority, description, delivery_type
-          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         `);
 
         const params = safeBindParams([
@@ -270,6 +282,7 @@ const DatabaseService = {
           project.annualBudget || null,
           project.designBudgetPercent || null,
           project.constructionBudgetPercent || null,
+          project.continuousPmHours || null,
           project.continuousDesignHours || null,
           project.continuousConstructionHours || null,
           project.programStartDate || null,

@@ -26,7 +26,7 @@ The application runs entirely in the browser using SQLite compiled to WebAssembl
 | `project_types` | Lookup values for theming and filtering. | `name`, `color` |
 | `funding_sources` | Catalog of funding mechanisms. | `name`, `description` |
 | `staff_categories` | Labor roles with capacity and rate data. | `hourly_rate`, `pm_capacity`, `design_capacity`, `construction_capacity` |
-| `projects` | Capital projects and annual programs. | Budgets, durations, start dates, `delivery_type`, program-specific hours |
+| `projects` | Capital projects and annual programs. | Budgets, durations, start dates, `delivery_type`, continuous PM/design/construction hours |
 | `staff_allocations` | Level-of-effort assignments per project/category. | `pm_hours`, `design_hours`, `construction_hours` |
 | `staff_members` | Named individuals and their availability. | `category_id`, per-phase availability hours |
 
