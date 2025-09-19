@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -10,7 +10,7 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
-import { CalendarClock, Users } from "lucide-react";
+import { CalendarClock, Filter, Users } from "lucide-react";
 import {
   generateResourceForecast,
   calculateStaffingGaps,
@@ -25,6 +25,7 @@ const HORIZON_OPTIONS = [
 
 const DESIGN_COLOR = "#3b82f6";
 const CONSTRUCTION_COLOR = "#f59e0b";
+const DEFAULT_TYPE_COLOR = "#6b7280";
 
 const formatDate = (date) => {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
@@ -61,8 +62,161 @@ const ScheduleView = ({
   scheduleHorizon,
   setScheduleHorizon,
 }) => {
+  const typeOptions = useMemo(() => {
+    const optionsMap = new Map();
+
+    (projectTimelines || []).forEach((project) => {
+      if (!project) return;
+
+      const key =
+        project.projectTypeId === null || project.projectTypeId === undefined
+          ? "unassigned"
+          : String(project.projectTypeId);
+      const typeInfo = projectTypes.find((type) => String(type.id) === key);
+      const existing = optionsMap.get(key);
+
+      if (existing) {
+        existing.count += 1;
+      } else {
+        optionsMap.set(key, {
+          key,
+          label: typeInfo?.name || "Unassigned type",
+          color: typeInfo?.color || DEFAULT_TYPE_COLOR,
+          count: 1,
+        });
+      }
+    });
+
+    const orderedOptions = [];
+    projectTypes.forEach((type) => {
+      const key = String(type.id);
+      if (optionsMap.has(key)) {
+        orderedOptions.push(optionsMap.get(key));
+        optionsMap.delete(key);
+      }
+    });
+
+    if (optionsMap.has("unassigned")) {
+      orderedOptions.push(optionsMap.get("unassigned"));
+      optionsMap.delete("unassigned");
+    }
+
+    optionsMap.forEach((option) => {
+      orderedOptions.push(option);
+    });
+
+    return orderedOptions;
+  }, [projectTimelines, projectTypes]);
+
+  const [selectedTypeMap, setSelectedTypeMap] = useState({});
+  const [isTypeFilterOpen, setIsTypeFilterOpen] = useState(false);
+  const typeFilterRef = useRef(null);
+
+  useEffect(() => {
+    setSelectedTypeMap((previous) => {
+      if (typeOptions.length === 0) {
+        if (Object.keys(previous).length === 0) {
+          return previous;
+        }
+        return {};
+      }
+
+      const next = { ...previous };
+      let changed = false;
+
+      typeOptions.forEach((option) => {
+        if (next[option.key] === undefined) {
+          next[option.key] = true;
+          changed = true;
+        }
+      });
+
+      Object.keys(next).forEach((key) => {
+        if (!typeOptions.some((option) => option.key === key)) {
+          delete next[key];
+          changed = true;
+        }
+      });
+
+      return changed ? next : previous;
+    });
+  }, [typeOptions]);
+
+  useEffect(() => {
+    if (!isTypeFilterOpen) {
+      return undefined;
+    }
+
+    const handleClickOutside = (event) => {
+      if (
+        typeFilterRef.current &&
+        !typeFilterRef.current.contains(event.target)
+      ) {
+        setIsTypeFilterOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isTypeFilterOpen]);
+
+  const activeTypeKeys = useMemo(() => {
+    if (typeOptions.length === 0) {
+      return [];
+    }
+
+    return typeOptions
+      .filter((option) => selectedTypeMap[option.key] !== false)
+      .map((option) => option.key);
+  }, [typeOptions, selectedTypeMap]);
+
+  const filteredProjectTimelines = useMemo(() => {
+    if (activeTypeKeys.length === 0) {
+      return [];
+    }
+
+    const allowed = new Set(activeTypeKeys);
+    return (projectTimelines || []).filter((project) => {
+      if (!project) return false;
+      const key =
+        project.projectTypeId === null || project.projectTypeId === undefined
+          ? "unassigned"
+          : String(project.projectTypeId);
+      return allowed.has(key);
+    });
+  }, [projectTimelines, activeTypeKeys]);
+
+  const typeSummaryLabel = useMemo(() => {
+    if (typeOptions.length === 0) {
+      return "All project types";
+    }
+
+    if (activeTypeKeys.length === 0) {
+      return "No types selected";
+    }
+
+    if (activeTypeKeys.length === typeOptions.length) {
+      return "All project types";
+    }
+
+    return `${activeTypeKeys.length} of ${typeOptions.length} selected`;
+  }, [typeOptions, activeTypeKeys]);
+
+  const isFilterActive = useMemo(
+    () =>
+      typeOptions.length > 0 &&
+      activeTypeKeys.length !== typeOptions.length,
+    [typeOptions, activeTypeKeys]
+  );
+
   const scheduleStart = useMemo(() => {
-    const validStarts = projectTimelines
+    const source =
+      filteredProjectTimelines.length > 0
+        ? filteredProjectTimelines
+        : projectTimelines;
+    const validStarts = (source || [])
       .map((project) => project?.designStart)
       .filter((date) => date instanceof Date && !Number.isNaN(date.getTime()));
 
@@ -73,7 +227,7 @@ const ScheduleView = ({
 
     start.setDate(1);
     return start;
-  }, [projectTimelines]);
+  }, [filteredProjectTimelines, projectTimelines]);
 
   const horizonEnd = useMemo(() => {
     const end = new Date(scheduleStart);
@@ -84,14 +238,14 @@ const ScheduleView = ({
   const scheduleForecast = useMemo(
     () =>
       generateResourceForecast(
-        projectTimelines,
+        filteredProjectTimelines,
         staffAllocations,
         staffCategories,
         Math.max(1, scheduleHorizon),
         staffAvailabilityByCategory
       ),
     [
-      projectTimelines,
+      filteredProjectTimelines,
       staffAllocations,
       staffCategories,
       scheduleHorizon,
@@ -235,7 +389,7 @@ const ScheduleView = ({
       };
     };
 
-    return projectTimelines
+    return filteredProjectTimelines
       .map((project) => {
         const projectType = projectTypes.find((type) => type.id === project.projectTypeId);
         const designSegment = computeSegment(project.designStart, project.designEnd);
@@ -257,7 +411,7 @@ const ScheduleView = ({
       })
       .filter(Boolean);
   }, [
-    projectTimelines,
+    filteredProjectTimelines,
     projectTypes,
     horizonEnd,
     scheduleStart,
@@ -306,12 +460,119 @@ const ScheduleView = ({
               correlated staffing demand.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {typeOptions.length > 0 && (
+              <div className="relative" ref={typeFilterRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsTypeFilterOpen((previous) => !previous)}
+                  className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition ${
+                    isFilterActive
+                      ? "border-blue-500 bg-blue-50 text-blue-600"
+                      : "border-gray-300 text-gray-600 hover:border-blue-300 hover:text-blue-600"
+                  }`}
+                >
+                  <Filter size={14} />
+                  <span>{typeSummaryLabel}</span>
+                </button>
+
+                {isTypeFilterOpen && (
+                  <div className="absolute right-0 z-20 mt-2 w-64 rounded-lg border border-gray-200 bg-white p-4 shadow-lg">
+                    <div className="flex items-center justify-between text-xs font-semibold uppercase text-gray-500">
+                      <span>Project types</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsTypeFilterOpen(false)}
+                        className="text-gray-400 transition hover:text-gray-600"
+                      >
+                        Close
+                      </button>
+                    </div>
+
+                    <div className="mt-3 max-h-48 space-y-2 overflow-y-auto pr-1">
+                      {typeOptions.map((option) => {
+                        const isChecked = selectedTypeMap[option.key] !== false;
+                        return (
+                          <label
+                            key={option.key}
+                            className="flex items-center justify-between gap-3 text-sm text-gray-700"
+                          >
+                            <span className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() =>
+                                  setSelectedTypeMap((previous) => ({
+                                    ...previous,
+                                    [option.key]: !(previous[option.key] !== false),
+                                  }))
+                                }
+                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="flex items-center gap-2">
+                                <span
+                                  className="inline-block h-2.5 w-2.5 rounded-full"
+                                  style={{ backgroundColor: option.color || DEFAULT_TYPE_COLOR }}
+                                ></span>
+                                {option.label}
+                              </span>
+                            </span>
+                            <span className="text-xs text-gray-400">{option.count}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between text-xs text-blue-600">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSelectedTypeMap((previous) => {
+                            const next = { ...previous };
+                            typeOptions.forEach((option) => {
+                              next[option.key] = true;
+                            });
+                            return next;
+                          })
+                        }
+                        className="hover:underline"
+                      >
+                        Select all
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSelectedTypeMap((previous) => {
+                            const next = { ...previous };
+                            typeOptions.forEach((option) => {
+                              next[option.key] = false;
+                            });
+                            return next;
+                          })
+                        }
+                        className="hover:underline"
+                      >
+                        Clear
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsTypeFilterOpen(false)}
+                      className="mt-3 w-full rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-600 transition hover:bg-gray-50"
+                    >
+                      Done
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {HORIZON_OPTIONS.map((option) => (
               <button
                 key={option.value}
                 onClick={() => setScheduleHorizon(option.value)}
-                className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
+                className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
                   scheduleHorizon === option.value
                     ? "bg-blue-600 text-white border-blue-600"
                     : "border-gray-300 text-gray-600 hover:bg-gray-100"
@@ -322,6 +583,13 @@ const ScheduleView = ({
             ))}
           </div>
         </div>
+
+        {typeOptions.length > 0 && activeTypeKeys.length === 0 && (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            No project types are selected. Choose at least one type to update the
+            schedule and resource charts.
+          </div>
+        )}
 
         <div className="mt-6">
           <div className="relative h-10 mb-8">
@@ -411,8 +679,10 @@ const ScheduleView = ({
                 </div>
               ))
             ) : (
-              <div className="text-center py-10 text-gray-500">
-                No projects fall within the selected horizon.
+              <div className="py-10 text-center text-gray-500">
+                {typeOptions.length > 0 && activeTypeKeys.length === 0
+                  ? "Select at least one project type to display timelines."
+                  : "No projects fall within the selected horizon."}
               </div>
             )}
           </div>
