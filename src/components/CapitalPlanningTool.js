@@ -376,10 +376,6 @@ const CapitalPlanningTool = () => {
             continuousPmHours: 20,
             continuousDesignHours: 40,
             continuousConstructionHours: 80,
-            continuousHoursByCategory: {},
-            programStartDate: "2025-01-01",
-            programEndDate: "2027-12-31",
-            priority: "Medium",
             description: "",
           };
 

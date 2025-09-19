@@ -56,6 +56,27 @@ class CapitalPlanningDB extends Dexie {
             allocation.pmHours = allocation.pmHours || 0;
           });
       });
+
+    this.version(4)
+      .stores({
+        projects:
+          "++id, name, type, projectTypeId, fundingSourceId, deliveryType, totalBudget, designBudget, constructionBudget, designDuration, constructionDuration, designStartDate, constructionStartDate, priority, description, annualBudget, designBudgetPercent, constructionBudgetPercent, continuousPmHours, continuousDesignHours, continuousConstructionHours, programStartDate, programEndDate, createdAt, updatedAt",
+        staffCategories:
+          "++id, name, hourlyRate, designCapacity, constructionCapacity, createdAt, updatedAt",
+        projectTypes: "++id, name, color, createdAt, updatedAt",
+        fundingSources: "++id, name, description, createdAt, updatedAt",
+        staffAllocations:
+          "++id, projectId, categoryId, pmHours, designHours, constructionHours, createdAt, updatedAt",
+        appSettings: "key, value, updatedAt",
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table("projects")
+          .toCollection()
+          .modify((project) => {
+            project.continuousPmHours = project.continuousPmHours || 0;
+          });
+      });
   }
 }
 

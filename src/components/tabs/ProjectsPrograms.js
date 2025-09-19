@@ -728,6 +728,7 @@ const ProjectsPrograms = ({
           <p>
             <strong>Optional columns:</strong> Priority, Description
           </p>
+
           <p>
             Download the CSV template above to see the exact format required.
           </p>
