@@ -2,6 +2,33 @@ import React, { useMemo, useState } from "react";
 import { Plus, Upload, Trash2, Repeat, Download } from "lucide-react";
 import { downloadCSVTemplate } from "../../utils/dataImport";
 
+const currencyFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const formatCurrency = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "$0.00";
+  }
+  return currencyFormatter.format(numeric);
+};
+
+const parseCurrency = (value) => {
+  if (typeof value !== "string") {
+    return 0;
+  }
+  const sanitized = value.replace(/[^0-9.-]/g, "");
+  if (sanitized.trim() === "") {
+    return 0;
+  }
+  const parsed = Number.parseFloat(sanitized);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 const deliveryOptions = [
   { value: "self-perform", label: "Self-Perform" },
   { value: "hybrid", label: "Hybrid" },
@@ -19,10 +46,63 @@ const ProjectsPrograms = ({
   handleImport,
 }) => {
   const [expandedPrograms, setExpandedPrograms] = useState([]);
+  const [currencyDrafts, setCurrencyDrafts] = useState({});
   const categories = useMemo(
     () => (Array.isArray(staffCategories) ? staffCategories : []),
     [staffCategories]
   );
+  const capitalProjects = useMemo(
+    () => (Array.isArray(projects) ? projects.filter((p) => p.type === "project") : []),
+    [projects]
+  );
+  const annualPrograms = useMemo(
+    () => (Array.isArray(projects) ? projects.filter((p) => p.type === "program") : []),
+    [projects]
+  );
+
+  const getCurrencyInputProps = (
+    entityType,
+    entityId,
+    field,
+    value,
+    onCommit
+  ) => {
+    const fieldId = `${entityType}-${entityId}-${field}`;
+    const hasDraft = Object.prototype.hasOwnProperty.call(
+      currencyDrafts,
+      fieldId
+    );
+
+    return {
+      value: hasDraft ? currencyDrafts[fieldId] : formatCurrency(value),
+      onFocus: () => {
+        setCurrencyDrafts((prev) => ({
+          ...prev,
+          [fieldId]:
+            value === null || value === undefined || Number.isNaN(value)
+              ? ""
+              : String(value),
+        }));
+      },
+      onChange: (event) => {
+        const nextValue = event.target.value;
+        setCurrencyDrafts((prev) => ({
+          ...prev,
+          [fieldId]: nextValue,
+        }));
+      },
+      onBlur: (event) => {
+        const parsedValue = parseCurrency(event.target.value);
+        onCommit(parsedValue);
+        setCurrencyDrafts((prev) => {
+          const nextDrafts = { ...prev };
+          delete nextDrafts[fieldId];
+          return nextDrafts;
+        });
+      },
+      placeholder: "$0.00",
+    };
+  };
 
   const handleDownloadTemplate = () => {
     downloadCSVTemplate(categories);
@@ -198,55 +278,88 @@ const ProjectsPrograms = ({
         <div className="p-6 border-b border-gray-200">
           <h3 className="text-lg font-semibold">Capital Projects</h3>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="text-left p-4 min-w-[16rem]">Name</th>
-                <th className="text-left p-4">Type</th>
-                <th className="text-left p-4">Funding</th>
-                <th className="text-left p-4">Delivery</th>
-                <th className="text-left p-4">Total Budget</th>
-                <th className="text-left p-4">Design Start</th>
-                <th className="text-left p-4">Construction Start</th>
-                <th className="text-left p-4">Duration (months)</th>
-                <th className="text-left p-4">Priority</th>
-                <th className="text-left p-4">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projects
-                .filter((p) => p.type === "project")
-                .map((project) => {
-                  const projectType = projectTypes.find(
-                    (t) => t.id === project.projectTypeId
-                  );
-                  const fundingSource = fundingSources.find(
-                    (f) => f.id === project.fundingSourceId
-                  );
-                  return (
-                    <tr key={project.id} className="border-b border-gray-200">
-                      <td className="p-4 min-w-[16rem]">
+        <div className="p-6 space-y-4">
+          {capitalProjects.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              No capital projects added yet. Use the Add Project button above to
+              create one.
+            </p>
+          ) : (
+            capitalProjects.map((project) => {
+              const projectType = projectTypes.find(
+                (type) => type.id === project.projectTypeId
+              );
+              const fundingSource = fundingSources.find(
+                (source) => source.id === project.fundingSourceId
+              );
+              const totalBudgetInputProps = getCurrencyInputProps(
+                "project",
+                project.id,
+                "totalBudget",
+                project.totalBudget,
+                (nextValue) =>
+                  updateProject(project.id, "totalBudget", nextValue)
+              );
+
+              return (
+                <div
+                  key={project.id}
+                  className="border border-gray-200 rounded-lg overflow-hidden"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-4 px-4 py-3 bg-gray-50 border-b border-gray-200">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        Project
+                      </p>
+                      <p className="text-base font-semibold text-gray-900">
+                        {project.name || "Untitled Project"}
+                      </p>
+                      <div className="text-xs text-gray-500 space-x-2">
+                        {projectType && <span>{projectType.name}</span>}
+                        {fundingSource && (
+                          <span className="before:content-['•'] before:mx-2 before:text-gray-300">
+                            {fundingSource.name}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => deleteProject(project.id)}
+                      className="text-red-600 hover:text-red-800 flex items-center gap-2 text-sm font-medium"
+                    >
+                      <Trash2 size={16} /> Remove
+                    </button>
+                  </div>
+                  <div className="p-4 space-y-6">
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium text-gray-700">
+                          Project Name
+                        </label>
                         <input
                           type="text"
                           value={project.name}
                           onChange={(e) =>
                             updateProject(project.id, "name", e.target.value)
                           }
-                          className="w-full border border-gray-300 rounded px-2 py-1"
+                          className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                          placeholder="Enter project name"
                         />
-                      </td>
-                      <td className="p-4">
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium text-gray-700">
+                          Project Type
+                        </label>
                         <select
                           value={project.projectTypeId}
                           onChange={(e) =>
                             updateProject(
                               project.id,
                               "projectTypeId",
-                              parseInt(e.target.value)
+                              parseInt(e.target.value, 10)
                             )
                           }
-                          className="border border-gray-300 rounded px-2 py-1"
+                          className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                         >
                           {projectTypes.map((type) => (
                             <option key={type.id} value={type.id}>
@@ -254,18 +367,21 @@ const ProjectsPrograms = ({
                             </option>
                           ))}
                         </select>
-                      </td>
-                      <td className="p-4">
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium text-gray-700">
+                          Funding Source
+                        </label>
                         <select
                           value={project.fundingSourceId}
                           onChange={(e) =>
                             updateProject(
                               project.id,
                               "fundingSourceId",
-                              parseInt(e.target.value)
+                              parseInt(e.target.value, 10)
                             )
                           }
-                          className="border border-gray-300 rounded px-2 py-1"
+                          className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                         >
                           {fundingSources.map((source) => (
                             <option key={source.id} value={source.id}>
@@ -273,8 +389,11 @@ const ProjectsPrograms = ({
                             </option>
                           ))}
                         </select>
-                      </td>
-                      <td className="p-4">
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium text-gray-700">
+                          Delivery Method
+                        </label>
                         <select
                           value={project.deliveryType || "self-perform"}
                           onChange={(e) =>
@@ -284,7 +403,7 @@ const ProjectsPrograms = ({
                               e.target.value
                             )
                           }
-                          className="border border-gray-300 rounded px-2 py-1"
+                          className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                         >
                           {deliveryOptions.map((option) => (
                             <option key={option.value} value={option.value}>
@@ -292,22 +411,45 @@ const ProjectsPrograms = ({
                             </option>
                           ))}
                         </select>
-                      </td>
-                      <td className="p-4">
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium text-gray-700">
+                          Total Budget
+                        </label>
                         <input
-                          type="number"
-                          value={project.totalBudget}
+                          type="text"
+                          inputMode="decimal"
+                          {...totalBudgetInputProps}
+                          className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                          aria-label="Total Budget"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium text-gray-700">
+                          Priority
+                        </label>
+                        <select
+                          value={project.priority}
                           onChange={(e) =>
                             updateProject(
                               project.id,
-                              "totalBudget",
-                              parseInt(e.target.value)
+                              "priority",
+                              e.target.value
                             )
                           }
-                          className="w-28 border border-gray-300 rounded px-2 py-1"
-                        />
-                      </td>
-                      <td className="p-4">
+                          className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                        >
+                          <option value="High">High</option>
+                          <option value="Medium">Medium</option>
+                          <option value="Low">Low</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium text-gray-700">
+                          Design Start
+                        </label>
                         <input
                           type="date"
                           value={project.designStartDate}
@@ -318,10 +460,13 @@ const ProjectsPrograms = ({
                               e.target.value
                             )
                           }
-                          className="border border-gray-300 rounded px-2 py-1"
+                          className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                         />
-                      </td>
-                      <td className="p-4">
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium text-gray-700">
+                          Construction Start
+                        </label>
                         <input
                           type="date"
                           value={project.constructionStartDate}
@@ -332,13 +477,18 @@ const ProjectsPrograms = ({
                               e.target.value
                             )
                           }
-                          className="border border-gray-300 rounded px-2 py-1"
+                          className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                         />
-                      </td>
-                      <td className="p-4">
-                        <div className="flex flex-col gap-2 text-sm">
-                          <label className="flex items-center gap-2">
-                            <span className="text-gray-600">D:</span>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium text-gray-700">
+                          Durations (months)
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                              Design
+                            </span>
                             <input
                               type="number"
                               min="0"
@@ -347,14 +497,16 @@ const ProjectsPrograms = ({
                                 updateProject(
                                   project.id,
                                   "designDuration",
-                                  parseInt(e.target.value, 10) || 0
+                                  Number.parseInt(e.target.value, 10) || 0
                                 )
                               }
-                              className="w-20 border border-gray-300 rounded px-2 py-1"
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                             />
-                          </label>
-                          <label className="flex items-center gap-2">
-                            <span className="text-gray-600">C:</span>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                              Construction
+                            </span>
                             <input
                               type="number"
                               min="0"
@@ -363,44 +515,20 @@ const ProjectsPrograms = ({
                                 updateProject(
                                   project.id,
                                   "constructionDuration",
-                                  parseInt(e.target.value, 10) || 0
+                                  Number.parseInt(e.target.value, 10) || 0
                                 )
                               }
-                              className="w-20 border border-gray-300 rounded px-2 py-1"
+                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                             />
-                          </label>
+                          </div>
                         </div>
-                      </td>
-                      <td className="p-4">
-                        <select
-                          value={project.priority}
-                          onChange={(e) =>
-                            updateProject(
-                              project.id,
-                              "priority",
-                              e.target.value
-                            )
-                          }
-                          className="border border-gray-300 rounded px-2 py-1"
-                        >
-                          <option value="High">High</option>
-                          <option value="Medium">Medium</option>
-                          <option value="Low">Low</option>
-                        </select>
-                      </td>
-                      <td className="p-4">
-                        <button
-                          onClick={() => deleteProject(project.id)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 
@@ -412,129 +540,188 @@ const ProjectsPrograms = ({
             Annual Programs
           </h3>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="text-left p-4 min-w-[16rem]">Program Name</th>
-                <th className="text-left p-4">Type</th>
-                <th className="text-left p-4">Funding</th>
-                <th className="text-left p-4">Annual Budget</th>
-                <th className="text-left p-4">Design %</th>
-                <th className="text-left p-4">Construction %</th>
-                <th className="text-left p-4">Program Period</th>
-                <th className="text-left p-4">Monthly Hours (PM/D/C)</th>
-                <th className="text-left p-4">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projects
-                .filter((p) => p.type === "program")
-                .map((program) => {
-                  const totals = getProgramTotals(program);
-                  const categoryConfig = parseContinuousCategoryConfig(
-                    program.continuousHoursByCategory
-                  );
-                  const isExpanded = expandedPrograms.includes(program.id);
-                  return (
-                    <React.Fragment key={program.id}>
-                      <tr className="border-b border-gray-200">
-                        <td className="p-4 min-w-[16rem]">
-                          <input
-                            type="text"
-                            value={program.name}
-                            onChange={(e) =>
-                              updateProject(program.id, "name", e.target.value)
-                            }
-                            className="w-full border border-gray-300 rounded px-2 py-1"
-                          />
-                        </td>
-                        <td className="p-4">
-                          <select
-                            value={program.projectTypeId}
-                            onChange={(e) =>
-                              updateProject(
-                                program.id,
-                                "projectTypeId",
-                                parseInt(e.target.value)
-                              )
-                            }
-                            className="border border-gray-300 rounded px-2 py-1"
-                          >
-                            {projectTypes.map((type) => (
-                              <option key={type.id} value={type.id}>
-                                {type.name}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="p-4">
-                          <select
-                            value={program.fundingSourceId}
-                            onChange={(e) =>
-                              updateProject(
-                                program.id,
-                                "fundingSourceId",
-                                parseInt(e.target.value)
-                              )
-                            }
-                            className="border border-gray-300 rounded px-2 py-1"
-                          >
-                            {fundingSources.map((source) => (
-                              <option key={source.id} value={source.id}>
-                                {source.name}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="p-4">
-                          <input
-                            type="number"
-                            value={program.annualBudget}
-                            onChange={(e) =>
-                              updateProject(
-                                program.id,
-                                "annualBudget",
-                                parseInt(e.target.value)
-                              )
-                            }
-                            className="w-28 border border-gray-300 rounded px-2 py-1"
-                          />
-                        </td>
-                        <td className="p-4">
-                          <input
-                            type="number"
-                            value={program.designBudgetPercent}
-                            onChange={(e) =>
-                              updateProject(
-                                program.id,
-                                "designBudgetPercent",
-                                parseFloat(e.target.value)
-                              )
-                            }
-                            className="w-16 border border-gray-300 rounded px-2 py-1"
-                            min="0"
-                            max="100"
-                          />
-                        </td>
-                        <td className="p-4">
-                          <input
-                            type="number"
-                            value={program.constructionBudgetPercent}
-                            onChange={(e) =>
-                              updateProject(
-                                program.id,
-                                "constructionBudgetPercent",
-                                parseFloat(e.target.value)
-                              )
-                            }
-                            className="w-16 border border-gray-300 rounded px-2 py-1"
-                            min="0"
-                            max="100"
-                          />
-                        </td>
-                        <td className="p-4">
+        <div className="p-6 space-y-4">
+          {annualPrograms.length === 0 ? (
+            <p className="text-sm text-purple-700">
+              No annual programs added yet. Use the Add Program button above to
+              start planning recurring work.
+            </p>
+          ) : (
+            annualPrograms.map((program) => {
+              const totals = getProgramTotals(program);
+              const categoryConfig = parseContinuousCategoryConfig(
+                program.continuousHoursByCategory
+              );
+              const isExpanded = expandedPrograms.includes(program.id);
+              const programType = projectTypes.find(
+                (type) => type.id === program.projectTypeId
+              );
+              const fundingSource = fundingSources.find(
+                (source) => source.id === program.fundingSourceId
+              );
+              const annualBudgetInputProps = getCurrencyInputProps(
+                "program",
+                program.id,
+                "annualBudget",
+                program.annualBudget,
+                (nextValue) =>
+                  updateProject(program.id, "annualBudget", nextValue)
+              );
+
+              return (
+                <div
+                  key={program.id}
+                  className="border border-purple-200 rounded-lg overflow-hidden"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-4 px-4 py-3 bg-purple-50 border-b border-purple-200">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-purple-700">
+                        Program
+                      </p>
+                      <p className="text-base font-semibold text-purple-900">
+                        {program.name || "Untitled Program"}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-purple-700">
+                        {programType && <span>{programType.name}</span>}
+                        {programType && fundingSource && <span>•</span>}
+                        {fundingSource && <span>{fundingSource.name}</span>}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => deleteProject(program.id)}
+                      className="text-red-600 hover:text-red-800 flex items-center gap-2 text-sm font-medium"
+                    >
+                      <Trash2 size={16} /> Remove
+                    </button>
+                  </div>
+                  <div className="p-4 space-y-6">
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium text-purple-800">
+                          Program Name
+                        </label>
+                        <input
+                          type="text"
+                          value={program.name}
+                          onChange={(e) =>
+                            updateProject(program.id, "name", e.target.value)
+                          }
+                          className="w-full border border-purple-200 rounded px-3 py-2 text-sm"
+                          placeholder="Enter program name"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium text-purple-800">
+                          Program Type
+                        </label>
+                        <select
+                          value={program.projectTypeId}
+                          onChange={(e) =>
+                            updateProject(
+                              program.id,
+                              "projectTypeId",
+                              parseInt(e.target.value, 10)
+                            )
+                          }
+                          className="w-full border border-purple-200 rounded px-3 py-2 text-sm"
+                        >
+                          {projectTypes.map((type) => (
+                            <option key={type.id} value={type.id}>
+                              {type.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium text-purple-800">
+                          Funding Source
+                        </label>
+                        <select
+                          value={program.fundingSourceId}
+                          onChange={(e) =>
+                            updateProject(
+                              program.id,
+                              "fundingSourceId",
+                              parseInt(e.target.value, 10)
+                            )
+                          }
+                          className="w-full border border-purple-200 rounded px-3 py-2 text-sm"
+                        >
+                          {fundingSources.map((source) => (
+                            <option key={source.id} value={source.id}>
+                              {source.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium text-purple-800">
+                          Annual Budget
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          {...annualBudgetInputProps}
+                          className="w-full border border-purple-200 rounded px-3 py-2 text-sm font-mono"
+                          aria-label="Annual Budget"
+                        />
+                      </div>
+                      <div className="space-y-1 xl:col-span-2">
+                        <label className="text-sm font-medium text-purple-800">
+                          Budget Allocation
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
                           <div className="space-y-1">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-purple-600">
+                              Design %
+                            </span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              value={program.designBudgetPercent || 0}
+                              onChange={(e) =>
+                                updateProject(
+                                  program.id,
+                                  "designBudgetPercent",
+                                  Number.parseFloat(e.target.value) || 0
+                                )
+                              }
+                              className="w-full border border-purple-200 rounded px-3 py-2 text-sm"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-purple-600">
+                              Construction %
+                            </span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              value={program.constructionBudgetPercent || 0}
+                              onChange={(e) =>
+                                updateProject(
+                                  program.id,
+                                  "constructionBudgetPercent",
+                                  Number.parseFloat(e.target.value) || 0
+                                )
+                              }
+                              className="w-full border border-purple-200 rounded px-3 py-2 text-sm"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-1 xl:col-span-2">
+                        <label className="text-sm font-medium text-purple-800">
+                          Program Period
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-purple-600">
+                              Start
+                            </span>
                             <input
                               type="date"
                               value={program.programStartDate}
@@ -545,8 +732,13 @@ const ProjectsPrograms = ({
                                   e.target.value
                                 )
                               }
-                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
+                              className="w-full border border-purple-200 rounded px-3 py-2 text-sm"
                             />
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-purple-600">
+                              End
+                            </span>
                             <input
                               type="date"
                               value={program.programEndDate}
@@ -557,153 +749,138 @@ const ProjectsPrograms = ({
                                   e.target.value
                                 )
                               }
-                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
+                              className="w-full border border-purple-200 rounded px-3 py-2 text-sm"
                             />
                           </div>
-                        </td>
-                        <td className="p-4">
-                          <div className="space-y-2 text-xs">
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-600 font-medium">PM</span>
-                              <span className="font-semibold">
-                                {formatHours(totals.pm)} hrs/mo
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-600 font-medium">Design</span>
-                              <span className="font-semibold">
-                                {formatHours(totals.design)} hrs/mo
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-600 font-medium">Construction</span>
-                              <span className="font-semibold">
-                                {formatHours(totals.construction)} hrs/mo
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => toggleProgramExpansion(program.id)}
-                              className="text-purple-600 hover:text-purple-800 font-medium"
-                            >
-                              {isExpanded ? "Hide Category Hours" : "Edit Category Hours"}
-                            </button>
-                          </div>
-                        </td>
-                        <td className="p-4">
+                        </div>
+                      </div>
+                      <div className="space-y-2 md:col-span-2 xl:col-span-4">
+                        <label className="text-sm font-medium text-purple-800">
+                          Staff Category Hours
+                        </label>
+                        <div className="flex flex-wrap items-center gap-3">
                           <button
-                            onClick={() => deleteProject(program.id)}
-                            className="text-red-600 hover:text-red-800"
+                            type="button"
+                            onClick={() => toggleProgramExpansion(program.id)}
+                            className="inline-flex items-center gap-2 rounded-md bg-purple-600 px-3 py-2 text-sm font-semibold text-white hover:bg-purple-700"
                           >
-                            <Trash2 size={16} />
+                            {isExpanded
+                              ? "Hide Category Hours"
+                              : "Edit Category Hours"}
                           </button>
-                        </td>
-                      </tr>
-                      {isExpanded && (
-                        <tr className="bg-purple-50">
-                          <td colSpan={9} className="p-4">
-                            <div className="space-y-3">
-                              <p className="text-xs text-purple-900">
-                                Assign monthly hours for each staff category. Totals
-                                update automatically and feed resource forecasts.
-                              </p>
-                              {categories.length === 0 ? (
-                                <p className="text-xs text-purple-800">
-                                  Add staff categories in the Staff tab to
-                                  configure per-category program hours.
-                                </p>
-                              ) : (
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-xs">
-                                    <thead>
-                                      <tr className="text-left text-purple-900">
-                                        <th className="p-2">Staff Category</th>
-                                        <th className="p-2">PM Hours / Month</th>
-                                        <th className="p-2">Design Hours / Month</th>
-                                        <th className="p-2">Construction Hours / Month</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {categories.map((category) => {
-                                        const entry =
-                                          categoryConfig[String(category.id)] || {};
-                                        return (
-                                          <tr
-                                            key={category.id}
-                                            className="border-t border-purple-100"
-                                          >
-                                            <td className="p-2 font-medium text-purple-900">
-                                              {category.name}
-                                            </td>
-                                            <td className="p-2">
-                                              <input
-                                                type="number"
-                                                min="0"
-                                                step="0.1"
-                                                value={Number(entry.pmHours || 0)}
-                                                onChange={(e) =>
-                                                  handleCategoryHoursChange(
-                                                    program,
-                                                    category.id,
-                                                    "pmHours",
-                                                    e.target.value
-                                                  )
-                                                }
-                                                className="w-24 border border-purple-200 rounded px-2 py-1"
-                                              />
-                                            </td>
-                                            <td className="p-2">
-                                              <input
-                                                type="number"
-                                                min="0"
-                                                step="0.1"
-                                                value={Number(entry.designHours || 0)}
-                                                onChange={(e) =>
-                                                  handleCategoryHoursChange(
-                                                    program,
-                                                    category.id,
-                                                    "designHours",
-                                                    e.target.value
-                                                  )
-                                                }
-                                                className="w-24 border border-purple-200 rounded px-2 py-1"
-                                              />
-                                            </td>
-                                            <td className="p-2">
-                                              <input
-                                                type="number"
-                                                min="0"
-                                                step="0.1"
-                                                value={Number(
-                                                  entry.constructionHours || 0
-                                                )}
-                                                onChange={(e) =>
-                                                  handleCategoryHoursChange(
-                                                    program,
-                                                    category.id,
-                                                    "constructionHours",
-                                                    e.target.value
-                                                  )
-                                                }
-                                                className="w-24 border border-purple-200 rounded px-2 py-1"
-                                              />
-                                            </td>
-                                          </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
+                          <p className="text-xs text-purple-700">
+                            Open the editor to manage monthly hours by staff
+                            category.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {isExpanded && (
+                    <div className="border-t border-purple-200 bg-purple-50 px-4 py-4 space-y-4">
+                      <div className="flex flex-wrap gap-4 text-sm font-medium text-purple-900">
+                        <span>PM: {formatHours(totals.pm)} hrs/mo</span>
+                        <span>Design: {formatHours(totals.design)} hrs/mo</span>
+                        <span>Construction: {formatHours(totals.construction)} hrs/mo</span>
+                      </div>
+                      <p className="text-xs text-purple-800">
+                        Assign monthly hours for each staff category. Totals
+                        update automatically and feed resource forecasts.
+                      </p>
+                      {categories.length === 0 ? (
+                        <p className="text-xs text-purple-700">
+                          Add staff categories in the Staff tab to configure
+                          per-category program hours.
+                        </p>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="text-left text-purple-900">
+                                <th className="p-2">Staff Category</th>
+                                <th className="p-2">PM Hours / Month</th>
+                                <th className="p-2">Design Hours / Month</th>
+                                <th className="p-2">Construction Hours / Month</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {categories.map((category) => {
+                                const entry =
+                                  categoryConfig[String(category.id)] || {};
+                                return (
+                                  <tr
+                                    key={category.id}
+                                    className="border-t border-purple-100"
+                                  >
+                                    <td className="p-2 font-medium text-purple-900">
+                                      {category.name}
+                                    </td>
+                                    <td className="p-2">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="0.1"
+                                        value={Number(entry.pmHours || 0)}
+                                        onChange={(e) =>
+                                          handleCategoryHoursChange(
+                                            program,
+                                            category.id,
+                                            "pmHours",
+                                            e.target.value
+                                          )
+                                        }
+                                        className="w-24 border border-purple-200 rounded px-2 py-1"
+                                      />
+                                    </td>
+                                    <td className="p-2">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="0.1"
+                                        value={Number(entry.designHours || 0)}
+                                        onChange={(e) =>
+                                          handleCategoryHoursChange(
+                                            program,
+                                            category.id,
+                                            "designHours",
+                                            e.target.value
+                                          )
+                                        }
+                                        className="w-24 border border-purple-200 rounded px-2 py-1"
+                                      />
+                                    </td>
+                                    <td className="p-2">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="0.1"
+                                        value={Number(
+                                          entry.constructionHours || 0
+                                        )}
+                                        onChange={(e) =>
+                                          handleCategoryHoursChange(
+                                            program,
+                                            category.id,
+                                            "constructionHours",
+                                            e.target.value
+                                          )
+                                        }
+                                        className="w-24 border border-purple-200 rounded px-2 py-1"
+                                      />
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
                       )}
-                    </React.Fragment>
-                  );
-                })}
-            </tbody>
-          </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 
