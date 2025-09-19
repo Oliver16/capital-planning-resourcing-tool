@@ -178,12 +178,11 @@ const DatabaseService = {
             error
           );
           db = new SQL.Database();
-          createTables(db);
         }
       } else {
         db = new SQL.Database();
-        createTables(db);
       }
+      createTables(db);
     }
     return db;
   },
