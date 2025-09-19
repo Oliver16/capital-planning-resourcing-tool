@@ -73,7 +73,7 @@ const ProjectsPrograms = ({
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="text-left p-4">Name</th>
+                <th className="text-left p-4 min-w-[16rem]">Name</th>
                 <th className="text-left p-4">Type</th>
                 <th className="text-left p-4">Funding</th>
                 <th className="text-left p-4">Delivery</th>
@@ -97,7 +97,7 @@ const ProjectsPrograms = ({
                   );
                   return (
                     <tr key={project.id} className="border-b border-gray-200">
-                      <td className="p-4">
+                      <td className="p-4 min-w-[16rem]">
                         <input
                           type="text"
                           value={project.name}
@@ -287,7 +287,7 @@ const ProjectsPrograms = ({
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="text-left p-4">Program Name</th>
+                <th className="text-left p-4 min-w-[16rem]">Program Name</th>
                 <th className="text-left p-4">Type</th>
                 <th className="text-left p-4">Funding</th>
                 <th className="text-left p-4">Annual Budget</th>
@@ -310,7 +310,7 @@ const ProjectsPrograms = ({
                   );
                   return (
                     <tr key={program.id} className="border-b border-gray-200">
-                      <td className="p-4">
+                      <td className="p-4 min-w-[16rem]">
                         <input
                           type="text"
                           value={program.name}

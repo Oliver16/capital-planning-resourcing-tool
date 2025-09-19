@@ -125,7 +125,7 @@ const SettingsTab = ({
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="text-left p-4 font-medium text-gray-900">
+                  <th className="text-left p-4 font-medium text-gray-900 min-w-[16rem]">
                     Funding Source Name
                   </th>
                   <th className="text-left p-4 font-medium text-gray-900">
@@ -147,7 +147,7 @@ const SettingsTab = ({
                       index % 2 === 0 ? "bg-white" : "bg-gray-50"
                     }`}
                   >
-                    <td className="p-4">
+                    <td className="p-4 min-w-[16rem]">
                       <input
                         type="text"
                         value={source.name}

@@ -25,7 +25,7 @@ const StaffCategories = ({
         <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
-              <th className="text-left p-4">Category Name</th>
+              <th className="text-left p-4 min-w-[14rem]">Category Name</th>
               <th className="text-left p-4">Hourly Rate ($)</th>
               <th className="text-left p-4">PM Capacity (hrs/month)</th>
               <th className="text-left p-4">Design Capacity (hrs/month)</th>
@@ -47,7 +47,7 @@ const StaffCategories = ({
               return (
                 <React.Fragment key={category.id}>
                   <tr className="border-b border-gray-200">
-                    <td className="p-4">
+                    <td className="p-4 min-w-[14rem]">
                       <input
                         type="text"
                         value={category.name}

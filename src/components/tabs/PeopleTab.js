@@ -121,7 +121,7 @@ const PeopleTab = ({
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <th className="min-w-[12rem] p-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                     Name
                   </th>
                   <th className="p-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -157,7 +157,7 @@ const PeopleTab = ({
 
                   return (
                     <tr key={member.id} className="bg-white hover:bg-gray-50">
-                      <td className="p-3 align-top">
+                      <td className="p-3 align-top min-w-[12rem]">
                         <input
                           type="text"
                           value={member.name || ""}
