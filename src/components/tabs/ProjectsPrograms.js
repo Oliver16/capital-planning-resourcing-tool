@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus,
   Upload,
@@ -501,6 +501,7 @@ const ProjectsPrograms = ({
   projects,
   projectTypes,
   fundingSources,
+  staffCategories,
   addProject,
   updateProject,
   deleteProject,
@@ -532,9 +533,12 @@ const ProjectsPrograms = ({
     }));
   };
 
-  const handleDownloadTemplate = () => {
-    downloadCSVTemplate();
-  };
+  const handleDownloadTemplate = useCallback(() => {
+    const categories = Array.isArray(staffCategories)
+      ? staffCategories
+      : [];
+    downloadCSVTemplate(categories);
+  }, [staffCategories]);
 
   return (
     <div className="space-y-6">
