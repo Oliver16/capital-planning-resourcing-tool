@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Repeat, AlertTriangle, Info } from "lucide-react";
 
 const HOURS_PER_FTE = 4.33 * 40;
@@ -14,6 +14,180 @@ const formatMonthlyFTE = (hours, durationMonths) => {
   const monthlyHours = numericHours / numericDuration;
 
   return (monthlyHours / HOURS_PER_FTE).toFixed(2);
+};
+
+const HoursInput = ({ value, onValueChange, durationMonths, label }) => {
+  const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
+  const [monthlyHours, setMonthlyHours] = useState("");
+  const [draftValue, setDraftValue] = useState("");
+  const containerRef = useRef(null);
+
+  const hasDuration = Boolean(durationMonths && durationMonths > 0);
+  const sanitizedValue =
+    value === null ||
+    value === undefined ||
+    value === "" ||
+    Number(value) === 0
+      ? ""
+      : value.toString();
+
+  const durationMessage = hasDuration
+    ? `Phase duration: ${durationMonths} month${
+        durationMonths === 1 ? "" : "s"
+      }`
+    : "Phase duration not available for this phase.";
+
+  const helperMessage = hasDuration
+    ? `We’ll multiply by ${durationMonths} to update total hours.`
+    : "Add the phase duration to enable automatic calculations.";
+
+  useEffect(() => {
+    if (!isCalculatorOpen) {
+      setDraftValue(sanitizedValue);
+    }
+  }, [sanitizedValue, isCalculatorOpen]);
+
+  useEffect(() => {
+    if (!isCalculatorOpen) return;
+
+    const handleClickOutside = (event) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target)
+      ) {
+        setIsCalculatorOpen(false);
+        setMonthlyHours("");
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isCalculatorOpen]);
+
+  const openCalculator = () => {
+    setDraftValue(sanitizedValue);
+    setIsCalculatorOpen(true);
+
+    if (!hasDuration) {
+      setMonthlyHours("");
+      return;
+    }
+
+    const numericTotal = parseFloat(sanitizedValue);
+    if (!Number.isNaN(numericTotal) && numericTotal > 0) {
+      const perMonth = numericTotal / durationMonths;
+      setMonthlyHours((Math.round(perMonth * 100) / 100).toString());
+    } else {
+      setMonthlyHours("");
+    }
+  };
+
+  const handleManualChange = (event) => {
+    const rawValue = event.target.value;
+    if (/^\d*(\.\d*)?$/.test(rawValue)) {
+      setDraftValue(rawValue);
+      onValueChange(rawValue);
+    }
+  };
+
+  const handleMonthlyChange = (event) => {
+    const rawValue = event.target.value;
+    if (/^\d*(\.\d*)?$/.test(rawValue)) {
+      setMonthlyHours(rawValue);
+    }
+  };
+
+  const closeCalculator = () => {
+    setIsCalculatorOpen(false);
+    setMonthlyHours("");
+  };
+
+  const applyMonthlyHours = () => {
+    const parsedMonthly = parseFloat(monthlyHours);
+    if (!hasDuration || Number.isNaN(parsedMonthly)) {
+      closeCalculator();
+      return;
+    }
+
+    const totalHours =
+      Math.round(parsedMonthly * durationMonths * 100) / 100;
+    const totalString = totalHours.toString();
+
+    setDraftValue(totalString);
+    onValueChange(totalString);
+    closeCalculator();
+  };
+
+  const isApplyDisabled =
+    !hasDuration ||
+    monthlyHours.trim() === "" ||
+    Number.isNaN(parseFloat(monthlyHours));
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <input
+        type="text"
+        inputMode="decimal"
+        value={isCalculatorOpen ? draftValue : sanitizedValue}
+        placeholder="Hours"
+        onFocus={openCalculator}
+        onClick={openCalculator}
+        onChange={handleManualChange}
+        className="w-24 rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+      />
+      {isCalculatorOpen && (
+        <div className="absolute left-0 z-20 mt-2 w-60 rounded-md border border-gray-200 bg-white p-3 text-sm shadow-lg">
+          <div className="flex items-start justify-between text-xs text-gray-500">
+            <span>{label}</span>
+            <button
+              type="button"
+              onClick={closeCalculator}
+              className="text-gray-400 transition hover:text-gray-600"
+            >
+              ×
+            </button>
+          </div>
+          <div className="mt-2 space-y-2">
+            <p className="text-xs text-gray-500">{durationMessage}</p>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700">
+                Hours per month
+              </label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={monthlyHours}
+                onChange={handleMonthlyChange}
+                placeholder="e.g. 40"
+                className="w-full rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              />
+            </div>
+            <p className="text-xs text-gray-500">{helperMessage}</p>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={closeCalculator}
+                className="rounded border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={applyMonthlyHours}
+                disabled={isApplyDisabled}
+                className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 const StaffAllocations = ({
@@ -246,53 +420,50 @@ const StaffAllocations = ({
                         <td className="p-3 font-medium">{category.name}</td>
                         <td className="p-3">${category.hourlyRate}</td>
                         <td className="p-3">
-                          <input
-                            type="number"
-                            value={allocation.pmHours || 0}
-                            onChange={(e) =>
+                          <HoursInput
+                            value={allocation.pmHours}
+                            onValueChange={(newValue) =>
                               updateStaffAllocation(
                                 project.id,
                                 category.id,
                                 "pm",
-                                e.target.value
+                                newValue
                               )
                             }
-                            className="w-20 border border-gray-300 rounded px-2 py-1"
-                            min="0"
+                            durationMonths={totalDuration}
+                            label="PM Hours"
                           />
                         </td>
                         <td className="p-3">${pmCost.toLocaleString()}</td>
                         <td className="p-3">
-                          <input
-                            type="number"
-                            value={allocation.designHours || 0}
-                            onChange={(e) =>
+                          <HoursInput
+                            value={allocation.designHours}
+                            onValueChange={(newValue) =>
                               updateStaffAllocation(
                                 project.id,
                                 category.id,
                                 "design",
-                                e.target.value
+                                newValue
                               )
                             }
-                            className="w-20 border border-gray-300 rounded px-2 py-1"
-                            min="0"
+                            durationMonths={project.designDuration}
+                            label="Design Hours"
                           />
                         </td>
                         <td className="p-3">${designCost.toLocaleString()}</td>
                         <td className="p-3">
-                          <input
-                            type="number"
+                          <HoursInput
                             value={allocation.constructionHours}
-                            onChange={(e) =>
+                            onValueChange={(newValue) =>
                               updateStaffAllocation(
                                 project.id,
                                 category.id,
                                 "construction",
-                                e.target.value
+                                newValue
                               )
                             }
-                            className="w-20 border border-gray-300 rounded px-2 py-1"
-                            min="0"
+                            durationMonths={project.constructionDuration}
+                            label="Construction Hours"
                           />
                         </td>
                         <td className="p-3">
