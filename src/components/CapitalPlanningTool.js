@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Calendar,
   Users,
@@ -116,6 +116,7 @@ const CapitalPlanningTool = () => {
   const [staffMembers, setStaffMembers] = useState(defaultStaffMembers);
   const [activeTab, setActiveTab] = useState("overview");
   const [activeDropdown, setActiveDropdown] = useState(null);
+  const dropdownRefs = useRef({});
   const [timeHorizon, setTimeHorizon] = useState(36);
   const [scheduleHorizon, setScheduleHorizon] = useState(36);
   const [isSaving, setIsSaving] = useState(false);
@@ -207,6 +208,33 @@ const CapitalPlanningTool = () => {
     getStaffAllocations,
     getStaffMembers,
   ]);
+
+  useEffect(() => {
+    if (!activeDropdown) {
+      return;
+    }
+
+    const handleClickOutside = (event) => {
+      const currentDropdown = dropdownRefs.current[activeDropdown];
+      if (currentDropdown && !currentDropdown.contains(event.target)) {
+        setActiveDropdown(null);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setActiveDropdown(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [activeDropdown]);
 
   const staffAvailabilityByCategory = useMemo(() => {
     const availability = {};
@@ -965,10 +993,17 @@ const CapitalPlanningTool = () => {
                     <div
                       key={tab.id}
                       className="relative"
-                      onMouseEnter={() => setActiveDropdown(tab.id)}
-                      onMouseLeave={() => setActiveDropdown(null)}
+                      ref={(element) => {
+                        if (element) {
+                          dropdownRefs.current[tab.id] = element;
+                        } else {
+                          delete dropdownRefs.current[tab.id];
+                        }
+                      }}
                     >
                       <button
+                        type="button"
+                        id={`${tab.id}-button`}
                         onClick={() =>
                           setActiveDropdown((current) =>
                             current === tab.id ? null : tab.id
@@ -979,18 +1014,26 @@ const CapitalPlanningTool = () => {
                             ? "border-blue-500 text-blue-600"
                             : "border-transparent text-gray-500 hover:text-gray-700"
                         }`}
+                        aria-haspopup="menu"
+                        aria-expanded={activeDropdown === tab.id}
                       >
                         <Icon size={16} />
                         {tab.label}
                         <ChevronDown size={14} />
                       </button>
                       {activeDropdown === tab.id && (
-                        <div className="absolute left-0 top-full mt-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                        <div
+                          className="absolute left-0 top-full mt-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-10"
+                          role="menu"
+                          aria-labelledby={`${tab.id}-button`}
+                        >
                           {tab.items.map((item) => {
                             const SubIcon = item.icon;
                             const isSubActive = activeTab === item.id;
                             return (
                               <button
+                                type="button"
+                                role="menuitem"
                                 key={item.id}
                                 onClick={() => {
                                   setActiveTab(item.id);
@@ -1016,8 +1059,12 @@ const CapitalPlanningTool = () => {
                 const Icon = tab.icon;
                 return (
                   <button
+                    type="button"
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => {
+                      setActiveDropdown(null);
+                      setActiveTab(tab.id);
+                    }}
                     className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
                       activeTab === tab.id
                         ? "border-blue-500 text-blue-600"
