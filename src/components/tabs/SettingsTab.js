@@ -10,9 +10,15 @@ const SettingsTab = ({
   addFundingSource,
   updateFundingSource,
   deleteFundingSource,
+  isReadOnly = false,
 }) => {
   return (
     <div className="space-y-6">
+      {isReadOnly && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Editing is disabled while you have view-only access.
+        </div>
+      )}
       {/* Project Types Management */}
       <div className="bg-white rounded-lg shadow-sm">
         <div className="p-6 border-b border-gray-200 flex justify-between items-center">
@@ -22,13 +28,20 @@ const SettingsTab = ({
           </div>
           <button
             onClick={addProjectType}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+            disabled={isReadOnly}
+            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-white transition ${
+              isReadOnly
+                ? 'bg-gray-300 cursor-not-allowed'
+                : 'bg-blue-600 hover:bg-blue-700'
+            }`}
           >
             <Plus size={16} />
             Add Type
           </button>
         </div>
-        <div className="p-6">
+        <div
+          className={`p-6 ${isReadOnly ? 'pointer-events-none opacity-70' : ''}`}
+        >
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {projectTypes.map((type) => (
               <div
@@ -114,13 +127,20 @@ const SettingsTab = ({
           </div>
           <button
             onClick={addFundingSource}
-            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2"
+            disabled={isReadOnly}
+            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-white transition ${
+              isReadOnly
+                ? 'bg-gray-300 cursor-not-allowed'
+                : 'bg-green-600 hover:bg-green-700'
+            }`}
           >
             <Plus size={16} />
             Add Source
           </button>
         </div>
-        <div className="p-6">
+        <div
+          className={`p-6 ${isReadOnly ? 'pointer-events-none opacity-70' : ''}`}
+        >
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50">

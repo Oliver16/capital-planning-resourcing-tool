@@ -46,7 +46,7 @@ const formatGroupBudget = (value) => {
 };
 
 const baseInputClass =
-  "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2";
+  "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:bg-gray-100";
 const projectInputClass = `${baseInputClass} focus:border-blue-500 focus:ring-blue-200`;
 const programInputClass = `${baseInputClass} focus:border-purple-500 focus:ring-purple-200`;
 
@@ -266,6 +266,7 @@ const ProjectCard = ({
   fundingSources,
   updateProject,
   deleteProject,
+  isReadOnly = false,
 }) => {
   const { label: typeLabel, color: typeColor } = getProjectTypeInfo(
     projectTypes,
@@ -275,11 +276,17 @@ const ProjectCard = ({
   const deliveryLabel = getDeliveryLabel(project.deliveryType || "self-perform");
 
   const handleNumberChange = (field) => (event) => {
+    if (isReadOnly) {
+      return;
+    }
     const parsed = parseInt(event.target.value, 10);
     updateProject(project.id, field, Number.isNaN(parsed) ? 0 : parsed);
   };
 
   const handleSelectNumber = (field) => (event) => {
+    if (isReadOnly) {
+      return;
+    }
     const rawValue = event.target.value;
     if (rawValue === "") {
       updateProject(project.id, field, null);
@@ -297,11 +304,15 @@ const ProjectCard = ({
           <input
             type="text"
             value={project.name || ""}
-            onChange={(event) =>
-              updateProject(project.id, "name", event.target.value)
-            }
+            onChange={(event) => {
+              if (isReadOnly) {
+                return;
+              }
+              updateProject(project.id, "name", event.target.value);
+            }}
             placeholder="Project name"
             className={projectInputClass}
+            disabled={isReadOnly}
           />
           <div className="flex flex-wrap gap-2 text-xs text-gray-500">
             <SummaryChip className="bg-gray-100 text-gray-700">
@@ -328,12 +339,27 @@ const ProjectCard = ({
                 Budget {formatGroupBudget(project.totalBudget)}
               </SummaryChip>
             )}
+            {isReadOnly && (
+              <SummaryChip className="bg-amber-50 text-amber-700">
+                View only
+              </SummaryChip>
+            )}
           </div>
         </div>
         <button
           type="button"
-          onClick={() => deleteProject(project.id)}
-          className="rounded-full bg-red-50 p-2 text-red-600 transition hover:bg-red-100 hover:text-red-700"
+          onClick={() => {
+            if (isReadOnly) {
+              return;
+            }
+            deleteProject(project.id);
+          }}
+          disabled={isReadOnly}
+          className={`rounded-full p-2 transition ${
+            isReadOnly
+              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+              : "bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700"
+          }`}
         >
           <Trash2 size={16} />
         </button>
@@ -345,6 +371,7 @@ const ProjectCard = ({
             value={project.projectTypeId ?? ""}
             onChange={handleSelectNumber("projectTypeId")}
             className={projectInputClass}
+            disabled={isReadOnly}
           >
             <option value="">Unassigned</option>
             {projectTypes.map((type) => (
@@ -360,6 +387,7 @@ const ProjectCard = ({
             value={project.fundingSourceId ?? ""}
             onChange={handleSelectNumber("fundingSourceId")}
             className={projectInputClass}
+            disabled={isReadOnly}
           >
             <option value="">Select funding</option>
             {fundingSources.map((source) => (
@@ -373,10 +401,14 @@ const ProjectCard = ({
         <Field label="Delivery method">
           <select
             value={project.deliveryType || "self-perform"}
-            onChange={(event) =>
-              updateProject(project.id, "deliveryType", event.target.value)
-            }
+            onChange={(event) => {
+              if (isReadOnly) {
+                return;
+              }
+              updateProject(project.id, "deliveryType", event.target.value);
+            }}
             className={projectInputClass}
+            disabled={isReadOnly}
           >
             {deliveryOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -389,10 +421,14 @@ const ProjectCard = ({
         <Field label="Priority">
           <select
             value={project.priority || "Medium"}
-            onChange={(event) =>
-              updateProject(project.id, "priority", event.target.value)
-            }
+            onChange={(event) => {
+              if (isReadOnly) {
+                return;
+              }
+              updateProject(project.id, "priority", event.target.value);
+            }}
             className={projectInputClass}
+            disabled={isReadOnly}
           >
             <option value="High">High</option>
             <option value="Medium">Medium</option>
@@ -407,6 +443,7 @@ const ProjectCard = ({
             value={project.totalBudget || ""}
             onChange={handleNumberChange("totalBudget")}
             className={projectInputClass}
+            disabled={isReadOnly}
           />
         </Field>
 
@@ -414,14 +451,18 @@ const ProjectCard = ({
           <input
             type="date"
             value={project.designStartDate || ""}
-            onChange={(event) =>
+            onChange={(event) => {
+              if (isReadOnly) {
+                return;
+              }
               updateProject(
                 project.id,
                 "designStartDate",
                 event.target.value
-              )
-            }
+              );
+            }}
             className={projectInputClass}
+            disabled={isReadOnly}
           />
         </Field>
 
@@ -429,14 +470,18 @@ const ProjectCard = ({
           <input
             type="date"
             value={project.constructionStartDate || ""}
-            onChange={(event) =>
+            onChange={(event) => {
+              if (isReadOnly) {
+                return;
+              }
               updateProject(
                 project.id,
                 "constructionStartDate",
                 event.target.value
-              )
-            }
+              );
+            }}
             className={projectInputClass}
+            disabled={isReadOnly}
           />
         </Field>
 
@@ -448,6 +493,7 @@ const ProjectCard = ({
               value={Number(project.designDuration) || 0}
               onChange={handleNumberChange("designDuration")}
               className={projectInputClass}
+              disabled={isReadOnly}
             />
           </Field>
           <Field label="Construction duration (months)">
@@ -457,6 +503,7 @@ const ProjectCard = ({
               value={Number(project.constructionDuration) || 0}
               onChange={handleNumberChange("constructionDuration")}
               className={projectInputClass}
+              disabled={isReadOnly}
             />
           </Field>
         </div>
@@ -473,6 +520,7 @@ const ProgramCard = ({
   updateProject,
   deleteProject,
   onConfigureCategoryHours,
+  isReadOnly = false,
 }) => {
   const { label: typeLabel, color: typeColor } = getProjectTypeInfo(
     projectTypes,
@@ -480,16 +528,25 @@ const ProgramCard = ({
   );
 
   const handleNumberChange = (field) => (event) => {
+    if (isReadOnly) {
+      return;
+    }
     const parsed = parseInt(event.target.value, 10);
     updateProject(program.id, field, Number.isNaN(parsed) ? 0 : parsed);
   };
 
   const handleFloatChange = (field) => (event) => {
+    if (isReadOnly) {
+      return;
+    }
     const parsed = parseFloat(event.target.value);
     updateProject(program.id, field, Number.isNaN(parsed) ? 0 : parsed);
   };
 
   const handleSelectNumber = (field) => (event) => {
+    if (isReadOnly) {
+      return;
+    }
     const rawValue = event.target.value;
     if (rawValue === "") {
       updateProject(program.id, field, null);
@@ -526,11 +583,15 @@ const ProgramCard = ({
           <input
             type="text"
             value={program.name || ""}
-            onChange={(event) =>
-              updateProject(program.id, "name", event.target.value)
-            }
+            onChange={(event) => {
+              if (isReadOnly) {
+                return;
+              }
+              updateProject(program.id, "name", event.target.value);
+            }}
             placeholder="Program name"
             className={programInputClass}
+            disabled={isReadOnly}
           />
           <div className="flex flex-wrap gap-2 text-xs text-gray-500">
             <SummaryChip className="bg-purple-50 text-purple-700">
@@ -558,12 +619,27 @@ const ProgramCard = ({
                 {program.programStartDate} → {program.programEndDate}
               </SummaryChip>
             )}
+            {isReadOnly && (
+              <SummaryChip className="bg-amber-50 text-amber-700">
+                View only
+              </SummaryChip>
+            )}
           </div>
         </div>
         <button
           type="button"
-          onClick={() => deleteProject(program.id)}
-          className="rounded-full bg-red-50 p-2 text-red-600 transition hover:bg-red-100 hover:text-red-700"
+          onClick={() => {
+            if (isReadOnly) {
+              return;
+            }
+            deleteProject(program.id);
+          }}
+          disabled={isReadOnly}
+          className={`rounded-full p-2 transition ${
+            isReadOnly
+              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+              : "bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700"
+          }`}
         >
           <Trash2 size={16} />
         </button>
@@ -575,6 +651,7 @@ const ProgramCard = ({
             value={program.projectTypeId ?? ""}
             onChange={handleSelectNumber("projectTypeId")}
             className={programInputClass}
+            disabled={isReadOnly}
           >
             <option value="">Unassigned</option>
             {projectTypes.map((type) => (
@@ -590,6 +667,7 @@ const ProgramCard = ({
             value={program.fundingSourceId ?? ""}
             onChange={handleSelectNumber("fundingSourceId")}
             className={programInputClass}
+            disabled={isReadOnly}
           >
             <option value="">Select funding</option>
             {fundingSources.map((source) => (
@@ -607,6 +685,7 @@ const ProgramCard = ({
             value={program.annualBudget || ""}
             onChange={handleNumberChange("annualBudget")}
             className={programInputClass}
+            disabled={isReadOnly}
           />
         </Field>
 
@@ -618,6 +697,7 @@ const ProgramCard = ({
             value={program.designBudgetPercent || ""}
             onChange={handleFloatChange("designBudgetPercent")}
             className={programInputClass}
+            disabled={isReadOnly}
           />
         </Field>
 
@@ -629,6 +709,7 @@ const ProgramCard = ({
             value={program.constructionBudgetPercent || ""}
             onChange={handleFloatChange("constructionBudgetPercent")}
             className={programInputClass}
+            disabled={isReadOnly}
           />
         </Field>
 
@@ -636,14 +717,18 @@ const ProgramCard = ({
           <input
             type="date"
             value={program.programStartDate || ""}
-            onChange={(event) =>
+            onChange={(event) => {
+              if (isReadOnly) {
+                return;
+              }
               updateProject(
                 program.id,
                 "programStartDate",
                 event.target.value
-              )
-            }
+              );
+            }}
             className={programInputClass}
+            disabled={isReadOnly}
           />
         </Field>
 
@@ -651,14 +736,18 @@ const ProgramCard = ({
           <input
             type="date"
             value={program.programEndDate || ""}
-            onChange={(event) =>
+            onChange={(event) => {
+              if (isReadOnly) {
+                return;
+              }
               updateProject(
                 program.id,
                 "programEndDate",
                 event.target.value
-              )
-            }
+              );
+            }}
             className={programInputClass}
+            disabled={isReadOnly}
           />
         </Field>
 
@@ -706,8 +795,18 @@ const ProgramCard = ({
               <div className="sm:pl-4 sm:pt-1">
                 <button
                   type="button"
-                  onClick={() => onConfigureCategoryHours?.(program)}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-1 sm:w-auto"
+                  onClick={() => {
+                    if (isReadOnly) {
+                      return;
+                    }
+                    onConfigureCategoryHours?.(program);
+                  }}
+                  disabled={isReadOnly}
+                  className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-1 sm:w-auto ${
+                    isReadOnly
+                      ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                      : "bg-purple-600 text-white transition hover:bg-purple-700 focus:ring-purple-400"
+                  }`}
                 >
                   <SlidersHorizontal size={16} className="text-purple-100" />
                   Configure by staff category
@@ -972,6 +1071,7 @@ const ProjectsPrograms = ({
   updateProject,
   deleteProject,
   handleImport,
+  isReadOnly = false,
 }) => {
   const projectGroups = useMemo(
     () => groupProjectsByType(projects, projectTypes),
@@ -1109,6 +1209,11 @@ const ProjectsPrograms = ({
 
   return (
     <div className="space-y-6">
+      {isReadOnly && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          You have view-only access. Editing controls are disabled.
+        </div>
+      )}
       {/* Import/Export Controls */}
       <div className="rounded-lg bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -1123,7 +1228,13 @@ const ProjectsPrograms = ({
               <Download size={16} />
               Download CSV Template
             </button>
-            <label className="flex cursor-pointer items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-700">
+            <label
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+                isReadOnly
+                  ? 'cursor-not-allowed bg-gray-200 text-gray-500'
+                  : 'cursor-pointer bg-green-600 text-white hover:bg-green-700'
+              }`}
+            >
               <Upload size={16} />
               Import CSV
               <input
@@ -1131,22 +1242,38 @@ const ProjectsPrograms = ({
                 accept=".csv"
                 className="hidden"
                 onChange={(event) => {
+                  if (isReadOnly) {
+                    event.target.value = "";
+                    return;
+                  }
+
                   const file = event.target.files?.[0];
                   if (file) handleImport(file);
                   event.target.value = "";
                 }}
+                disabled={isReadOnly}
               />
             </label>
             <button
               onClick={() => addProject("project")}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+              disabled={isReadOnly}
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+                isReadOnly
+                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
             >
               <Plus size={16} />
               Add Project
             </button>
             <button
               onClick={() => addProject("program")}
-              className="flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-purple-700"
+              disabled={isReadOnly}
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+                isReadOnly
+                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  : 'bg-purple-600 text-white hover:bg-purple-700'
+              }`}
             >
               <Repeat size={16} />
               Add Program
@@ -1227,7 +1354,11 @@ const ProjectsPrograms = ({
               </button>
 
               {isExpanded && (
-                <div className="space-y-6 p-6">
+                <div
+                  className={`space-y-6 p-6 ${
+                    isReadOnly ? "opacity-70" : ""
+                  }`}
+                >
                   {projectCount > 0 && (
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
@@ -1240,14 +1371,15 @@ const ProjectsPrograms = ({
                       </div>
                       <div className="grid grid-cols-1 gap-8 sm:[grid-template-columns:repeat(auto-fit,minmax(22rem,1fr))]">
                         {group.projects.map((project) => (
-                          <ProjectCard
-                            key={project.id}
-                            project={project}
-                            projectTypes={projectTypes}
-                            fundingSources={fundingSources}
-                            updateProject={updateProject}
-                            deleteProject={deleteProject}
-                          />
+                            <ProjectCard
+                              key={project.id}
+                              project={project}
+                              projectTypes={projectTypes}
+                              fundingSources={fundingSources}
+                              updateProject={updateProject}
+                              deleteProject={deleteProject}
+                              isReadOnly={isReadOnly}
+                            />
                         ))}
                       </div>
                     </div>
@@ -1266,16 +1398,17 @@ const ProjectsPrograms = ({
                       </div>
                       <div className="grid grid-cols-1 gap-8 sm:[grid-template-columns:repeat(auto-fit,minmax(22rem,1fr))]">
                         {group.programs.map((program) => (
-                          <ProgramCard
-                            key={program.id}
-                            program={program}
-                            projectTypes={projectTypes}
-                            fundingSources={fundingSources}
-                            staffCategories={staffCategories}
-                            updateProject={updateProject}
-                            deleteProject={deleteProject}
-                            onConfigureCategoryHours={openCategoryModal}
-                          />
+                            <ProgramCard
+                              key={program.id}
+                              program={program}
+                              projectTypes={projectTypes}
+                              fundingSources={fundingSources}
+                              staffCategories={staffCategories}
+                              updateProject={updateProject}
+                              deleteProject={deleteProject}
+                              onConfigureCategoryHours={openCategoryModal}
+                              isReadOnly={isReadOnly}
+                            />
                         ))}
                       </div>
                     </div>

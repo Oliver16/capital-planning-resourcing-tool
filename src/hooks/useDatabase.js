@@ -1,1170 +1,987 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { supabase } from '../lib/supabaseClient';
+import { useAuth } from '../context/AuthContext';
 
-let SQL = null;
-let db = null;
+const toCamelCaseKey = (key) =>
+  key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 
-// Initialize SQLite
-const initSQL = async () => {
-  if (!SQL) {
-    const sqlModule = await import("sql.js");
-    SQL = await sqlModule.default({
-      locateFile: (file) => `https://sql.js.org/dist/${file}`,
-    });
+const camelizeRecord = (record) => {
+  if (!record || typeof record !== 'object') {
+    return record;
   }
-  return SQL;
+
+  return Object.entries(record).reduce((accumulator, [key, value]) => {
+    accumulator[toCamelCaseKey(key)] = value;
+    return accumulator;
+  }, {});
 };
 
-// Database schema
-const createTables = (database) => {
-  database.run(`
-    CREATE TABLE IF NOT EXISTS project_types (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      color TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
+const parseJsonField = (value, fallback) => {
+  if (!value) {
+    return fallback;
+  }
 
-  database.run(`
-    CREATE TABLE IF NOT EXISTS funding_sources (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      description TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
+  if (typeof value === 'object') {
+    return value;
+  }
 
-  database.run(`
-    CREATE TABLE IF NOT EXISTS staff_categories (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      hourly_rate REAL NOT NULL,
-      pm_capacity INTEGER NOT NULL DEFAULT 0,
-      design_capacity INTEGER NOT NULL DEFAULT 0,
-      construction_capacity INTEGER NOT NULL DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-
-  database.run(`
-    CREATE TABLE IF NOT EXISTS projects (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      type TEXT NOT NULL CHECK (type IN ('project', 'program')),
-      project_type_id INTEGER,
-      funding_source_id INTEGER,
-
-      total_budget REAL,
-      design_budget REAL,
-      construction_budget REAL,
-      design_duration INTEGER,
-      construction_duration INTEGER,
-      design_start_date DATE,
-      construction_start_date DATE,
-
-      annual_budget REAL,
-      design_budget_percent REAL,
-      construction_budget_percent REAL,
-      continuous_pm_hours REAL,
-      continuous_design_hours REAL,
-      continuous_construction_hours REAL,
-      continuous_hours_by_category TEXT,
-      program_start_date DATE,
-      program_end_date DATE,
-
-      priority TEXT CHECK (priority IN ('High', 'Medium', 'Low')),
-      description TEXT,
-      delivery_type TEXT NOT NULL DEFAULT 'self-perform' CHECK (delivery_type IN ('self-perform','hybrid','consultant')),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-
-      FOREIGN KEY (project_type_id) REFERENCES project_types(id),
-      FOREIGN KEY (funding_source_id) REFERENCES funding_sources(id)
-    );
-  `);
-
-  try {
-    database.run(
-      "ALTER TABLE projects ADD COLUMN delivery_type TEXT DEFAULT 'self-perform'"
-    );
-    database.run(
-      "UPDATE projects SET delivery_type = 'self-perform' WHERE delivery_type IS NULL"
-    );
-  } catch (error) {
-    if (!error.message?.includes("duplicate column name")) {
-      console.warn("Delivery type migration warning:", error);
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' ? parsed : fallback;
+    } catch (error) {
+      console.warn('Unable to parse JSON field', error);
+      return fallback;
     }
   }
 
-  try {
-    database.run(
-      "ALTER TABLE projects ADD COLUMN continuous_pm_hours REAL DEFAULT 0"
-    );
-  } catch (error) {
-    if (!error.message?.includes("duplicate column name")) {
-      console.warn("Continuous PM hours migration warning:", error);
-    }
-  }
-
-  try {
-    database.run(
-      "ALTER TABLE projects ADD COLUMN continuous_hours_by_category TEXT"
-    );
-  } catch (error) {
-    if (!error.message?.includes("duplicate column name")) {
-      console.warn("Continuous hours config migration warning:", error);
-    }
-  }
-
-  database.run(`
-    CREATE TABLE IF NOT EXISTS staff_allocations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      project_id INTEGER NOT NULL,
-      category_id INTEGER NOT NULL,
-      pm_hours REAL DEFAULT 0,
-      design_hours REAL DEFAULT 0,
-      construction_hours REAL DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-
-      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-      FOREIGN KEY (category_id) REFERENCES staff_categories(id) ON DELETE CASCADE,
-      UNIQUE(project_id, category_id)
-    );
-  `);
-
-  try {
-    database.run(
-      "ALTER TABLE staff_allocations ADD COLUMN pm_hours REAL DEFAULT 0"
-    );
-  } catch (error) {
-    if (!error.message?.includes("duplicate column name")) {
-      console.warn("PM hours migration warning:", error);
-    }
-  }
-
-  database.run(`
-    CREATE TABLE IF NOT EXISTS staff_members (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      category_id INTEGER,
-      pm_availability REAL DEFAULT 0,
-      design_availability REAL DEFAULT 0,
-      construction_availability REAL DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (category_id) REFERENCES staff_categories(id) ON DELETE SET NULL
-    );
-  `);
-
-  database.run(`
-    CREATE TABLE IF NOT EXISTS staff_assignments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      project_id INTEGER NOT NULL,
-      staff_id INTEGER NOT NULL,
-      pm_hours REAL DEFAULT 0,
-      design_hours REAL DEFAULT 0,
-      construction_hours REAL DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-      FOREIGN KEY (staff_id) REFERENCES staff_members(id) ON DELETE CASCADE,
-      UNIQUE(project_id, staff_id)
-    );
-  `);
+  return fallback;
 };
 
-// Helper function to safely bind parameters
-const safeBindParams = (params) => {
-  return params.map((param) => {
-    if (param === undefined || param === null) {
-      return null;
-    }
-
-    if (typeof param === "number" && !Number.isFinite(param)) {
-      return null;
-    }
-
-    return param;
-  });
-};
-
-// Database operations
-const DatabaseService = {
-  async initDatabase() {
-    if (!db) {
-      await initSQL();
-
-      // Try to load existing database from localStorage
-      const savedDb = localStorage.getItem("capitalPlanningDB");
-      if (savedDb) {
-        try {
-          const binaryArray = new Uint8Array(JSON.parse(savedDb));
-          db = new SQL.Database(binaryArray);
-        } catch (error) {
-          console.warn(
-            "Error loading saved database, creating new one:",
-            error
-          );
-          db = new SQL.Database();
-        }
-      } else {
-        db = new SQL.Database();
-      }
-      createTables(db);
-    }
-    return db;
-  },
-
-  async saveDatabase() {
-    if (db) {
-      try {
-        const data = db.export();
-        localStorage.setItem(
-          "capitalPlanningDB",
-          JSON.stringify(Array.from(data))
-        );
-      } catch (error) {
-        console.error("Error saving database:", error);
-      }
-    }
-  },
-
-  // Projects
-  async saveProject(project) {
-    await this.initDatabase();
-
-    try {
-      if (project.id) {
-        // Update existing project
-        const stmt = db.prepare(`
-          UPDATE projects SET
-            name=?, type=?, project_type_id=?, funding_source_id=?,
-            total_budget=?, design_budget=?, construction_budget=?,
-            design_duration=?, construction_duration=?,
-            design_start_date=?, construction_start_date=?,
-            annual_budget=?, design_budget_percent=?, construction_budget_percent=?,
-            continuous_pm_hours=?, continuous_design_hours=?, continuous_construction_hours=?, continuous_hours_by_category=?,
-            program_start_date=?, program_end_date=?,
-            priority=?, description=?, delivery_type=?, updated_at=CURRENT_TIMESTAMP
-          WHERE id=?
-        `);
-
-        let serializedContinuousConfig = null;
-        try {
-          const config = project.continuousHoursByCategory;
-          if (config && typeof config === "object") {
-            const keys = Object.keys(config);
-            if (keys.length > 0) {
-              serializedContinuousConfig = JSON.stringify(config);
-            }
-          } else if (typeof config === "string" && config.trim()) {
-            serializedContinuousConfig = config;
-          }
-        } catch (configError) {
-          console.warn("Unable to serialize continuous hours config", configError);
-          serializedContinuousConfig = null;
-        }
-
-        const params = safeBindParams([
-          project.name || "",
-          project.type || "project",
-          project.projectTypeId || null,
-          project.fundingSourceId || null,
-          project.totalBudget || null,
-          project.designBudget || null,
-          project.constructionBudget || null,
-          project.designDuration || null,
-          project.constructionDuration || null,
-          project.designStartDate || null,
-          project.constructionStartDate || null,
-          project.annualBudget || null,
-          project.designBudgetPercent || null,
-          project.constructionBudgetPercent || null,
-          project.continuousPmHours || null,
-          project.continuousDesignHours || null,
-          project.continuousConstructionHours || null,
-          serializedContinuousConfig,
-          project.programStartDate || null,
-          project.programEndDate || null,
-          project.priority || "Medium",
-          project.description || "",
-          project.deliveryType || "self-perform",
-          project.id,
-        ]);
-
-        stmt.run(params);
-        stmt.free();
-        await this.saveDatabase();
-        return project.id;
-      } else {
-        // Insert new project
-        const stmt = db.prepare(`
-          INSERT INTO projects (
-            name, type, project_type_id, funding_source_id,
-            total_budget, design_budget, construction_budget,
-            design_duration, construction_duration,
-            design_start_date, construction_start_date,
-            annual_budget, design_budget_percent, construction_budget_percent,
-            continuous_pm_hours, continuous_design_hours, continuous_construction_hours, continuous_hours_by_category,
-            program_start_date, program_end_date,
-            priority, description, delivery_type
-          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        `);
-
-        let serializedContinuousConfig = null;
-        try {
-          const config = project.continuousHoursByCategory;
-          if (config && typeof config === "object") {
-            const keys = Object.keys(config);
-            if (keys.length > 0) {
-              serializedContinuousConfig = JSON.stringify(config);
-            }
-          } else if (typeof config === "string" && config.trim()) {
-            serializedContinuousConfig = config;
-          }
-        } catch (configError) {
-          console.warn("Unable to serialize continuous hours config", configError);
-          serializedContinuousConfig = null;
-        }
-
-        const params = safeBindParams([
-          project.name || "",
-          project.type || "project",
-          project.projectTypeId || null,
-          project.fundingSourceId || null,
-          project.totalBudget || null,
-          project.designBudget || null,
-          project.constructionBudget || null,
-          project.designDuration || null,
-          project.constructionDuration || null,
-          project.designStartDate || null,
-          project.constructionStartDate || null,
-          project.annualBudget || null,
-          project.designBudgetPercent || null,
-          project.constructionBudgetPercent || null,
-          project.continuousPmHours || null,
-          project.continuousDesignHours || null,
-          project.continuousConstructionHours || null,
-          serializedContinuousConfig,
-          project.programStartDate || null,
-          project.programEndDate || null,
-          project.priority || "Medium",
-          project.description || "",
-          project.deliveryType || "self-perform",
-        ]);
-
-        stmt.run(params);
-        const newId = db.exec("SELECT last_insert_rowid()")[0].values[0][0];
-        stmt.free();
-        await this.saveDatabase();
-        return newId;
-      }
-    } catch (error) {
-      console.error("Error saving project:", error);
-      throw error;
-    }
-  },
-
-  async getProjects() {
-    await this.initDatabase();
-    try {
-      const results = db.exec(`
-        SELECT p.*, pt.name as project_type_name, pt.color as project_type_color,
-               fs.name as funding_source_name
-        FROM projects p
-        LEFT JOIN project_types pt ON p.project_type_id = pt.id
-        LEFT JOIN funding_sources fs ON p.funding_source_id = fs.id
-        ORDER BY p.updated_at DESC
-      `);
-
-      if (!results.length) return [];
-
-      return results[0].values.map((row) => {
-        const cols = results[0].columns;
-        const project = {};
-        cols.forEach((col, index) => {
-          if (col.includes("_")) {
-            const camelCol = col.replace(/_([a-z])/g, (match, letter) =>
-              letter.toUpperCase()
-            );
-            project[camelCol] = row[index];
-          } else {
-            project[col] = row[index];
-          }
-        });
-
-        if (project.continuousHoursByCategory) {
-          if (typeof project.continuousHoursByCategory === "string") {
-            try {
-              const parsed = JSON.parse(project.continuousHoursByCategory);
-              project.continuousHoursByCategory =
-                parsed && typeof parsed === "object" ? parsed : {};
-            } catch (error) {
-              console.warn(
-                "Unable to parse stored continuous hours config:",
-                error
-              );
-              project.continuousHoursByCategory = {};
-            }
-          } else if (typeof project.continuousHoursByCategory !== "object") {
-            project.continuousHoursByCategory = {};
-          }
-        } else {
-          project.continuousHoursByCategory = {};
-        }
-        return project;
-      });
-    } catch (error) {
-      console.error("Error getting projects:", error);
-      return [];
-    }
-  },
-
-  async deleteProject(id) {
-    await this.initDatabase();
-    try {
-      const stmt = db.prepare("DELETE FROM projects WHERE id = ?");
-      stmt.run([id]);
-      stmt.free();
-      await this.saveDatabase();
-      return true;
-    } catch (error) {
-      console.error("Error deleting project:", error);
-      throw error;
-    }
-  },
-
-  // Staff Categories
-  async saveStaffCategory(category) {
-    await this.initDatabase();
-
-    try {
-      if (category.id) {
-        const stmt = db.prepare(`
-          UPDATE staff_categories SET
-            name=?, hourly_rate=?, pm_capacity=?, design_capacity=?, construction_capacity=?,
-            updated_at=CURRENT_TIMESTAMP
-          WHERE id=?
-        `);
-
-        const params = safeBindParams([
-          category.name || "",
-          category.hourlyRate || 0,
-          category.pmCapacity || 0,
-          category.designCapacity || 0,
-          category.constructionCapacity || 0,
-          category.id,
-        ]);
-
-        stmt.run(params);
-        stmt.free();
-        await this.saveDatabase();
-        return category.id;
-      } else {
-        const stmt = db.prepare(`
-          INSERT INTO staff_categories (name, hourly_rate, pm_capacity, design_capacity, construction_capacity)
-          VALUES (?,?,?,?,?)
-        `);
-
-        const params = safeBindParams([
-          category.name || "",
-          category.hourlyRate || 0,
-          category.pmCapacity || 0,
-          category.designCapacity || 0,
-          category.constructionCapacity || 0,
-        ]);
-
-        stmt.run(params);
-        const newId = db.exec("SELECT last_insert_rowid()")[0].values[0][0];
-        stmt.free();
-        await this.saveDatabase();
-        return newId;
-      }
-    } catch (error) {
-      console.error("Error saving staff category:", error);
-      throw error;
-    }
-  },
-
-  async getStaffCategories() {
-    await this.initDatabase();
-    try {
-      const results = db.exec("SELECT * FROM staff_categories ORDER BY name");
-
-      if (!results.length) return [];
-
-      return results[0].values.map((row) => ({
-        id: row[0],
-        name: row[1],
-        hourlyRate: row[2],
-        pmCapacity: row[3],
-        designCapacity: row[4],
-        constructionCapacity: row[5],
-        createdAt: row[6],
-        updatedAt: row[7],
-      }));
-    } catch (error) {
-      console.error("Error getting staff categories:", error);
-      return [];
-    }
-  },
-
-  async deleteStaffCategory(id) {
-    await this.initDatabase();
-    try {
-      const stmt = db.prepare("DELETE FROM staff_categories WHERE id = ?");
-      stmt.run([id]);
-      stmt.free();
-      await this.saveDatabase();
-      return true;
-    } catch (error) {
-      console.error("Error deleting staff category:", error);
-      throw error;
-    }
-  },
-
-  // Project Types
-  async saveProjectType(type) {
-    await this.initDatabase();
-
-    try {
-      if (type.id) {
-        const stmt = db.prepare(
-          "UPDATE project_types SET name=?, color=?, updated_at=CURRENT_TIMESTAMP WHERE id=?"
-        );
-        const params = safeBindParams([
-          type.name || "",
-          type.color || "#3b82f6",
-          type.id,
-        ]);
-        stmt.run(params);
-        stmt.free();
-        await this.saveDatabase();
-        return type.id;
-      } else {
-        const stmt = db.prepare(
-          "INSERT INTO project_types (name, color) VALUES (?,?)"
-        );
-        const params = safeBindParams([
-          type.name || "",
-          type.color || "#3b82f6",
-        ]);
-        stmt.run(params);
-        const newId = db.exec("SELECT last_insert_rowid()")[0].values[0][0];
-        stmt.free();
-        await this.saveDatabase();
-        return newId;
-      }
-    } catch (error) {
-      console.error("Error saving project type:", error);
-      throw error;
-    }
-  },
-
-  async getProjectTypes() {
-    await this.initDatabase();
-    try {
-      const results = db.exec("SELECT * FROM project_types ORDER BY name");
-
-      if (!results.length) return [];
-
-      return results[0].values.map((row) => ({
-        id: row[0],
-        name: row[1],
-        color: row[2],
-        createdAt: row[3],
-        updatedAt: row[4],
-      }));
-    } catch (error) {
-      console.error("Error getting project types:", error);
-      return [];
-    }
-  },
-
-  async deleteProjectType(id) {
-    await this.initDatabase();
-    try {
-      const stmt = db.prepare("DELETE FROM project_types WHERE id = ?");
-      stmt.run([id]);
-      stmt.free();
-      await this.saveDatabase();
-      return true;
-    } catch (error) {
-      console.error("Error deleting project type:", error);
-      throw error;
-    }
-  },
-
-  // Funding Sources
-  async saveFundingSource(source) {
-    await this.initDatabase();
-
-    try {
-      if (source.id) {
-        const stmt = db.prepare(
-          "UPDATE funding_sources SET name=?, description=?, updated_at=CURRENT_TIMESTAMP WHERE id=?"
-        );
-        const params = safeBindParams([
-          source.name || "",
-          source.description || "",
-          source.id,
-        ]);
-        stmt.run(params);
-        stmt.free();
-        await this.saveDatabase();
-        return source.id;
-      } else {
-        const stmt = db.prepare(
-          "INSERT INTO funding_sources (name, description) VALUES (?,?)"
-        );
-        const params = safeBindParams([
-          source.name || "",
-          source.description || "",
-        ]);
-        stmt.run(params);
-        const newId = db.exec("SELECT last_insert_rowid()")[0].values[0][0];
-        stmt.free();
-        await this.saveDatabase();
-        return newId;
-      }
-    } catch (error) {
-      console.error("Error saving funding source:", error);
-      throw error;
-    }
-  },
-
-  async getFundingSources() {
-    await this.initDatabase();
-    try {
-      const results = db.exec("SELECT * FROM funding_sources ORDER BY name");
-
-      if (!results.length) return [];
-
-      return results[0].values.map((row) => ({
-        id: row[0],
-        name: row[1],
-        description: row[2],
-        createdAt: row[3],
-        updatedAt: row[4],
-      }));
-    } catch (error) {
-      console.error("Error getting funding sources:", error);
-      return [];
-    }
-  },
-
-  async deleteFundingSource(id) {
-    await this.initDatabase();
-    try {
-      const stmt = db.prepare("DELETE FROM funding_sources WHERE id = ?");
-      stmt.run([id]);
-      stmt.free();
-      await this.saveDatabase();
-      return true;
-    } catch (error) {
-      console.error("Error deleting funding source:", error);
-      throw error;
-    }
-  },
-
-  // Staff Allocations
-  async saveStaffAllocation(allocation) {
-    await this.initDatabase();
-
-    try {
-      const stmt = db.prepare(`
-        INSERT OR REPLACE INTO staff_allocations
-        (project_id, category_id, pm_hours, design_hours, construction_hours, updated_at)
-        VALUES (?,?,?,?,?,CURRENT_TIMESTAMP)
-      `);
-
-      const params = safeBindParams([
-        allocation.projectId || 0,
-        allocation.categoryId || 0,
-        allocation.pmHours || 0,
-        allocation.designHours || 0,
-        allocation.constructionHours || 0,
-      ]);
-
-      stmt.run(params);
-      stmt.free();
-      await this.saveDatabase();
-      return true;
-    } catch (error) {
-      console.error("Error saving staff allocation:", error);
-      throw error;
-    }
-  },
-
-  async getStaffAllocations() {
-    await this.initDatabase();
-    try {
-      const results = db.exec(
-        "SELECT id, project_id, category_id, pm_hours, design_hours, construction_hours, created_at, updated_at FROM staff_allocations"
-      );
-
-      if (!results.length) return [];
-
-      return results[0].values.map((row) => ({
-        id: row[0],
-        projectId: row[1],
-        categoryId: row[2],
-        pmHours: row[3] ?? 0,
-        designHours: row[4] ?? 0,
-        constructionHours: row[5] ?? 0,
-        createdAt: row[6],
-        updatedAt: row[7],
-      }));
-    } catch (error) {
-      console.error("Error getting staff allocations:", error);
-      return [];
-    }
-  },
-
-  // Staff Members
-  async saveStaffMember(member) {
-    await this.initDatabase();
-
-    try {
-      if (member.id) {
-        const stmt = db.prepare(`
-          UPDATE staff_members SET
-            name=?, category_id=?, pm_availability=?, design_availability=?, construction_availability=?,
-            updated_at=CURRENT_TIMESTAMP
-          WHERE id=?
-        `);
-
-        const params = safeBindParams([
-          member.name || "",
-          member.categoryId || null,
-          member.pmAvailability || 0,
-          member.designAvailability || 0,
-          member.constructionAvailability || 0,
-          member.id,
-        ]);
-
-        stmt.run(params);
-        stmt.free();
-        await this.saveDatabase();
-        return member.id;
-      }
-
-      const stmt = db.prepare(`
-        INSERT INTO staff_members (name, category_id, pm_availability, design_availability, construction_availability)
-        VALUES (?,?,?,?,?)
-      `);
-
-      const params = safeBindParams([
-        member.name || "",
-        member.categoryId || null,
-        member.pmAvailability || 0,
-        member.designAvailability || 0,
-        member.constructionAvailability || 0,
-      ]);
-
-      stmt.run(params);
-      const newId = db.exec("SELECT last_insert_rowid()")[0].values[0][0];
-      stmt.free();
-      await this.saveDatabase();
-      return newId;
-    } catch (error) {
-      console.error("Error saving staff member:", error);
-      throw error;
-    }
-  },
-
-  async getStaffMembers() {
-    await this.initDatabase();
-    try {
-      const results = db.exec(`
-        SELECT id, name, category_id, pm_availability, design_availability, construction_availability
-        FROM staff_members
-        ORDER BY name COLLATE NOCASE
-      `);
-
-      if (!results.length) return [];
-
-      return results[0].values.map((row) => ({
-        id: row[0],
-        name: row[1],
-        categoryId: row[2],
-        pmAvailability: row[3] ?? 0,
-        designAvailability: row[4] ?? 0,
-        constructionAvailability: row[5] ?? 0,
-      }));
-    } catch (error) {
-      console.error("Error getting staff members:", error);
-      return [];
-    }
-  },
-
-  async deleteStaffMember(id) {
-    await this.initDatabase();
-    try {
-      const stmt = db.prepare("DELETE FROM staff_members WHERE id = ?");
-      stmt.run([id]);
-      stmt.free();
-      await this.saveDatabase();
-      return true;
-    } catch (error) {
-      console.error("Error deleting staff member:", error);
-      throw error;
-    }
-  },
-
-  // Staff Assignments
-  async saveStaffAssignment(assignment) {
-    await this.initDatabase();
-
-    try {
-      const stmt = db.prepare(`
-        INSERT INTO staff_assignments (
-          project_id, staff_id, pm_hours, design_hours, construction_hours,
-          created_at, updated_at
-        ) VALUES (?,?,?,?,?,
-          COALESCE((SELECT created_at FROM staff_assignments WHERE project_id=? AND staff_id=?), CURRENT_TIMESTAMP),
-          CURRENT_TIMESTAMP
-        )
-        ON CONFLICT(project_id, staff_id) DO UPDATE SET
-          pm_hours=excluded.pm_hours,
-          design_hours=excluded.design_hours,
-          construction_hours=excluded.construction_hours,
-          updated_at=CURRENT_TIMESTAMP,
-          created_at=excluded.created_at
-      `);
-
-      const params = safeBindParams([
-        assignment.projectId || 0,
-        assignment.staffId || 0,
-        assignment.pmHours || 0,
-        assignment.designHours || 0,
-        assignment.constructionHours || 0,
-        assignment.projectId || 0,
-        assignment.staffId || 0,
-      ]);
-
-      stmt.run(params);
-      stmt.free();
-      await this.saveDatabase();
-      return true;
-    } catch (error) {
-      console.error("Error saving staff assignment:", error);
-      throw error;
-    }
-  },
-
-  async getStaffAssignments() {
-    await this.initDatabase();
-    try {
-      const results = db.exec(`
-        SELECT id, project_id, staff_id, pm_hours, design_hours, construction_hours,
-               created_at, updated_at
-        FROM staff_assignments
-        ORDER BY project_id, staff_id
-      `);
-
-      if (!results.length) {
-        return [];
-      }
-
-      return results[0].values.map((row) => ({
-        id: row[0],
-        projectId: row[1],
-        staffId: row[2],
-        pmHours: row[3] ?? 0,
-        designHours: row[4] ?? 0,
-        constructionHours: row[5] ?? 0,
-        createdAt: row[6],
-        updatedAt: row[7],
-      }));
-    } catch (error) {
-      console.error("Error getting staff assignments:", error);
-      return [];
-    }
-  },
-
-  async deleteStaffAssignment(projectId, staffId) {
-    await this.initDatabase();
-    try {
-      const stmt = db.prepare(
-        "DELETE FROM staff_assignments WHERE project_id = ? AND staff_id = ?"
-      );
-      stmt.run([projectId, staffId]);
-      stmt.free();
-      await this.saveDatabase();
-      return true;
-    } catch (error) {
-      console.error("Error deleting staff assignment:", error);
-      throw error;
-    }
-  },
-
-  // Export/Import
-  async exportDatabase() {
-    await this.initDatabase();
-    try {
-      const data = db.export();
-      return new Blob([data], { type: "application/x-sqlite3" });
-    } catch (error) {
-      console.error("Error exporting database:", error);
-      throw error;
-    }
-  },
-
-  async importDatabase(file) {
-    try {
-      await initSQL();
-      const arrayBuffer = await file.arrayBuffer();
-      const data = new Uint8Array(arrayBuffer);
-      db = new SQL.Database(data);
-      await this.saveDatabase();
-      return true;
-    } catch (error) {
-      console.error("Error importing database:", error);
-      throw error;
-    }
-  },
-};
-
-// Initialize with default data
-const initializeDatabase = async (defaultData) => {
-  try {
-    await DatabaseService.initDatabase();
-
-    // Check if database is empty
-    const [projectTypes, fundingSources, staffCategories] = await Promise.all([
-      DatabaseService.getProjectTypes(),
-      DatabaseService.getFundingSources(),
-      DatabaseService.getStaffCategories(),
-    ]);
-
-    if (
-      projectTypes.length === 0 &&
-      fundingSources.length === 0 &&
-      staffCategories.length === 0
-    ) {
-      console.log("Initializing database with default data...");
-
-      const projectTypeIdMap = {};
-      const fundingSourceIdMap = {};
-      const staffCategoryIdMap = {};
-
-      // Insert project types
-      for (const type of defaultData.projectTypes || []) {
-        const { id: originalId, name, color } = type;
-        const newId = await DatabaseService.saveProjectType({ name, color });
-        if (originalId != null) {
-          projectTypeIdMap[originalId] = newId;
-        }
-      }
-
-      // Insert funding sources
-      for (const source of defaultData.fundingSources || []) {
-        const { id: originalId, name, description } = source;
-        const newId = await DatabaseService.saveFundingSource({
-          name,
-          description,
-        });
-        if (originalId != null) {
-          fundingSourceIdMap[originalId] = newId;
-        }
-      }
-
-      // Insert staff categories
-      for (const category of defaultData.staffCategories || []) {
-        const {
-          id: originalId,
-          name,
-          hourlyRate,
-          pmCapacity,
-          designCapacity,
-          constructionCapacity,
-        } = category;
-        const newId = await DatabaseService.saveStaffCategory({
-          name,
-          hourlyRate,
-          pmCapacity,
-          designCapacity,
-          constructionCapacity,
-        });
-
-        if (originalId != null) {
-          staffCategoryIdMap[originalId] = newId;
-        }
-      }
-
-      // Insert staff members
-      for (const member of defaultData.staffMembers || []) {
-        const { id: _originalId, categoryId, ...memberData } = member;
-        await DatabaseService.saveStaffMember({
-          ...memberData,
-          categoryId: staffCategoryIdMap[categoryId] ?? categoryId ?? null,
-        });
-      }
-
-      // Insert projects
-      for (const project of defaultData.projects || []) {
-        const { id: _originalId, ...projectData } = project;
-        const mappedProject = {
-          ...projectData,
-          projectTypeId:
-            projectTypeIdMap[project.projectTypeId] ?? project.projectTypeId,
-          fundingSourceId:
-            fundingSourceIdMap[project.fundingSourceId] ?? project.fundingSourceId,
-        };
-        await DatabaseService.saveProject(mappedProject);
-      }
-
-      // Insert staff assignments
-      for (const [projectId, staffMap] of Object.entries(
-        defaultData.staffAssignments || {}
-      )) {
-        for (const [staffId, assignment] of Object.entries(staffMap || {})) {
-          await DatabaseService.saveStaffAssignment({
-            projectId: Number(projectId),
-            staffId: Number(staffId),
-            pmHours: assignment.pmHours || 0,
-            designHours: assignment.designHours || 0,
-            constructionHours: assignment.constructionHours || 0,
-          });
-        }
-      }
-
-      console.log("Database initialized successfully");
-    }
-
-    return true;
-  } catch (error) {
-    console.error("Error initializing database:", error);
-    return false;
+const serializeContinuousConfig = (config) => {
+  if (!config || typeof config !== 'object') {
+    return null;
   }
+
+  const keys = Object.keys(config);
+  if (!keys.length) {
+    return null;
+  }
+
+  return JSON.stringify(config);
 };
 
-export const useDatabase = (defaultData) => {
+const normalizeNullable = (value) =>
+  value === undefined || value === null || Number.isNaN(value) ? null : value;
+
+const projectFromRow = (row) => {
+  const camel = camelizeRecord(row);
+  camel.continuousHoursByCategory = parseJsonField(
+    camel.continuousHoursByCategory,
+    {}
+  );
+  return camel;
+};
+
+const projectToRow = (project, organizationId) => ({
+  organization_id: organizationId,
+  name: project.name || '',
+  type: project.type || 'project',
+  project_type_id: normalizeNullable(project.projectTypeId),
+  funding_source_id: normalizeNullable(project.fundingSourceId),
+  total_budget: normalizeNullable(project.totalBudget),
+  design_budget: normalizeNullable(project.designBudget),
+  construction_budget: normalizeNullable(project.constructionBudget),
+  design_duration: normalizeNullable(project.designDuration),
+  construction_duration: normalizeNullable(project.constructionDuration),
+  design_start_date: project.designStartDate || null,
+  construction_start_date: project.constructionStartDate || null,
+  annual_budget: normalizeNullable(project.annualBudget),
+  design_budget_percent: normalizeNullable(project.designBudgetPercent),
+  construction_budget_percent: normalizeNullable(project.constructionBudgetPercent),
+  continuous_pm_hours: normalizeNullable(project.continuousPmHours),
+  continuous_design_hours: normalizeNullable(project.continuousDesignHours),
+  continuous_construction_hours: normalizeNullable(project.continuousConstructionHours),
+  continuous_hours_by_category: serializeContinuousConfig(
+    project.continuousHoursByCategory
+  ),
+  program_start_date: project.programStartDate || null,
+  program_end_date: project.programEndDate || null,
+  priority: project.priority || 'Medium',
+  description: project.description || '',
+  delivery_type: project.deliveryType || 'self-perform',
+});
+
+const staffCategoryFromRow = (row) => camelizeRecord(row);
+
+const staffCategoryToRow = (category, organizationId) => ({
+  organization_id: organizationId,
+  name: category.name || '',
+  hourly_rate: normalizeNullable(category.hourlyRate) ?? 0,
+  pm_capacity: normalizeNullable(category.pmCapacity) ?? 0,
+  design_capacity: normalizeNullable(category.designCapacity) ?? 0,
+  construction_capacity: normalizeNullable(category.constructionCapacity) ?? 0,
+});
+
+const staffMemberFromRow = (row) => camelizeRecord(row);
+
+const staffMemberToRow = (member, organizationId) => ({
+  organization_id: organizationId,
+  name: member.name || '',
+  category_id: normalizeNullable(member.categoryId),
+  pm_availability: normalizeNullable(member.pmAvailability) ?? 0,
+  design_availability: normalizeNullable(member.designAvailability) ?? 0,
+  construction_availability: normalizeNullable(member.constructionAvailability) ?? 0,
+});
+
+const staffAllocationFromRow = (row) => camelizeRecord(row);
+
+const staffAllocationToRow = (allocation, organizationId) => ({
+  organization_id: organizationId,
+  project_id: normalizeNullable(allocation.projectId),
+  category_id: normalizeNullable(allocation.categoryId),
+  pm_hours: normalizeNullable(allocation.pmHours) ?? 0,
+  design_hours: normalizeNullable(allocation.designHours) ?? 0,
+  construction_hours: normalizeNullable(allocation.constructionHours) ?? 0,
+});
+
+const staffAssignmentFromRow = (row) => camelizeRecord(row);
+
+const staffAssignmentToRow = (assignment, organizationId) => ({
+  organization_id: organizationId,
+  project_id: normalizeNullable(assignment.projectId),
+  staff_id: normalizeNullable(assignment.staffId),
+  pm_hours: normalizeNullable(assignment.pmHours) ?? 0,
+  design_hours: normalizeNullable(assignment.designHours) ?? 0,
+  construction_hours: normalizeNullable(assignment.constructionHours) ?? 0,
+});
+
+const buildErrorMessage = (error, fallback) =>
+  error?.message || fallback || 'Unexpected database error.';
+
+export const useDatabase = (defaultData = {}) => {
+  const { activeOrganizationId, canEditActiveOrg, authLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState(null);
 
-  // Initialize database
+  const organizationId = activeOrganizationId;
+
+  const assertReady = useCallback(() => {
+    if (!supabase) {
+      const message =
+        'Supabase client is not configured. Ensure environment variables are provided.';
+      setError(message);
+      throw new Error(message);
+    }
+
+    if (!organizationId) {
+      throw new Error('No active organization selected.');
+    }
+  }, [organizationId]);
+
+  const assertCanEdit = useCallback(() => {
+    if (!canEditActiveOrg) {
+      throw new Error('You do not have permission to modify this organization.');
+    }
+  }, [canEditActiveOrg]);
+
+  const ensureSeedData = useCallback(async () => {
+    if (!defaultData || !organizationId || !supabase) {
+      return;
+    }
+
+    const ensureEntries = async (table, builder) => {
+      const { count, error: countError } = await supabase
+        .from(table)
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', organizationId);
+
+      if (countError) {
+        throw countError;
+      }
+
+      if ((count ?? 0) > 0) {
+        const { data, error: fetchError } = await supabase
+          .from(table)
+          .select('*')
+          .eq('organization_id', organizationId);
+
+        if (fetchError) {
+          throw fetchError;
+        }
+
+        return data || [];
+      }
+
+      const payload = builder();
+      if (!payload || !payload.length) {
+        return [];
+      }
+
+      const { data, error: insertError } = await supabase
+        .from(table)
+        .insert(payload)
+        .select();
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      return data || [];
+    };
+
+    const projectTypes = await ensureEntries('project_types', () =>
+      (defaultData.projectTypes || []).map((type) => ({
+        organization_id: organizationId,
+        name: type.name,
+        color: type.color,
+      }))
+    );
+
+    const fundingSources = await ensureEntries('funding_sources', () =>
+      (defaultData.fundingSources || []).map((source) => ({
+        organization_id: organizationId,
+        name: source.name,
+        description: source.description || null,
+      }))
+    );
+
+    const staffCategories = await ensureEntries('staff_categories', () =>
+      (defaultData.staffCategories || []).map((category) => ({
+        organization_id: organizationId,
+        name: category.name,
+        hourly_rate: category.hourlyRate ?? 0,
+        pm_capacity: category.pmCapacity ?? 0,
+        design_capacity: category.designCapacity ?? 0,
+        construction_capacity: category.constructionCapacity ?? 0,
+      }))
+    );
+
+    const categoryIdByName = new Map(
+      (staffCategories || []).map((category) => [category.name, category.id])
+    );
+    const projectTypeIdByName = new Map(
+      (projectTypes || []).map((type) => [type.name, type.id])
+    );
+    const fundingSourceIdByName = new Map(
+      (fundingSources || []).map((source) => [source.name, source.id])
+    );
+
+    await ensureEntries('staff_members', () =>
+      (defaultData.staffMembers || []).map((member) => ({
+        organization_id: organizationId,
+        name: member.name,
+        category_id: member.categoryId
+          ? categoryIdByName.get(
+              (defaultData.staffCategories || []).find(
+                (category) => String(category.id) === String(member.categoryId)
+              )?.name || ''
+            ) || null
+          : null,
+        pm_availability: member.pmAvailability ?? 0,
+        design_availability: member.designAvailability ?? 0,
+        construction_availability: member.constructionAvailability ?? 0,
+      }))
+    );
+
+    await ensureEntries('projects', () =>
+      (defaultData.projects || []).map((project) => {
+        const projectTypeName = (defaultData.projectTypes || []).find(
+          (type) => String(type.id) === String(project.projectTypeId)
+        )?.name;
+        const fundingSourceName = (defaultData.fundingSources || []).find(
+          (source) => String(source.id) === String(project.fundingSourceId)
+        )?.name;
+
+        const remappedContinuous = {};
+        if (
+          project.type === 'program' &&
+          project.continuousHoursByCategory &&
+          typeof project.continuousHoursByCategory === 'object'
+        ) {
+          Object.entries(project.continuousHoursByCategory).forEach(([key, value]) => {
+            const categoryName = (defaultData.staffCategories || []).find(
+              (category) => String(category.id) === String(key)
+            )?.name;
+            const categoryId = categoryName
+              ? categoryIdByName.get(categoryName)
+              : null;
+
+            if (categoryId && value && typeof value === 'object') {
+              remappedContinuous[categoryId] = value;
+            }
+          });
+        }
+
+        return {
+          organization_id: organizationId,
+          name: project.name,
+          type: project.type || 'project',
+          project_type_id: projectTypeName
+            ? projectTypeIdByName.get(projectTypeName) || null
+            : null,
+          funding_source_id: fundingSourceName
+            ? fundingSourceIdByName.get(fundingSourceName) || null
+            : null,
+          total_budget: project.totalBudget ?? null,
+          design_budget: project.designBudget ?? null,
+          construction_budget: project.constructionBudget ?? null,
+          design_duration: project.designDuration ?? null,
+          construction_duration: project.constructionDuration ?? null,
+          design_start_date: project.designStartDate || null,
+          construction_start_date: project.constructionStartDate || null,
+          annual_budget: project.annualBudget ?? null,
+          design_budget_percent: project.designBudgetPercent ?? null,
+          construction_budget_percent: project.constructionBudgetPercent ?? null,
+          continuous_pm_hours: project.continuousPmHours ?? null,
+          continuous_design_hours: project.continuousDesignHours ?? null,
+          continuous_construction_hours: project.continuousConstructionHours ?? null,
+          continuous_hours_by_category:
+            Object.keys(remappedContinuous).length > 0
+              ? JSON.stringify(remappedContinuous)
+              : null,
+          program_start_date: project.programStartDate || null,
+          program_end_date: project.programEndDate || null,
+          priority: project.priority || 'Medium',
+          description: project.description || '',
+          delivery_type: project.deliveryType || 'self-perform',
+        };
+      })
+    );
+  }, [defaultData, organizationId]);
+
   useEffect(() => {
-    const init = async () => {
-      try {
-        setIsLoading(true);
-        await initializeDatabase(defaultData);
-        setIsInitialized(true);
-        setError(null);
-      } catch (err) {
-        console.error("Database initialization error:", err);
-        setError(err.message);
-      } finally {
+    let cancelled = false;
+
+    const initialise = async () => {
+      if (authLoading) {
+        return;
+      }
+
+      if (!supabase || !organizationId) {
+        setIsInitialized(false);
         setIsLoading(false);
+        return;
       }
-    };
 
-    init();
-  }, []);
-
-  // Database operations with error handling
-  const withErrorHandling = useCallback((operation) => {
-    return async (...args) => {
+      setIsLoading(true);
       try {
-        return await operation(...args);
-      } catch (err) {
-        console.error("Database operation error:", err);
-        setError(err.message);
-        throw err;
+        await ensureSeedData();
+        if (!cancelled) {
+          setIsInitialized(true);
+          setError(null);
+        }
+      } catch (initializationError) {
+        if (!cancelled) {
+          setIsInitialized(false);
+          setError(buildErrorMessage(initializationError, 'Failed to initialise data.'));
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     };
-  }, []);
 
-  const clearError = useCallback(() => {
-    setError(null);
-  }, []);
+    initialise();
 
-  const operations = useMemo(
-    () => ({
-      saveProject: withErrorHandling(
-        DatabaseService.saveProject.bind(DatabaseService)
-      ),
-      getProjects: withErrorHandling(
-        DatabaseService.getProjects.bind(DatabaseService)
-      ),
-      deleteProject: withErrorHandling(
-        DatabaseService.deleteProject.bind(DatabaseService)
-      ),
-      saveStaffCategory: withErrorHandling(
-        DatabaseService.saveStaffCategory.bind(DatabaseService)
-      ),
-      getStaffCategories: withErrorHandling(
-        DatabaseService.getStaffCategories.bind(DatabaseService)
-      ),
-      deleteStaffCategory: withErrorHandling(
-        DatabaseService.deleteStaffCategory.bind(DatabaseService)
-      ),
-      saveProjectType: withErrorHandling(
-        DatabaseService.saveProjectType.bind(DatabaseService)
-      ),
-      getProjectTypes: withErrorHandling(
-        DatabaseService.getProjectTypes.bind(DatabaseService)
-      ),
-      deleteProjectType: withErrorHandling(
-        DatabaseService.deleteProjectType.bind(DatabaseService)
-      ),
-      saveFundingSource: withErrorHandling(
-        DatabaseService.saveFundingSource.bind(DatabaseService)
-      ),
-      getFundingSources: withErrorHandling(
-        DatabaseService.getFundingSources.bind(DatabaseService)
-      ),
-      deleteFundingSource: withErrorHandling(
-        DatabaseService.deleteFundingSource.bind(DatabaseService)
-      ),
-      saveStaffAllocation: withErrorHandling(
-        DatabaseService.saveStaffAllocation.bind(DatabaseService)
-      ),
-      getStaffAllocations: withErrorHandling(
-        DatabaseService.getStaffAllocations.bind(DatabaseService)
-      ),
-      saveStaffMember: withErrorHandling(
-        DatabaseService.saveStaffMember.bind(DatabaseService)
-      ),
-      getStaffMembers: withErrorHandling(
-        DatabaseService.getStaffMembers.bind(DatabaseService)
-      ),
-      deleteStaffMember: withErrorHandling(
-        DatabaseService.deleteStaffMember.bind(DatabaseService)
-      ),
-      saveStaffAssignment: withErrorHandling(
-        DatabaseService.saveStaffAssignment.bind(DatabaseService)
-      ),
-      getStaffAssignments: withErrorHandling(
-        DatabaseService.getStaffAssignments.bind(DatabaseService)
-      ),
-      deleteStaffAssignment: withErrorHandling(
-        DatabaseService.deleteStaffAssignment.bind(DatabaseService)
-      ),
-      exportDatabase: withErrorHandling(
-        DatabaseService.exportDatabase.bind(DatabaseService)
-      ),
-      importDatabase: withErrorHandling(
-        DatabaseService.importDatabase.bind(DatabaseService)
-      ),
-    }),
-    [withErrorHandling]
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, organizationId, ensureSeedData]);
+
+  const clearError = useCallback(() => setError(null), []);
+
+  const saveProject = useCallback(
+    async (project) => {
+      assertReady();
+      assertCanEdit();
+
+      const payload = projectToRow(project, organizationId);
+      const { organization_id, ...updatePayload } = payload;
+
+      if (project.id) {
+        const { error: updateError } = await supabase
+          .from('projects')
+          .update(updatePayload)
+          .eq('id', project.id)
+          .eq('organization_id', organizationId);
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        return project.id;
+      }
+
+      const { data, error: insertError } = await supabase
+        .from('projects')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      return data?.id;
+    },
+    [organizationId, assertReady, assertCanEdit]
   );
 
-  return {
-    // State
-    isLoading,
-    isInitialized,
-    error,
-    clearError,
+  const getProjects = useCallback(async () => {
+    assertReady();
+    const { data, error: fetchError } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('updated_at', { ascending: false });
 
-    // Operations
-    ...operations,
-  };
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    return (data || []).map(projectFromRow);
+  }, [organizationId, assertReady]);
+
+  const deleteProject = useCallback(
+    async (id) => {
+      assertReady();
+      assertCanEdit();
+
+      const { error: deleteError } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', id)
+        .eq('organization_id', organizationId);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      return true;
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
+  const saveProjectType = useCallback(
+    async (type) => {
+      assertReady();
+      assertCanEdit();
+
+      const payload = {
+        organization_id: organizationId,
+        name: type.name || 'New Type',
+        color: type.color || '#3b82f6',
+      };
+
+      if (type.id) {
+        const { error: updateError } = await supabase
+          .from('project_types')
+          .update({ name: payload.name, color: payload.color })
+          .eq('id', type.id)
+          .eq('organization_id', organizationId);
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        return type.id;
+      }
+
+      const { data, error: insertError } = await supabase
+        .from('project_types')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      return data?.id;
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
+  const getProjectTypes = useCallback(async () => {
+    assertReady();
+    const { data, error: fetchError } = await supabase
+      .from('project_types')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('name', { ascending: true });
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    return (data || []).map(camelizeRecord);
+  }, [organizationId, assertReady]);
+
+  const deleteProjectType = useCallback(
+    async (id) => {
+      assertReady();
+      assertCanEdit();
+
+      const { error: deleteError } = await supabase
+        .from('project_types')
+        .delete()
+        .eq('id', id)
+        .eq('organization_id', organizationId);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      return true;
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
+  const saveFundingSource = useCallback(
+    async (source) => {
+      assertReady();
+      assertCanEdit();
+
+      const payload = {
+        organization_id: organizationId,
+        name: source.name || 'New Funding Source',
+        description: source.description || null,
+      };
+
+      if (source.id) {
+        const { error: updateError } = await supabase
+          .from('funding_sources')
+          .update({ name: payload.name, description: payload.description })
+          .eq('id', source.id)
+          .eq('organization_id', organizationId);
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        return source.id;
+      }
+
+      const { data, error: insertError } = await supabase
+        .from('funding_sources')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      return data?.id;
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
+  const getFundingSources = useCallback(async () => {
+    assertReady();
+    const { data, error: fetchError } = await supabase
+      .from('funding_sources')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('name', { ascending: true });
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    return (data || []).map(camelizeRecord);
+  }, [organizationId, assertReady]);
+
+  const deleteFundingSource = useCallback(
+    async (id) => {
+      assertReady();
+      assertCanEdit();
+
+      const { error: deleteError } = await supabase
+        .from('funding_sources')
+        .delete()
+        .eq('id', id)
+        .eq('organization_id', organizationId);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      return true;
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
+  const saveStaffCategory = useCallback(
+    async (category) => {
+      assertReady();
+      assertCanEdit();
+
+      const payload = staffCategoryToRow(category, organizationId);
+      const { organization_id, ...updatePayload } = payload;
+
+      if (category.id) {
+        const { error: updateError } = await supabase
+          .from('staff_categories')
+          .update(updatePayload)
+          .eq('id', category.id)
+          .eq('organization_id', organizationId);
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        return category.id;
+      }
+
+      const { data, error: insertError } = await supabase
+        .from('staff_categories')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      return data?.id;
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
+  const getStaffCategories = useCallback(async () => {
+    assertReady();
+    const { data, error: fetchError } = await supabase
+      .from('staff_categories')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('name', { ascending: true });
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    return (data || []).map(staffCategoryFromRow);
+  }, [organizationId, assertReady]);
+
+  const deleteStaffCategory = useCallback(
+    async (id) => {
+      assertReady();
+      assertCanEdit();
+
+      const { error: deleteError } = await supabase
+        .from('staff_categories')
+        .delete()
+        .eq('id', id)
+        .eq('organization_id', organizationId);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      return true;
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
+  const saveStaffMember = useCallback(
+    async (member) => {
+      assertReady();
+      assertCanEdit();
+
+      const payload = staffMemberToRow(member, organizationId);
+      const { organization_id, ...updatePayload } = payload;
+
+      if (member.id) {
+        const { error: updateError } = await supabase
+          .from('staff_members')
+          .update(updatePayload)
+          .eq('id', member.id)
+          .eq('organization_id', organizationId);
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        return member.id;
+      }
+
+      const { data, error: insertError } = await supabase
+        .from('staff_members')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      return data?.id;
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
+  const getStaffMembers = useCallback(async () => {
+    assertReady();
+    const { data, error: fetchError } = await supabase
+      .from('staff_members')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('name', { ascending: true });
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    return (data || []).map(staffMemberFromRow);
+  }, [organizationId, assertReady]);
+
+  const deleteStaffMember = useCallback(
+    async (id) => {
+      assertReady();
+      assertCanEdit();
+
+      const { error: deleteError } = await supabase
+        .from('staff_members')
+        .delete()
+        .eq('id', id)
+        .eq('organization_id', organizationId);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      return true;
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
+  const saveStaffAllocation = useCallback(
+    async (allocation) => {
+      assertReady();
+      assertCanEdit();
+
+      const payload = staffAllocationToRow(allocation, organizationId);
+      const { organization_id, project_id, category_id, ...updatePayload } = payload;
+
+      const { data: existing, error: existingError } = await supabase
+        .from('staff_allocations')
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('project_id', project_id)
+        .eq('category_id', category_id)
+        .limit(1);
+
+      if (existingError) {
+        throw existingError;
+      }
+
+      if (existing && existing.length) {
+        const { error: updateError } = await supabase
+          .from('staff_allocations')
+          .update(updatePayload)
+          .eq('id', existing[0].id)
+          .eq('organization_id', organizationId);
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        return existing[0].id;
+      }
+
+      const { data, error: insertError } = await supabase
+        .from('staff_allocations')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      return data?.id;
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
+  const getStaffAllocations = useCallback(async () => {
+    assertReady();
+    const { data, error: fetchError } = await supabase
+      .from('staff_allocations')
+      .select('*')
+      .eq('organization_id', organizationId);
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    return (data || []).map(staffAllocationFromRow);
+  }, [organizationId, assertReady]);
+
+  const saveStaffAssignment = useCallback(
+    async (assignment) => {
+      assertReady();
+      assertCanEdit();
+
+      const payload = staffAssignmentToRow(assignment, organizationId);
+      const { organization_id, project_id, staff_id, ...updatePayload } = payload;
+
+      const { data: existing, error: existingError } = await supabase
+        .from('staff_assignments')
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('project_id', project_id)
+        .eq('staff_id', staff_id)
+        .limit(1);
+
+      if (existingError) {
+        throw existingError;
+      }
+
+      if (existing && existing.length) {
+        const { error: updateError } = await supabase
+          .from('staff_assignments')
+          .update(updatePayload)
+          .eq('id', existing[0].id)
+          .eq('organization_id', organizationId);
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        return existing[0].id;
+      }
+
+      const { data, error: insertError } = await supabase
+        .from('staff_assignments')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      return data?.id;
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
+  const getStaffAssignments = useCallback(async () => {
+    assertReady();
+    const { data, error: fetchError } = await supabase
+      .from('staff_assignments')
+      .select('*')
+      .eq('organization_id', organizationId);
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    return (data || []).map(staffAssignmentFromRow);
+  }, [organizationId, assertReady]);
+
+  const deleteStaffAssignment = useCallback(
+    async (id) => {
+      assertReady();
+      assertCanEdit();
+
+      const { error: deleteError } = await supabase
+        .from('staff_assignments')
+        .delete()
+        .eq('id', id)
+        .eq('organization_id', organizationId);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      return true;
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
+  const exportDatabase = useCallback(async () => {
+    assertReady();
+
+    const fetchTable = async (table) => {
+      const { data, error: fetchError } = await supabase
+        .from(table)
+        .select('*')
+        .eq('organization_id', organizationId);
+
+      if (fetchError) {
+        throw fetchError;
+      }
+
+      return data || [];
+    };
+
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      organizationId,
+      data: {
+        projects: await fetchTable('projects'),
+        projectTypes: await fetchTable('project_types'),
+        fundingSources: await fetchTable('funding_sources'),
+        staffCategories: await fetchTable('staff_categories'),
+        staffMembers: await fetchTable('staff_members'),
+        staffAllocations: await fetchTable('staff_allocations'),
+        staffAssignments: await fetchTable('staff_assignments'),
+      },
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: 'application/json',
+    });
+
+    return blob;
+  }, [organizationId, assertReady]);
+
+  const importDatabase = useCallback(async () => {
+    throw new Error('Importing data is not supported in the Supabase mode yet.');
+  }, []);
+
+  return useMemo(
+    () => ({
+      isLoading,
+      isInitialized,
+      error,
+      clearError,
+      saveProject,
+      getProjects,
+      deleteProject,
+      saveProjectType,
+      getProjectTypes,
+      deleteProjectType,
+      saveFundingSource,
+      getFundingSources,
+      deleteFundingSource,
+      saveStaffCategory,
+      getStaffCategories,
+      deleteStaffCategory,
+      saveStaffAllocation,
+      getStaffAllocations,
+      saveStaffMember,
+      getStaffMembers,
+      deleteStaffMember,
+      saveStaffAssignment,
+      getStaffAssignments,
+      deleteStaffAssignment,
+      exportDatabase,
+      importDatabase,
+    }),
+    [
+      isLoading,
+      isInitialized,
+      error,
+      clearError,
+      saveProject,
+      getProjects,
+      deleteProject,
+      saveProjectType,
+      getProjectTypes,
+      deleteProjectType,
+      saveFundingSource,
+      getFundingSources,
+      deleteFundingSource,
+      saveStaffCategory,
+      getStaffCategories,
+      deleteStaffCategory,
+      saveStaffAllocation,
+      getStaffAllocations,
+      saveStaffMember,
+      getStaffMembers,
+      deleteStaffMember,
+      saveStaffAssignment,
+      getStaffAssignments,
+      deleteStaffAssignment,
+      exportDatabase,
+      importDatabase,
+    ]
+  );
 };

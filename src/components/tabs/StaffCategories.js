@@ -8,6 +8,7 @@ const StaffCategories = ({
   deleteStaffCategory,
   capacityWarnings = {},
   maxMonthlyFteHours = 2080 / 12,
+  isReadOnly = false,
 }) => {
   return (
     <div className="bg-white rounded-lg shadow-sm">
@@ -15,7 +16,12 @@ const StaffCategories = ({
         <h2 className="text-xl font-semibold">Staff Categories</h2>
         <button
           onClick={addStaffCategory}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+          disabled={isReadOnly}
+          className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
+            isReadOnly
+              ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+              : 'bg-blue-600 text-white hover:bg-blue-700'
+          }`}
         >
           <Plus size={16} />
           Add Category
@@ -58,7 +64,12 @@ const StaffCategories = ({
                             e.target.value
                           )
                         }
-                        className="w-full border border-gray-300 rounded px-2 py-1"
+                        disabled={isReadOnly}
+                        className={`w-full border rounded px-2 py-1 ${
+                          isReadOnly
+                            ? 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                            : 'border-gray-300'
+                        }`}
                       />
                     </td>
                     <td className="p-4">
@@ -72,7 +83,12 @@ const StaffCategories = ({
                             parseFloat(e.target.value)
                           )
                         }
-                        className="w-24 border border-gray-300 rounded px-2 py-1"
+                        disabled={isReadOnly}
+                        className={`w-24 border rounded px-2 py-1 ${
+                          isReadOnly
+                            ? 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                            : 'border-gray-300'
+                        }`}
                         min="0"
                         step="0.01"
                       />
@@ -88,7 +104,12 @@ const StaffCategories = ({
                             parseFloat(e.target.value)
                           )
                         }
-                        className="w-24 border border-gray-300 rounded px-2 py-1"
+                        disabled={isReadOnly}
+                        className={`w-24 border rounded px-2 py-1 ${
+                          isReadOnly
+                            ? 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                            : 'border-gray-300'
+                        }`}
                         min="0"
                         step="0.01"
                       />
@@ -104,7 +125,12 @@ const StaffCategories = ({
                             parseFloat(e.target.value)
                           )
                         }
-                        className="w-24 border border-gray-300 rounded px-2 py-1"
+                        disabled={isReadOnly}
+                        className={`w-24 border rounded px-2 py-1 ${
+                          isReadOnly
+                            ? 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                            : 'border-gray-300'
+                        }`}
                         min="0"
                         step="0.01"
                       />
@@ -120,7 +146,12 @@ const StaffCategories = ({
                             parseFloat(e.target.value)
                           )
                         }
-                        className="w-24 border border-gray-300 rounded px-2 py-1"
+                        disabled={isReadOnly}
+                        className={`w-24 border rounded px-2 py-1 ${
+                          isReadOnly
+                            ? 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                            : 'border-gray-300'
+                        }`}
                         min="0"
                         step="0.01"
                       />
@@ -139,7 +170,12 @@ const StaffCategories = ({
                     <td className="p-4">
                       <button
                         onClick={() => deleteStaffCategory(category.id)}
-                        className="text-red-600 hover:text-red-800"
+                        disabled={isReadOnly}
+                        className={`hover:text-red-800 ${
+                          isReadOnly
+                            ? 'text-gray-300 cursor-not-allowed'
+                            : 'text-red-600'
+                        }`}
                       >
                         <Trash2 size={16} />
                       </button>

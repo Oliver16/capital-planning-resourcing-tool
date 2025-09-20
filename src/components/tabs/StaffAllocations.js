@@ -45,7 +45,13 @@ const formatBudgetAmount = (budget) => {
   return numericBudget.toLocaleString();
 };
 
-const HoursInput = ({ value, onValueChange, durationMonths, label }) => {
+const HoursInput = ({
+  value,
+  onValueChange,
+  durationMonths,
+  label,
+  disabled = false,
+}) => {
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [monthlyHours, setMonthlyHours] = useState("");
   const [draftValue, setDraftValue] = useState("");
@@ -97,6 +103,10 @@ const HoursInput = ({ value, onValueChange, durationMonths, label }) => {
   }, [isCalculatorOpen]);
 
   const openCalculator = () => {
+    if (disabled) {
+      return;
+    }
+
     setDraftValue(sanitizedValue);
     setIsCalculatorOpen(true);
 
@@ -115,6 +125,10 @@ const HoursInput = ({ value, onValueChange, durationMonths, label }) => {
   };
 
   const handleManualChange = (event) => {
+    if (disabled) {
+      return;
+    }
+
     const rawValue = event.target.value;
     if (/^\d*(\.\d*)?$/.test(rawValue)) {
       setDraftValue(rawValue);
@@ -165,7 +179,8 @@ const HoursInput = ({ value, onValueChange, durationMonths, label }) => {
         onFocus={openCalculator}
         onClick={openCalculator}
         onChange={handleManualChange}
-        className="w-24 rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+        disabled={disabled}
+        className="w-24 rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:bg-gray-100"
       />
       {isCalculatorOpen && (
         <div className="absolute left-0 z-20 mt-2 w-60 rounded-md border border-gray-200 bg-white p-3 text-sm shadow-lg">
@@ -206,7 +221,7 @@ const HoursInput = ({ value, onValueChange, durationMonths, label }) => {
               <button
                 type="button"
                 onClick={applyMonthlyHours}
-                disabled={isApplyDisabled}
+                disabled={isApplyDisabled || disabled}
                 className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
               >
                 Apply
@@ -608,7 +623,11 @@ const StaffAllocations = ({
                                 </div>
                               )}
 
-                              <div className="overflow-x-auto">
+                              <div
+                                className={`overflow-x-auto ${
+                                  isReadOnly ? "pointer-events-none opacity-60" : ""
+                                }`}
+                              >
                                 <table className="w-full">
                                   <thead className="bg-gray-50">
                                     <tr>
@@ -687,6 +706,7 @@ const StaffAllocations = ({
                                               }
                                               durationMonths={totalDuration}
                                               label="PM Hours"
+                                              disabled={isReadOnly}
                                             />
                                           </td>
                                           <td className="p-3">
@@ -705,6 +725,7 @@ const StaffAllocations = ({
                                               }
                                               durationMonths={project.designDuration}
                                               label="Design Hours"
+                                              disabled={isReadOnly}
                                             />
                                           </td>
                                           <td className="p-3">
@@ -723,6 +744,7 @@ const StaffAllocations = ({
                                               }
                                               durationMonths={project.constructionDuration}
                                               label="Construction Hours"
+                                              disabled={isReadOnly}
                                             />
                                           </td>
                                           <td className="p-3">

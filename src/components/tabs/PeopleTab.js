@@ -10,6 +10,7 @@ const PeopleTab = ({
   updateStaffMember,
   deleteStaffMember,
   staffAvailabilityByCategory,
+  isReadOnly = false,
 }) => {
   const categorySummary = useMemo(() => {
     const summaries = staffCategories.map((category) => {
@@ -70,6 +71,11 @@ const PeopleTab = ({
 
   return (
     <div className="space-y-6">
+      {isReadOnly && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          You have view-only access. Editing controls are disabled for this organization.
+        </div>
+      )}
       <div className="bg-white p-6 rounded-lg shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
@@ -94,10 +100,16 @@ const PeopleTab = ({
             <button
               type="button"
               onClick={addStaffMember}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-              disabled={staffCategories.length === 0}
+              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-white transition ${
+                isReadOnly
+                  ? 'bg-gray-300 cursor-not-allowed'
+                  : 'bg-blue-600 hover:bg-blue-700'
+              }`}
+              disabled={isReadOnly || staffCategories.length === 0}
               title={
-                staffCategories.length === 0
+                isReadOnly
+                  ? "Editing is disabled in view-only mode"
+                  : staffCategories.length === 0
                   ? "Add a staff category before adding people"
                   : "Add staff member"
               }
@@ -117,7 +129,11 @@ const PeopleTab = ({
           </span>
         </div>
         {staffMembers.length > 0 ? (
-          <div className="overflow-x-auto">
+          <div
+            className={`overflow-x-auto ${
+              isReadOnly ? 'pointer-events-none opacity-70' : ''
+            }`}
+          >
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
@@ -228,7 +244,12 @@ const PeopleTab = ({
                         <button
                           type="button"
                           onClick={() => deleteStaffMember(member.id)}
-                          className="inline-flex items-center gap-2 rounded border border-red-200 bg-red-50 px-3 py-1.5 text-sm text-red-600 hover:bg-red-100"
+                          disabled={isReadOnly}
+                          className={`inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm transition ${
+                            isReadOnly
+                              ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                              : 'border-red-200 bg-red-50 text-red-600 hover:bg-red-100'
+                          }`}
                         >
                           <Trash2 size={14} />
                           Remove
