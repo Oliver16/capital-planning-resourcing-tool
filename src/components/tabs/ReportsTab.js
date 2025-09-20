@@ -1,9 +1,16 @@
 import React, { useMemo } from "react";
-import { AlertTriangle, BarChart3, DownloadCloud, FileSpreadsheet } from "lucide-react";
+import {
+  AlertTriangle,
+  BarChart3,
+  DownloadCloud,
+  FileSpreadsheet,
+  FileText,
+} from "lucide-react";
 import {
   buildCipEffortReport,
   buildCipReport,
   buildGapAnalysisReport,
+  downloadGapAnalysisPdf,
   downloadReport,
   formatReportMeta,
 } from "../../utils/reports";
@@ -15,6 +22,7 @@ const ReportCard = ({
   stats = [],
   buttonLabel,
   onDownload,
+  actions = [],
 }) => (
   <div className="flex flex-col justify-between rounded-lg border border-gray-100 bg-white p-6 shadow-sm">
     <div>
@@ -42,14 +50,32 @@ const ReportCard = ({
       ) : (
         <p className="text-sm text-gray-500">No summary data available yet.</p>
       )}
-      <button
-        type="button"
-        onClick={onDownload}
-        className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
-      >
-        <DownloadCloud size={16} />
-        {buttonLabel}
-      </button>
+      <div className="flex flex-wrap gap-2">
+        {(actions.length > 0
+          ? actions
+          : buttonLabel && onDownload
+            ? [
+                {
+                  label: buttonLabel,
+                  onClick: onDownload,
+                },
+              ]
+            : []
+        ).map((action) => {
+          const ActionIcon = action.icon || DownloadCloud;
+          return (
+            <button
+              key={action.label}
+              type="button"
+              onClick={action.onClick}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+            >
+              <ActionIcon size={16} />
+              {action.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   </div>
 );
@@ -200,8 +226,12 @@ const ReportsTab = ({
           description="Portfolio-level export summarizing each project and program with schedule, budget, and delivery details."
           icon={FileSpreadsheet}
           stats={cipStats}
-          buttonLabel="Download CIP CSV"
-          onDownload={() => downloadReport(cipReport)}
+          actions={[
+            {
+              label: "Download CIP CSV",
+              onClick: () => downloadReport(cipReport),
+            },
+          ]}
         />
 
         <ReportCard
@@ -209,8 +239,12 @@ const ReportsTab = ({
           description="Detailed view of planned hours, FTE, and costs for every project-category combination to support resource planning."
           icon={BarChart3}
           stats={cipEffortStats}
-          buttonLabel="Download Effort CSV"
-          onDownload={() => downloadReport(cipEffortReport)}
+          actions={[
+            {
+              label: "Download Effort CSV",
+              onClick: () => downloadReport(cipEffortReport),
+            },
+          ]}
         />
 
         <ReportCard
@@ -218,8 +252,18 @@ const ReportsTab = ({
           description="Month-by-month shortage report highlighting where demand exceeds available staffing capacity."
           icon={AlertTriangle}
           stats={gapStats}
-          buttonLabel="Download Gap CSV"
-          onDownload={() => downloadReport(gapReport)}
+          actions={[
+            {
+              label: "Download Gap CSV",
+              icon: FileSpreadsheet,
+              onClick: () => downloadReport(gapReport),
+            },
+            {
+              label: "Download Gap PDF",
+              icon: FileText,
+              onClick: () => downloadGapAnalysisPdf(gapReport),
+            },
+          ]}
         />
       </div>
     </div>
