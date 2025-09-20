@@ -671,7 +671,7 @@ const ProjectsPrograms = ({
                           {projectCount} {projectCount === 1 ? "project" : "projects"}
                         </span>
                       </div>
-                      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                      <div className="grid gap-6 lg:grid-cols-2">
                         {group.projects.map((project) => (
                           <ProjectCard
                             key={project.id}
@@ -697,7 +697,7 @@ const ProjectsPrograms = ({
                           {programCount} {programCount === 1 ? "program" : "programs"}
                         </span>
                       </div>
-                      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                      <div className="grid gap-6 lg:grid-cols-2">
                         {group.programs.map((program) => (
                           <ProgramCard
                             key={program.id}
