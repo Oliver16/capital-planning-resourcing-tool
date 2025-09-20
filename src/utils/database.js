@@ -77,6 +77,20 @@ class CapitalPlanningDB extends Dexie {
             project.continuousPmHours = project.continuousPmHours || 0;
           });
       });
+
+    this.version(5).stores({
+      projects:
+        "++id, name, type, projectTypeId, fundingSourceId, deliveryType, totalBudget, designBudget, constructionBudget, designDuration, constructionDuration, designStartDate, constructionStartDate, priority, description, annualBudget, designBudgetPercent, constructionBudgetPercent, continuousPmHours, continuousDesignHours, continuousConstructionHours, programStartDate, programEndDate, createdAt, updatedAt",
+      staffCategories:
+        "++id, name, hourlyRate, designCapacity, constructionCapacity, createdAt, updatedAt",
+      projectTypes: "++id, name, color, createdAt, updatedAt",
+      fundingSources: "++id, name, description, createdAt, updatedAt",
+      staffAllocations:
+        "++id,[projectId+categoryId],projectId,categoryId,pmHours,designHours,constructionHours,createdAt,updatedAt",
+      staffAssignments:
+        "++id,[projectId+staffId],projectId,staffId,pmHours,designHours,constructionHours,createdAt,updatedAt",
+      appSettings: "key, value, updatedAt",
+    });
   }
 }
 
@@ -111,6 +125,7 @@ export const DatabaseService = {
     await db.projects.delete(id);
     // Also delete related staff allocations
     await db.staffAllocations.where("projectId").equals(id).delete();
+    await db.staffAssignments.where("projectId").equals(id).delete();
   },
 
   // Staff Categories
@@ -228,6 +243,47 @@ export const DatabaseService = {
       .delete();
   },
 
+  // Staff Assignments
+  async saveStaffAssignment(assignment) {
+    const timestamp = new Date().toISOString();
+    const assignmentData = {
+      ...assignment,
+      pmHours: assignment.pmHours || 0,
+      designHours: assignment.designHours || 0,
+      constructionHours: assignment.constructionHours || 0,
+      updatedAt: timestamp,
+      createdAt: assignment.createdAt || timestamp,
+    };
+
+    const existing = await db.staffAssignments
+      .where("[projectId+staffId]")
+      .equals([assignment.projectId, assignment.staffId])
+      .first();
+
+    if (existing) {
+      return await db.staffAssignments.update(existing.id, assignmentData);
+    }
+
+    return await db.staffAssignments.add(assignmentData);
+  },
+
+  async getStaffAssignments() {
+    const assignments = await db.staffAssignments.toArray();
+    return assignments.map((assignment) => ({
+      ...assignment,
+      pmHours: assignment.pmHours || 0,
+      designHours: assignment.designHours || 0,
+      constructionHours: assignment.constructionHours || 0,
+    }));
+  },
+
+  async deleteStaffAssignment(projectId, staffId) {
+    return await db.staffAssignments
+      .where("[projectId+staffId]")
+      .equals([projectId, staffId])
+      .delete();
+  },
+
   // Bulk operations
   async saveAllData(data) {
     try {
@@ -238,6 +294,7 @@ export const DatabaseService = {
         db.projectTypes,
         db.fundingSources,
         db.staffAllocations,
+        db.staffAssignments,
         async () => {
           // Clear existing data
           await db.projects.clear();
@@ -245,6 +302,7 @@ export const DatabaseService = {
           await db.projectTypes.clear();
           await db.fundingSources.clear();
           await db.staffAllocations.clear();
+          await db.staffAssignments.clear();
 
           // Add new data
           if (data.projects) {
@@ -272,21 +330,39 @@ export const DatabaseService = {
           }
 
           if (data.staffAllocations) {
-            // Convert object format to array format
-            Object.keys(data.staffAllocations).forEach((projectId) => {
-              Object.keys(data.staffAllocations[projectId]).forEach(
-                (categoryId) => {
-                  const allocation =
-                    data.staffAllocations[projectId][categoryId];
-                  this.saveStaffAllocation({
-                    projectId: parseInt(projectId),
-                    categoryId: parseInt(categoryId),
-                    designHours: allocation.designHours || 0,
-                    constructionHours: allocation.constructionHours || 0,
-                  });
-                }
-              );
-            });
+            for (const projectId of Object.keys(data.staffAllocations)) {
+              for (const categoryId of Object.keys(
+                data.staffAllocations[projectId]
+              )) {
+                const allocation =
+                  data.staffAllocations[projectId][categoryId];
+                await this.saveStaffAllocation({
+                  projectId: parseInt(projectId, 10),
+                  categoryId: parseInt(categoryId, 10),
+                  pmHours: allocation.pmHours || 0,
+                  designHours: allocation.designHours || 0,
+                  constructionHours: allocation.constructionHours || 0,
+                });
+              }
+            }
+          }
+
+          if (data.staffAssignments) {
+            for (const projectId of Object.keys(data.staffAssignments)) {
+              for (const staffId of Object.keys(
+                data.staffAssignments[projectId]
+              )) {
+                const assignment =
+                  data.staffAssignments[projectId][staffId];
+                await this.saveStaffAssignment({
+                  projectId: parseInt(projectId, 10),
+                  staffId: parseInt(staffId, 10),
+                  pmHours: assignment.pmHours || 0,
+                  designHours: assignment.designHours || 0,
+                  constructionHours: assignment.constructionHours || 0,
+                });
+              }
+            }
           }
         }
       );
@@ -305,12 +381,14 @@ export const DatabaseService = {
         projectTypes,
         fundingSources,
         allocationsArray,
+        assignmentsArray,
       ] = await Promise.all([
         this.getProjects(),
         this.getStaffCategories(),
         this.getProjectTypes(),
         this.getFundingSources(),
         this.getStaffAllocations(),
+        this.getStaffAssignments(),
       ]);
 
       // Convert allocations array back to object format
@@ -325,12 +403,25 @@ export const DatabaseService = {
         };
       });
 
+      const staffAssignments = {};
+      assignmentsArray.forEach((assignment) => {
+        if (!staffAssignments[assignment.projectId]) {
+          staffAssignments[assignment.projectId] = {};
+        }
+        staffAssignments[assignment.projectId][assignment.staffId] = {
+          pmHours: assignment.pmHours || 0,
+          designHours: assignment.designHours || 0,
+          constructionHours: assignment.constructionHours || 0,
+        };
+      });
+
       return {
         projects,
         staffCategories,
         projectTypes,
         fundingSources,
         staffAllocations,
+        staffAssignments,
       };
     } catch (error) {
       console.error("Error loading data:", error);
@@ -348,12 +439,14 @@ export const DatabaseService = {
         db.projectTypes,
         db.fundingSources,
         db.staffAllocations,
+        db.staffAssignments,
         async () => {
           await db.projects.clear();
           await db.staffCategories.clear();
           await db.projectTypes.clear();
           await db.fundingSources.clear();
           await db.staffAllocations.clear();
+          await db.staffAssignments.clear();
         }
       );
       return true;

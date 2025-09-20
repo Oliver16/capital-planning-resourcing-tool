@@ -1,5 +1,11 @@
 import React, { useCallback, useMemo } from "react";
-import { AlertTriangle, BarChart3, DownloadCloud, FileSpreadsheet } from "lucide-react";
+import {
+  AlertTriangle,
+  BarChart3,
+  DownloadCloud,
+  FileSpreadsheet,
+  Users,
+} from "lucide-react";
 import {
   buildCipEffortReport,
   buildCipReport,
@@ -10,6 +16,9 @@ import {
 import { downloadPdfDocument } from "../../utils/pdf";
 import CipReportPdf from "../../reports/CipReportPdf";
 import GapAnalysisPdf from "../../reports/GapAnalysisPdf";
+import StaffUtilizationPdf from "../../reports/StaffUtilizationPdf";
+import { buildStaffUtilizationReportData } from "../../utils/staffAssignments";
+import { downloadStaffUtilizationExcel } from "../../utils/excel";
 
 const ReportCard = ({
   title,
@@ -70,6 +79,8 @@ const ReportsTab = ({
   staffAllocations,
   staffingGaps,
   resourceForecast = [],
+  staffMembers = [],
+  staffAssignmentPlan = null,
 }) => {
   const formatCount = (value) => {
     const numeric = Number(value);
@@ -77,6 +88,22 @@ const ReportsTab = ({
       return "0";
     }
     return numeric.toLocaleString("en-US");
+  };
+
+  const formatHoursValue = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return "0";
+    }
+    return numeric.toLocaleString("en-US", { maximumFractionDigits: 1 });
+  };
+
+  const formatPercentage = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return "0%";
+    }
+    return `${numeric.toFixed(0)}%`;
   };
 
   const cipReport = useMemo(
@@ -106,6 +133,16 @@ const ReportsTab = ({
     () => buildGapAnalysisReport(staffingGaps),
     [staffingGaps]
   );
+  const staffUtilizationReport = useMemo(
+    () =>
+      buildStaffUtilizationReportData({
+        plan: staffAssignmentPlan,
+        projects,
+        staffMembers,
+        staffCategories,
+      }),
+    [staffAssignmentPlan, projects, staffMembers, staffCategories]
+  );
 
   const cipMeta = useMemo(() => formatReportMeta(cipReport), [cipReport]);
   const cipEffortMeta = useMemo(
@@ -122,6 +159,10 @@ const ReportsTab = ({
     () => (gapReport.fileName || `staffing_gap_analysis_${Date.now()}.csv`).replace(/\.csv$/i, ".pdf"),
     [gapReport.fileName]
   );
+  const staffUtilizationPdfFileName = useMemo(() => {
+    const baseName = staffUtilizationReport?.fileName || `staff_utilization_${Date.now()}.xlsx`;
+    return baseName.replace(/\.xlsx$/i, ".pdf");
+  }, [staffUtilizationReport?.fileName]);
 
   const summarySeries = useMemo(
     () =>
@@ -225,6 +266,23 @@ const ReportsTab = ({
     summarySeries,
   ]);
 
+  const handleStaffUtilizationExcelDownload = useCallback(() => {
+    if (!staffUtilizationReport) {
+      return;
+    }
+    downloadStaffUtilizationExcel(staffUtilizationReport);
+  }, [staffUtilizationReport]);
+
+  const handleStaffUtilizationPdfDownload = useCallback(async () => {
+    if (!staffUtilizationReport) {
+      return;
+    }
+    const documentElement = (
+      <StaffUtilizationPdf report={staffUtilizationReport} />
+    );
+    await downloadPdfDocument(documentElement, staffUtilizationPdfFileName);
+  }, [staffUtilizationReport, staffUtilizationPdfFileName]);
+
   const cipStats = useMemo(() => {
     const stats = [
       {
@@ -304,6 +362,47 @@ const ReportsTab = ({
     ];
   }, [gapReport]);
 
+  const staffUtilizationStats = useMemo(() => {
+    if (!staffUtilizationReport?.meta) {
+      return [];
+    }
+
+    const meta = staffUtilizationReport.meta;
+    const stats = [
+      {
+        label: "Projects covered",
+        value: formatCount(meta.projectsCovered || 0),
+      },
+      {
+        label: "Staff assigned",
+        value: formatCount(meta.staffAssignedCount || 0),
+      },
+      {
+        label: "Assigned hours",
+        value: `${formatHoursValue(meta.totalAssignedHours || 0)} hrs`,
+      },
+    ];
+
+    if (Number(meta.manualHours || 0) > 0) {
+      stats.push({
+        label: "Manual overrides",
+        value: `${formatHoursValue(meta.manualHours || 0)} hrs`,
+      });
+    }
+
+    stats.push({
+      label: "Unfilled demand",
+      value: `${formatHoursValue(meta.unfilledHours || 0)} hrs`,
+    });
+
+    stats.push({
+      label: "Coverage",
+      value: formatPercentage(meta.coverageRate || 0),
+    });
+
+    return stats;
+  }, [staffUtilizationReport]);
+
   return (
     <div className="space-y-6">
       <div className="rounded-lg bg-white p-6 shadow-sm">
@@ -341,6 +440,23 @@ const ReportsTab = ({
             {
               label: "Download Effort CSV",
               onClick: () => downloadReport(cipEffortReport),
+            },
+          ]}
+        />
+
+        <ReportCard
+          title="Staff Utilization"
+          description="Optimized and manual staff assignments by project and phase, with visibility into overrides and unmet demand."
+          icon={Users}
+          stats={staffUtilizationStats}
+          actions={[
+            {
+              label: "Download Utilization Excel",
+              onClick: handleStaffUtilizationExcelDownload,
+            },
+            {
+              label: "Download Utilization PDF",
+              onClick: handleStaffUtilizationPdfDownload,
             },
           ]}
         />

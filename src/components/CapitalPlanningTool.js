@@ -27,6 +27,7 @@ import SettingsTab from "./tabs/SettingsTab";
 import PeopleTab from "./tabs/PeopleTab";
 import ScenariosTab from "./tabs/ScenariosTab";
 import ReportsTab from "./tabs/ReportsTab";
+import StaffAssignmentsTab from "./tabs/StaffAssignmentsTab";
 
 // Import data and utilities
 import {
@@ -35,6 +36,7 @@ import {
   defaultFundingSources,
   defaultProjects,
   defaultStaffMembers,
+  defaultStaffAssignments,
 } from "../data/defaultData";
 import {
   calculateTimelines,
@@ -43,6 +45,7 @@ import {
 } from "../utils/calculations";
 import { handleCSVImport } from "../utils/dataImport";
 import { useDatabase } from "../hooks/useDatabase";
+import { buildStaffAssignmentPlan } from "../utils/staffAssignments";
 
 const MAX_MONTHLY_FTE_HOURS = 2080 / 12;
 const CAPACITY_FIELDS = [
@@ -75,6 +78,7 @@ const CapitalPlanningTool = () => {
       fundingSources: defaultFundingSources,
       staffAllocations: {},
       staffMembers: defaultStaffMembers,
+      staffAssignments: defaultStaffAssignments,
     }),
     []
   );
@@ -101,6 +105,9 @@ const CapitalPlanningTool = () => {
     saveStaffMember,
     getStaffMembers,
     deleteStaffMember: dbDeleteStaffMember,
+    saveStaffAssignment,
+    getStaffAssignments,
+    deleteStaffAssignment: dbDeleteStaffAssignment,
     exportDatabase,
     importDatabase,
   } = useDatabase(defaultData);
@@ -114,6 +121,7 @@ const CapitalPlanningTool = () => {
   const [projects, setProjects] = useState(defaultProjects);
   const [staffAllocations, setStaffAllocations] = useState({});
   const [staffMembers, setStaffMembers] = useState(defaultStaffMembers);
+  const [staffAssignmentOverrides, setStaffAssignmentOverrides] = useState({});
   const [activeTab, setActiveTab] = useState("overview");
   const [activeDropdown, setActiveDropdown] = useState(null);
   const dropdownRefs = useRef({});
@@ -145,6 +153,7 @@ const CapitalPlanningTool = () => {
             fundingSourcesData,
             allocationsData,
             staffMembersData,
+            staffAssignmentsData,
           ] = await Promise.all([
             getProjects(),
             getStaffCategories(),
@@ -152,6 +161,7 @@ const CapitalPlanningTool = () => {
             getFundingSources(),
             getStaffAllocations(),
             getStaffMembers(),
+            getStaffAssignments(),
           ]);
 
           // Only update if we got actual data
@@ -175,6 +185,23 @@ const CapitalPlanningTool = () => {
 
           if (staffMembersData && staffMembersData.length > 0) {
             setStaffMembers(staffMembersData);
+          }
+
+          if (staffAssignmentsData && staffAssignmentsData.length > 0) {
+            const assignmentObject = {};
+            staffAssignmentsData.forEach((assignment) => {
+              if (!assignmentObject[assignment.projectId]) {
+                assignmentObject[assignment.projectId] = {};
+              }
+
+              assignmentObject[assignment.projectId][assignment.staffId] = {
+                pmHours: Number(assignment.pmHours) || 0,
+                designHours: Number(assignment.designHours) || 0,
+                constructionHours: Number(assignment.constructionHours) || 0,
+              };
+            });
+
+            setStaffAssignmentOverrides(assignmentObject);
           }
 
           // Convert allocations array to object format
@@ -207,6 +234,7 @@ const CapitalPlanningTool = () => {
     getFundingSources,
     getStaffAllocations,
     getStaffMembers,
+    getStaffAssignments,
   ]);
 
   useEffect(() => {
@@ -271,6 +299,24 @@ const CapitalPlanningTool = () => {
 
     return availability;
   }, [staffMembers]);
+
+  const staffAssignmentPlan = useMemo(
+    () =>
+      buildStaffAssignmentPlan({
+        projects,
+        staffAllocations,
+        staffMembers,
+        staffCategories,
+        assignmentOverrides: staffAssignmentOverrides,
+      }),
+    [
+      projects,
+      staffAllocations,
+      staffMembers,
+      staffCategories,
+      staffAssignmentOverrides,
+    ]
+  );
 
   // Initialize staff allocations when projects or staff categories change
   useEffect(() => {
@@ -459,6 +505,22 @@ const CapitalPlanningTool = () => {
     try {
       await dbDeleteProject(id);
       setProjects(projects.filter((p) => p.id !== id));
+      setStaffAllocations((previous) => {
+        if (!previous || !previous[id]) {
+          return previous;
+        }
+        const next = { ...previous };
+        delete next[id];
+        return next;
+      });
+      setStaffAssignmentOverrides((previous) => {
+        if (!previous || !previous[id]) {
+          return previous;
+        }
+        const next = { ...previous };
+        delete next[id];
+        return next;
+      });
     } catch (error) {
       console.error("Error deleting project:", error);
     }
@@ -497,6 +559,114 @@ const CapitalPlanningTool = () => {
       });
     } catch (error) {
       console.error("Error saving staff allocation:", error);
+    }
+  };
+
+  const updateStaffAssignmentOverride = async (
+    projectId,
+    staffId,
+    phase,
+    value
+  ) => {
+    const numericProjectId = Number(projectId);
+    const numericStaffId = Number(staffId);
+
+    if (!Number.isFinite(numericProjectId) || !Number.isFinite(numericStaffId)) {
+      return;
+    }
+
+    const phaseKeyMap = {
+      pm: "pmHours",
+      design: "designHours",
+      construction: "constructionHours",
+    };
+
+    const assignmentKey = phaseKeyMap[phase];
+    if (!assignmentKey) {
+      return;
+    }
+
+    const sanitizedHours = Math.max(0, Number(value) || 0);
+
+    const existingProjectAssignments =
+      staffAssignmentOverrides[numericProjectId] || {};
+    const existingAssignment = existingProjectAssignments[numericStaffId] || {
+      pmHours: 0,
+      designHours: 0,
+      constructionHours: 0,
+    };
+
+    const updatedAssignment = {
+      ...existingAssignment,
+      [assignmentKey]: sanitizedHours,
+    };
+
+    const isEmptyAssignment =
+      updatedAssignment.pmHours <= 0 &&
+      updatedAssignment.designHours <= 0 &&
+      updatedAssignment.constructionHours <= 0;
+
+    setStaffAssignmentOverrides((previous) => {
+      const next = { ...previous };
+      const projectAssignments = { ...(next[numericProjectId] || {}) };
+
+      if (isEmptyAssignment) {
+        delete projectAssignments[numericStaffId];
+      } else {
+        projectAssignments[numericStaffId] = updatedAssignment;
+      }
+
+      if (Object.keys(projectAssignments).length === 0) {
+        delete next[numericProjectId];
+      } else {
+        next[numericProjectId] = projectAssignments;
+      }
+
+      return next;
+    });
+
+    try {
+      if (isEmptyAssignment) {
+        await dbDeleteStaffAssignment(numericProjectId, numericStaffId);
+      } else {
+        await saveStaffAssignment({
+          projectId: numericProjectId,
+          staffId: numericStaffId,
+          pmHours: updatedAssignment.pmHours || 0,
+          designHours: updatedAssignment.designHours || 0,
+          constructionHours: updatedAssignment.constructionHours || 0,
+        });
+      }
+    } catch (error) {
+      console.error("Error saving staff assignment override:", error);
+    }
+  };
+
+  const resetProjectAssignments = async (projectId) => {
+    const numericProjectId = Number(projectId);
+    if (!Number.isFinite(numericProjectId)) {
+      return;
+    }
+
+    const existingAssignments = staffAssignmentOverrides[numericProjectId];
+    if (!existingAssignments) {
+      return;
+    }
+
+    setStaffAssignmentOverrides((previous) => {
+      const next = { ...previous };
+      delete next[numericProjectId];
+      return next;
+    });
+
+    try {
+      await Promise.all(
+        Object.keys(existingAssignments).map((staffKey) =>
+          dbDeleteStaffAssignment(numericProjectId, Number(staffKey))
+        )
+      );
+    } catch (error) {
+      console.error("Error clearing staff assignments:", error);
     }
   };
 
@@ -668,6 +838,40 @@ const CapitalPlanningTool = () => {
     try {
       await dbDeleteStaffMember(id);
       setStaffMembers((prev) => prev.filter((member) => member.id !== id));
+      setStaffAssignmentOverrides((previous) => {
+        if (!previous || Object.keys(previous).length === 0) {
+          return previous;
+        }
+
+        const numericId = Number(id);
+        let hasChanges = false;
+        const next = {};
+
+        Object.entries(previous).forEach(([projectKey, staffMap]) => {
+          if (!staffMap) {
+            return;
+          }
+
+          const filteredEntries = Object.entries(staffMap).filter(
+            ([staffKey]) => Number(staffKey) !== numericId
+          );
+
+          if (filteredEntries.length === 0) {
+            if (Object.keys(staffMap).length > 0) {
+              hasChanges = true;
+            }
+            return;
+          }
+
+          if (filteredEntries.length !== Object.keys(staffMap).length) {
+            hasChanges = true;
+          }
+
+          next[projectKey] = Object.fromEntries(filteredEntries);
+        });
+
+        return hasChanges ? next : previous;
+      });
     } catch (error) {
       console.error("Error deleting staff member:", error);
     }
@@ -964,6 +1168,7 @@ const CapitalPlanningTool = () => {
                   icon: Users,
                   items: [
                     { id: "people", label: "Staff", icon: UserCircle },
+                    { id: "assignments", label: "Assignments", icon: Users },
                     { id: "staff", label: "Categories", icon: Settings },
                   ],
                 },
@@ -1125,6 +1330,20 @@ const CapitalPlanningTool = () => {
             />
           )}
 
+          {activeTab === "assignments" && (
+            <StaffAssignmentsTab
+              projects={projects.filter((project) => project.type === "project")}
+              staffMembers={staffMembers}
+              staffCategories={staffCategories}
+              staffAllocations={staffAllocations}
+              assignmentOverrides={staffAssignmentOverrides}
+              assignmentPlan={staffAssignmentPlan}
+              onUpdateAssignment={updateStaffAssignmentOverride}
+              onResetProjectAssignments={resetProjectAssignments}
+              staffAvailabilityByCategory={staffAvailabilityByCategory}
+            />
+          )}
+
           {activeTab === "allocations" && (
             <StaffAllocations
               projects={projects.filter((p) => p.type === "project")}
@@ -1186,6 +1405,8 @@ const CapitalPlanningTool = () => {
               staffAllocations={staffAllocations}
               staffingGaps={staffingGaps}
               resourceForecast={resourceForecast}
+              staffMembers={staffMembers}
+              staffAssignmentPlan={staffAssignmentPlan}
             />
           )}
 
