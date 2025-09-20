@@ -12,6 +12,7 @@ import {
   CalendarClock,
   UserCircle,
   GitBranch,
+  FileSpreadsheet,
 } from "lucide-react";
 
 // Import components
@@ -24,6 +25,7 @@ import ScheduleView from "./tabs/ScheduleView";
 import SettingsTab from "./tabs/SettingsTab";
 import PeopleTab from "./tabs/PeopleTab";
 import ScenariosTab from "./tabs/ScenariosTab";
+import ReportsTab from "./tabs/ReportsTab";
 
 // Import data and utilities
 import {
@@ -939,6 +941,11 @@ const CapitalPlanningTool = () => {
                   label: "Resource Forecast",
                   icon: AlertTriangle,
                 },
+                {
+                  id: "reports",
+                  label: "Reports",
+                  icon: FileSpreadsheet,
+                },
                 { id: "settings", label: "Settings", icon: Settings },
               ].map((tab) => {
                 const Icon = tab.icon;
@@ -1055,6 +1062,18 @@ const CapitalPlanningTool = () => {
               staffingGaps={staffingGaps}
               timeHorizon={timeHorizon}
               setTimeHorizon={setTimeHorizon}
+            />
+          )}
+
+          {activeTab === "reports" && (
+            <ReportsTab
+              projects={projects}
+              projectTypes={projectTypes}
+              fundingSources={fundingSources}
+              projectTimelines={projectTimelines}
+              staffCategories={staffCategories}
+              staffAllocations={staffAllocations}
+              staffingGaps={staffingGaps}
             />
           )}
 
