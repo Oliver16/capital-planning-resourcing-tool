@@ -294,6 +294,7 @@ const StaffAllocations = ({
   );
 
   const [expandedGroups, setExpandedGroups] = useState({});
+  const [expandedProjects, setExpandedProjects] = useState({});
 
   useEffect(() => {
     setExpandedGroups((previous) => {
@@ -307,11 +308,34 @@ const StaffAllocations = ({
     });
   }, [projectGroups]);
 
+  useEffect(() => {
+    setExpandedProjects((previous) => {
+      const nextState = {};
+      projectGroups.forEach((group) => {
+        group.projects.forEach((project) => {
+          const key = String(project.id);
+          nextState[key] = previous[key] ?? true;
+        });
+      });
+      return nextState;
+    });
+  }, [projectGroups]);
+
   const toggleGroup = (key) => {
     setExpandedGroups((previous) => ({
       ...previous,
       [key]: !previous[key],
     }));
+  };
+
+  const toggleProject = (projectId) => {
+    setExpandedProjects((previous) => {
+      const currentValue = previous[projectId];
+      return {
+        ...previous,
+        [projectId]: currentValue === undefined ? false : !currentValue,
+      };
+    });
   };
 
   return (
@@ -382,353 +406,390 @@ const StaffAllocations = ({
                       (source) => source.id === project.fundingSourceId
                     );
 
+                    const projectKey = String(project.id);
+                    const isProjectExpanded =
+                      expandedProjects[projectKey] ?? true;
+                    const projectAllocations =
+                      staffAllocations[project.id] || {};
+                    const projectTotals = staffCategories.reduce(
+                      (accumulator, category) => {
+                        const allocation =
+                          projectAllocations[category.id] || {};
+                        const pmHours = Number(allocation.pmHours) || 0;
+                        const designHours = Number(allocation.designHours) || 0;
+                        const constructionHours =
+                          Number(allocation.constructionHours) || 0;
+                        const hourlyRate = Number(category.hourlyRate) || 0;
+
+                        accumulator.pmHours += pmHours;
+                        accumulator.designHours += designHours;
+                        accumulator.constructionHours += constructionHours;
+                        accumulator.pmCost += pmHours * hourlyRate;
+                        accumulator.designCost += designHours * hourlyRate;
+                        accumulator.constructionCost +=
+                          constructionHours * hourlyRate;
+
+                        return accumulator;
+                      },
+                      {
+                        pmHours: 0,
+                        designHours: 0,
+                        constructionHours: 0,
+                        pmCost: 0,
+                        designCost: 0,
+                        constructionCost: 0,
+                      }
+                    );
+                    const totalHours =
+                      projectTotals.pmHours +
+                      projectTotals.designHours +
+                      projectTotals.constructionHours;
+                    const totalCost =
+                      projectTotals.pmCost +
+                      projectTotals.designCost +
+                      projectTotals.constructionCost;
+
                     return (
-                      <div key={project.id} className="space-y-6 p-6">
+                      <div key={project.id} className="p-6">
                         <div className="space-y-4">
                           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-lg font-semibold">
-                            {project.name}
-                          </h3>
-                          <span
-                            className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium"
-                            style={{
-                              backgroundColor: `${group.color}1a`,
-                              color: group.color,
-                            }}
-                          >
-                            {group.label}
-                          </span>
-                        </div>
-                        <p className="text-gray-600">
-                          Design Budget: ${formatBudgetAmount(project.designBudget)} | Construction Budget: $
-                          {formatBudgetAmount(project.constructionBudget)}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          Design: {new Date(project.designStartDate).toLocaleDateString()} ({project.designDuration} months) | Construction:{" "}
-                          {new Date(project.constructionStartDate).toLocaleDateString()} ({project.constructionDuration} months)
-                        </p>
-                      </div>
-                      <div className="flex flex-col items-start gap-2 md:items-end">
-                        {(() => {
-                          const key = project.deliveryType || "self-perform";
-                          const label = deliveryLabels[key] || "Delivery";
-                          const badgeClass =
-                            deliveryBadgeStyles[key] || "bg-gray-100 text-gray-700";
-                          return (
-                            <span
-                              className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${badgeClass}`}
-                            >
-                              {label} Delivery
-                            </span>
-                          );
-                        })()}
-                        <p className="text-xs text-gray-500">
-                          Funding: {fundingSource?.name || "Unassigned"}
-                        </p>
-                      </div>
-                    </div>
-
-                    {(() => {
-                      const key = project.deliveryType || "self-perform";
-                      const guidance = deliveryGuidance[key];
-                      if (!guidance) return null;
-                      const GuidanceIcon = guidance.Icon;
-                      return (
-                        <div
-                          className={`rounded-md border-l-4 p-4 ${guidance.container}`}
-                        >
-                          <div className="flex items-start gap-3">
-                            <GuidanceIcon
-                              size={20}
-                              className={`${guidance.iconClass} mt-0.5 flex-shrink-0`}
-                            />
-                            <div className="space-y-1 text-sm leading-snug">
-                              <p className="font-semibold">{guidance.title}</p>
-                              {guidance.details.map((detail, index) => (
-                                <p key={index}>{detail}</p>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {requiresExternalCoordination(fundingSource) && (
-                      <div className="rounded-md border-l-4 border-orange-500 bg-orange-50 p-4 text-orange-900">
-                        <div className="flex items-start gap-3">
-                          <AlertTriangle
-                            size={20}
-                            className="mt-0.5 flex-shrink-0 text-orange-500"
-                          />
-                          <div className="space-y-1 text-sm leading-snug">
-                            <p className="font-semibold">
-                              External Coordination Needed
-                            </p>
-                            <p>
-                              This project is funded through{" "}
-                              <strong>
-                                {fundingSource?.name || "external sources"}
-                              </strong>
-                              , so align LoE planning with state or partner agency
-                              requirements before finalizing allocations.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="text-left p-3">Staff Category</th>
-                          <th className="text-left p-3">Hourly Rate</th>
-                          <th className="text-left p-3">PM Hours</th>
-                          <th className="text-left p-3">PM Cost</th>
-                          <th className="text-left p-3">Design Hours</th>
-                          <th className="text-left p-3">Design Cost</th>
-                          <th className="text-left p-3">Construction Hours</th>
-                          <th className="text-left p-3">Construction Cost</th>
-                          <th className="text-left p-3">Total Hours</th>
-                          <th className="text-left p-3">Total Cost</th>
-                          <th className="text-left p-3">Monthly FTE</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {staffCategories.map((category) => {
-                          const allocation = staffAllocations[project.id]?.[
-                            category.id
-                          ] || {
-                            pmHours: 0,
-                            designHours: 0,
-                            constructionHours: 0,
-                          };
-                          const pmCost =
-                            (allocation.pmHours || 0) * category.hourlyRate;
-                          const designCost =
-                            (allocation.designHours || 0) * category.hourlyRate;
-                          const constructionCost =
-                            (allocation.constructionHours || 0) *
-                            category.hourlyRate;
-                          const totalHours =
-                            (allocation.pmHours || 0) +
-                            (allocation.designHours || 0) +
-                            (allocation.constructionHours || 0);
-                          const totalCost = pmCost + designCost + constructionCost;
-
-                          const designFTE = formatMonthlyFTE(
-                            allocation.designHours,
-                            project.designDuration
-                          );
-                          const constructionFTE = formatMonthlyFTE(
-                            allocation.constructionHours,
-                            project.constructionDuration
-                          );
-                          const totalDuration =
-                            (project.designDuration || 0) +
-                            (project.constructionDuration || 0);
-                          const pmFTE = formatMonthlyFTE(
-                            allocation.pmHours,
-                            totalDuration
-                          );
-
-                          return (
-                            <tr
-                              key={category.id}
-                              className="border-b border-gray-200"
-                            >
-                              <td className="p-3 font-medium">{category.name}</td>
-                              <td className="p-3">${category.hourlyRate}</td>
-                              <td className="p-3">
-                                <HoursInput
-                                  value={allocation.pmHours}
-                                  onValueChange={(newValue) =>
-                                    updateStaffAllocation(
-                                      project.id,
-                                      category.id,
-                                      "pm",
-                                      newValue
-                                    )
-                                  }
-                                  durationMonths={totalDuration}
-                                  label="PM Hours"
-                                />
-                              </td>
-                              <td className="p-3">${pmCost.toLocaleString()}</td>
-                              <td className="p-3">
-                                <HoursInput
-                                  value={allocation.designHours}
-                                  onValueChange={(newValue) =>
-                                    updateStaffAllocation(
-                                      project.id,
-                                      category.id,
-                                      "design",
-                                      newValue
-                                    )
-                                  }
-                                  durationMonths={project.designDuration}
-                                  label="Design Hours"
-                                />
-                              </td>
-                              <td className="p-3">${designCost.toLocaleString()}</td>
-                              <td className="p-3">
-                                <HoursInput
-                                  value={allocation.constructionHours}
-                                  onValueChange={(newValue) =>
-                                    updateStaffAllocation(
-                                      project.id,
-                                      category.id,
-                                      "construction",
-                                      newValue
-                                    )
-                                  }
-                                  durationMonths={project.constructionDuration}
-                                  label="Construction Hours"
-                                />
-                              </td>
-                              <td className="p-3">${constructionCost.toLocaleString()}</td>
-                              <td className="p-3">{totalHours.toLocaleString()}</td>
-                              <td className="p-3">${totalCost.toLocaleString()}</td>
-                              <td className="p-3">
-                                <div className="space-y-1">
-                                  <div className="text-xs text-gray-500">
-                                    Design: {designFTE} FTE
-                                  </div>
-                                  <div className="text-xs text-gray-500">
-                                    Construction: {constructionFTE} FTE
-                                  </div>
-                                  <div className="text-xs text-gray-500">
-                                    PM: {pmFTE} FTE
+                            <div className="md:flex-1">
+                              <button
+                                type="button"
+                                onClick={() => toggleProject(projectKey)}
+                                aria-expanded={isProjectExpanded}
+                                className="flex w-full items-start justify-between gap-4 bg-transparent text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                              >
+                                <div className="flex items-start gap-3">
+                                  <span className="mt-1 text-gray-500">
+                                    {isProjectExpanded ? (
+                                      <ChevronDown size={18} />
+                                    ) : (
+                                      <ChevronRight size={18} />
+                                    )}
+                                  </span>
+                                  <div className="space-y-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <h3 className="text-lg font-semibold">
+                                        {project.name}
+                                      </h3>
+                                      <span
+                                        className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium"
+                                        style={{
+                                          backgroundColor: `${group.color}1a`,
+                                          color: group.color,
+                                        }}
+                                      >
+                                        {group.label}
+                                      </span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600">
+                                      <span>
+                                        Design Budget: $
+                                        {formatBudgetAmount(
+                                          project.designBudget
+                                        )}
+                                      </span>
+                                      <span>
+                                        Construction Budget: $
+                                        {formatBudgetAmount(
+                                          project.constructionBudget
+                                        )}
+                                      </span>
+                                      <span
+                                        className="hidden h-4 w-px bg-gray-300 sm:block"
+                                        aria-hidden="true"
+                                      ></span>
+                                      <span>
+                                        PM Hours: {" "}
+                                        {projectTotals.pmHours.toLocaleString()}
+                                      </span>
+                                      <span>
+                                        Design Hours: {" "}
+                                        {projectTotals.designHours.toLocaleString()}
+                                      </span>
+                                      <span>
+                                        Construction Hours: {" "}
+                                        {projectTotals.constructionHours.toLocaleString()}
+                                      </span>
+                                    </div>
+                                    <p className="text-sm text-gray-500">
+                                      Design: {" "}
+                                      {new Date(
+                                        project.designStartDate
+                                      ).toLocaleDateString()} {" "}
+                                      ({project.designDuration} months) |
+                                      Construction: {" "}
+                                      {new Date(
+                                        project.constructionStartDate
+                                      ).toLocaleDateString()} {" "}
+                                      ({project.constructionDuration} months)
+                                    </p>
                                   </div>
                                 </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                      <tfoot className="bg-gray-50 font-medium">
-                        <tr>
-                          <td className="p-3">Total</td>
-                          <td className="p-3"></td>
-                          <td className="p-3 font-semibold">
-                            {staffCategories
-                              .reduce((sum, cat) => {
-                                const allocation = staffAllocations[project.id]?.[
-                                  cat.id
-                                ] || { pmHours: 0 };
-                                return sum + (allocation.pmHours || 0);
-                              }, 0)
-                              .toLocaleString()}
-                          </td>
-                          <td className="p-3 font-semibold">
-                            ${staffCategories
-                              .reduce((sum, cat) => {
-                                const allocation = staffAllocations[project.id]?.[
-                                  cat.id
-                                ] || { pmHours: 0 };
+                                <span className="hidden text-xs font-medium text-gray-400 sm:inline">
+                                  {isProjectExpanded
+                                    ? "Hide details"
+                                    : "Show details"}
+                                </span>
+                              </button>
+                            </div>
+                            <div className="flex flex-col items-start gap-2 md:items-end">
+                              {(() => {
+                                const deliveryKey =
+                                  project.deliveryType || "self-perform";
+                                const label =
+                                  deliveryLabels[deliveryKey] || "Delivery";
+                                const badgeClass =
+                                  deliveryBadgeStyles[deliveryKey] ||
+                                  "bg-gray-100 text-gray-700";
                                 return (
-                                  sum + (allocation.pmHours || 0) * cat.hourlyRate || 0
+                                  <span
+                                    className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${badgeClass}`}
+                                  >
+                                    {label} Delivery
+                                  </span>
                                 );
-                              }, 0)
-                              .toLocaleString()}
-                          </td>
-                          <td className="p-3 font-semibold">
-                            {staffCategories
-                              .reduce((sum, cat) => {
-                                const allocation = staffAllocations[project.id]?.[
-                                  cat.id
-                                ] || { designHours: 0 };
-                                return sum + (allocation.designHours || 0);
-                              }, 0)
-                              .toLocaleString()}
-                          </td>
-                          <td className="p-3 font-semibold">
-                            ${staffCategories
-                              .reduce((sum, cat) => {
-                                const allocation = staffAllocations[project.id]?.[
-                                  cat.id
-                                ] || { designHours: 0 };
+                              })()}
+                              <p className="text-xs text-gray-500">
+                                Funding: {fundingSource?.name || "Unassigned"}
+                              </p>
+                            </div>
+                          </div>
+
+                          {isProjectExpanded && (
+                            <div className="space-y-4">
+                              {(() => {
+                                const key = project.deliveryType || "self-perform";
+                                const guidance = deliveryGuidance[key];
+                                if (!guidance) return null;
+                                const GuidanceIcon = guidance.Icon;
                                 return (
-                                  sum +
-                                  ((allocation.designHours || 0) * cat.hourlyRate || 0)
+                                  <div
+                                    className={`rounded-md border-l-4 p-4 ${guidance.container}`}
+                                  >
+                                    <div className="flex items-start gap-3">
+                                      <GuidanceIcon
+                                        size={20}
+                                        className={`${guidance.iconClass} mt-0.5 flex-shrink-0`}
+                                      />
+                                      <div className="space-y-1 text-sm leading-snug">
+                                        <p className="font-semibold">{guidance.title}</p>
+                                        {guidance.details.map((detail, index) => (
+                                          <p key={index}>{detail}</p>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
                                 );
-                              }, 0)
-                              .toLocaleString()}
-                          </td>
-                          <td className="p-3 font-semibold">
-                            {staffCategories
-                              .reduce((sum, cat) => {
-                                const allocation = staffAllocations[project.id]?.[
-                                  cat.id
-                                ] || { constructionHours: 0 };
-                                return sum + (allocation.constructionHours || 0);
-                              }, 0)
-                              .toLocaleString()}
-                          </td>
-                          <td className="p-3 font-semibold">
-                            $
-                            {staffCategories
-                              .reduce((sum, cat) => {
-                                const allocation = staffAllocations[project.id]?.[
-                                  cat.id
-                                ] || { constructionHours: 0 };
-                                return (
-                                  sum +
-                                  ((allocation.constructionHours || 0) *
-                                    cat.hourlyRate ||
-                                    0)
-                                );
-                              }, 0)
-                              .toLocaleString()}
-                          </td>
-                          <td className="p-3 font-semibold">
-                            {staffCategories.reduce((sum, cat) => {
-                              const allocation = staffAllocations[project.id]?.[
-                                cat.id
-                              ] || {
-                                pmHours: 0,
-                                designHours: 0,
-                                constructionHours: 0,
-                              };
-                              return (
-                                sum +
-                                (allocation.pmHours || 0) +
-                                (allocation.designHours || 0) +
-                                (allocation.constructionHours || 0)
-                              );
-                            }, 0).toLocaleString()}
-                          </td>
-                          <td className="p-3 font-semibold">
-                            $
-                            {staffCategories
-                              .reduce((sum, cat) => {
-                                const allocation = staffAllocations[project.id]?.[
-                                  cat.id
-                                ] || {
-                                  pmHours: 0,
-                                  designHours: 0,
-                                  constructionHours: 0,
-                                };
-                                return (
-                                  sum +
-                                  ((allocation.pmHours || 0) +
-                                    (allocation.designHours || 0) +
-                                    (allocation.constructionHours || 0)) *
-                                    cat.hourlyRate
-                                );
-                              }, 0)
-                              .toLocaleString()}
-                          </td>
-                          <td className="p-3"></td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                </div>
-              );
+                              })()}
+
+                              {requiresExternalCoordination(fundingSource) && (
+                                <div className="rounded-md border-l-4 border-orange-500 bg-orange-50 p-4 text-orange-900">
+                                  <div className="flex items-start gap-3">
+                                    <AlertTriangle
+                                      size={20}
+                                      className="mt-0.5 flex-shrink-0 text-orange-500"
+                                    />
+                                    <div className="space-y-1 text-sm leading-snug">
+                                      <p className="font-semibold">
+                                        External Coordination Needed
+                                      </p>
+                                      <p>
+                                        This project is funded through {" "}
+                                        <strong>
+                                          {fundingSource?.name || "external sources"}
+                                        </strong>
+                                        , so align LoE planning with state or partner agency
+                                        requirements before finalizing allocations.
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="overflow-x-auto">
+                                <table className="w-full">
+                                  <thead className="bg-gray-50">
+                                    <tr>
+                                      <th className="text-left p-3">Staff Category</th>
+                                      <th className="text-left p-3">Hourly Rate</th>
+                                      <th className="text-left p-3">PM Hours</th>
+                                      <th className="text-left p-3">PM Cost</th>
+                                      <th className="text-left p-3">Design Hours</th>
+                                      <th className="text-left p-3">Design Cost</th>
+                                      <th className="text-left p-3">Construction Hours</th>
+                                      <th className="text-left p-3">Construction Cost</th>
+                                      <th className="text-left p-3">Total Hours</th>
+                                      <th className="text-left p-3">Total Cost</th>
+                                      <th className="text-left p-3">Monthly FTE</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {staffCategories.map((category) => {
+                                      const allocation =
+                                        staffAllocations[project.id]?.[category.id] || {
+                                          pmHours: 0,
+                                          designHours: 0,
+                                          constructionHours: 0,
+                                        };
+                                      const pmCost =
+                                        (allocation.pmHours || 0) * category.hourlyRate;
+                                      const designCost =
+                                        (allocation.designHours || 0) * category.hourlyRate;
+                                      const constructionCost =
+                                        (allocation.constructionHours || 0) *
+                                        category.hourlyRate;
+                                      const allocationTotalHours =
+                                        (allocation.pmHours || 0) +
+                                        (allocation.designHours || 0) +
+                                        (allocation.constructionHours || 0);
+                                      const allocationTotalCost =
+                                        pmCost + designCost + constructionCost;
+
+                                      const designFTE = formatMonthlyFTE(
+                                        allocation.designHours,
+                                        project.designDuration
+                                      );
+                                      const constructionFTE = formatMonthlyFTE(
+                                        allocation.constructionHours,
+                                        project.constructionDuration
+                                      );
+                                      const totalDuration =
+                                        (project.designDuration || 0) +
+                                        (project.constructionDuration || 0);
+                                      const pmFTE = formatMonthlyFTE(
+                                        allocation.pmHours,
+                                        totalDuration
+                                      );
+
+                                      return (
+                                        <tr
+                                          key={category.id}
+                                          className="border-b border-gray-200"
+                                        >
+                                          <td className="p-3 font-medium">
+                                            {category.name}
+                                          </td>
+                                          <td className="p-3">
+                                            ${category.hourlyRate}
+                                          </td>
+                                          <td className="p-3">
+                                            <HoursInput
+                                              value={allocation.pmHours}
+                                              onValueChange={(newValue) =>
+                                                updateStaffAllocation(
+                                                  project.id,
+                                                  category.id,
+                                                  "pm",
+                                                  newValue
+                                                )
+                                              }
+                                              durationMonths={totalDuration}
+                                              label="PM Hours"
+                                            />
+                                          </td>
+                                          <td className="p-3">
+                                            ${pmCost.toLocaleString()}
+                                          </td>
+                                          <td className="p-3">
+                                            <HoursInput
+                                              value={allocation.designHours}
+                                              onValueChange={(newValue) =>
+                                                updateStaffAllocation(
+                                                  project.id,
+                                                  category.id,
+                                                  "design",
+                                                  newValue
+                                                )
+                                              }
+                                              durationMonths={project.designDuration}
+                                              label="Design Hours"
+                                            />
+                                          </td>
+                                          <td className="p-3">
+                                            ${designCost.toLocaleString()}
+                                          </td>
+                                          <td className="p-3">
+                                            <HoursInput
+                                              value={allocation.constructionHours}
+                                              onValueChange={(newValue) =>
+                                                updateStaffAllocation(
+                                                  project.id,
+                                                  category.id,
+                                                  "construction",
+                                                  newValue
+                                                )
+                                              }
+                                              durationMonths={project.constructionDuration}
+                                              label="Construction Hours"
+                                            />
+                                          </td>
+                                          <td className="p-3">
+                                            ${constructionCost.toLocaleString()}
+                                          </td>
+                                          <td className="p-3">
+                                            {allocationTotalHours.toLocaleString()}
+                                          </td>
+                                          <td className="p-3">
+                                            ${allocationTotalCost.toLocaleString()}
+                                          </td>
+                                          <td className="p-3">
+                                            <div className="space-y-1">
+                                              <div className="text-xs text-gray-500">
+                                                Design: {designFTE} FTE
+                                              </div>
+                                              <div className="text-xs text-gray-500">
+                                                Construction: {constructionFTE} FTE
+                                              </div>
+                                              <div className="text-xs text-gray-500">
+                                                PM: {pmFTE} FTE
+                                              </div>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                  <tfoot className="bg-gray-50 font-medium">
+                                    <tr>
+                                      <td className="p-3">Total</td>
+                                      <td className="p-3"></td>
+                                      <td className="p-3 font-semibold">
+                                        {projectTotals.pmHours.toLocaleString()}
+                                      </td>
+                                      <td className="p-3 font-semibold">
+                                        ${projectTotals.pmCost.toLocaleString()}
+                                      </td>
+                                      <td className="p-3 font-semibold">
+                                        {projectTotals.designHours.toLocaleString()}
+                                      </td>
+                                      <td className="p-3 font-semibold">
+                                        ${projectTotals.designCost.toLocaleString()}
+                                      </td>
+                                      <td className="p-3 font-semibold">
+                                        {projectTotals.constructionHours.toLocaleString()}
+                                      </td>
+                                      <td className="p-3 font-semibold">
+                                        ${projectTotals.constructionCost.toLocaleString()}
+                                      </td>
+                                      <td className="p-3 font-semibold">
+                                        {totalHours.toLocaleString()}
+                                      </td>
+                                      <td className="p-3 font-semibold">
+                                        ${totalCost.toLocaleString()}
+                                      </td>
+                                      <td className="p-3"></td>
+                                    </tr>
+                                  </tfoot>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+
             })}
           </div>
         )}
