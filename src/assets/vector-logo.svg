@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-labelledby="title desc">
+  <title id="title">Vector logo</title>
+  <desc id="desc">Stylized Vector logomark with upward arrow and motion accents</desc>
+  <g fill="none" stroke="#111827" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M118 78 L206 32 L248 112 L196 100 L180 148 Z" fill="#fff" />
+    <path d="M118 78 L206 32 L248 112" />
+    <path d="M196 100 L180 148" />
+    <path d="M88 108 L148 68" />
+    <path d="M72 134 L132 94" />
+    <path d="M62 158 L110 128" />
+    <circle cx="88" cy="108" r="6" fill="#111827" stroke="none" />
+    <circle cx="62" cy="158" r="6" fill="#111827" stroke="none" />
+    <circle cx="132" cy="94" r="6" fill="#111827" stroke="none" />
+  </g>
+  <text x="40" y="180" font-family="'Montserrat', 'Helvetica Neue', Arial, sans-serif" font-weight="700" font-size="60" fill="#111827">VECTOR</text>
+</svg>
