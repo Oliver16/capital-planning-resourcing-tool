@@ -151,13 +151,11 @@ const ResourceForecast = ({
           const categoryData = resourceForecast.map((month) => {
             const required = month[`${category.name}_required`] || 0;
             const actual = month[`${category.name}_actual`] || 0;
-            const gap = Math.max(0, required - actual);
 
             return {
               month: month.monthLabel,
               required: Number(required.toFixed(2)),
               actual: Number(actual.toFixed(2)),
-              gap: Number(gap.toFixed(2)),
             };
           });
 
@@ -184,22 +182,14 @@ const ResourceForecast = ({
                       stroke="#10b981"
                       fill="#10b981"
                       fillOpacity={0.25}
-                      name="Actual Availability"
+                      name="Available FTEs"
                     />
                     <Line
                       type="monotone"
                       dataKey="required"
                       stroke="#2563eb"
                       strokeWidth={2}
-                      name="Allocated (FTE)"
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="gap"
-                      stroke="#ef4444"
-                      fill="#ef4444"
-                      fillOpacity={0.4}
-                      name="Gap (FTE)"
+                      name="Required FTEs"
                     />
                   </AreaChart>
                 </ResponsiveContainer>
