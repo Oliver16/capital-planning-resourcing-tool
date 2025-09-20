@@ -1,7 +1,7 @@
 {
-  "name": "capital-planning-tool",
+  "name": "vector",
   "version": "1.0.0",
-  "description": "Utilities Capital Improvement Planning and Resource Forecasting Tool",
+  "description": "Vector – CIP and Resource Planning",
   "main": "src/index.js",
   "scripts": {
     "start": "react-app-rewired start",

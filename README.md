@@ -1,6 +1,6 @@
-# Capital Planning & Resourcing Tool
+# Vector
 
-A React-based portfolio planning application built for municipal utilities and public works teams to coordinate capital improvement projects, staffing plans, and resource forecasts. The tool combines editable project data, staffing capacity models, and interactive dashboards so planners can align delivery schedules with available full-time-equivalent (FTE) resources.
+Vector is a React-based portfolio planning application built for municipal utilities and public works teams to coordinate capital improvement projects, staffing plans, and resource forecasts. The tool combines editable project data, staffing capacity models, and interactive dashboards so planners can align delivery schedules with available full-time-equivalent (FTE) resources.
 
 ## Key capabilities
 
