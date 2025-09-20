@@ -13,6 +13,37 @@ import {
 } from "recharts";
 import { AlertTriangle, Users } from "lucide-react";
 
+const roundForChart = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+  return Math.round(numeric * 10000) / 10000;
+};
+
+const formatFteTooltip = (value, name) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return [value, name];
+  }
+  return [`${numeric.toFixed(2)} FTE`, name];
+};
+
+const formatFteTick = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return value;
+  }
+
+  if (Math.abs(numeric) >= 10) {
+    return numeric.toFixed(0);
+  }
+  if (Math.abs(numeric) >= 1) {
+    return numeric.toFixed(1);
+  }
+  return numeric.toFixed(2);
+};
+
 const ResourceForecast = ({
   resourceForecast,
   staffCategories,
@@ -35,8 +66,8 @@ const ResourceForecast = ({
         return {
           month: month.month,
           monthLabel: month.monthLabel,
-          totalRequired: Number(totalRequired.toFixed(2)),
-          totalActual: Number(totalActual.toFixed(2)),
+          totalRequired: roundForChart(totalRequired),
+          totalActual: roundForChart(totalActual),
         };
       }),
     [resourceForecast, staffCategories]
@@ -120,8 +151,9 @@ const ResourceForecast = ({
                   position: "insideLeft",
                 }}
                 allowDecimals
+                tickFormatter={formatFteTick}
               />
-              <Tooltip />
+              <Tooltip formatter={formatFteTooltip} />
               <Legend />
               <Line
                 type="monotone"
@@ -149,13 +181,17 @@ const ResourceForecast = ({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {staffCategories.map((category) => {
           const categoryData = resourceForecast.map((month) => {
-            const required = month[`${category.name}_required`] || 0;
-            const actual = month[`${category.name}_actual`] || 0;
+            const required = roundForChart(
+              month[`${category.name}_required`] || 0
+            );
+            const actual = roundForChart(
+              month[`${category.name}_actual`] || 0
+            );
 
             return {
               month: month.monthLabel,
-              required: Number(required.toFixed(2)),
-              actual: Number(actual.toFixed(2)),
+              required,
+              actual,
             };
           });
 
@@ -174,8 +210,11 @@ const ResourceForecast = ({
                       tick={{ fontSize: 10 }}
                       interval="preserveStartEnd"
                     />
-                    <YAxis />
-                    <Tooltip />
+                    <YAxis
+                      allowDecimals
+                      tickFormatter={formatFteTick}
+                    />
+                    <Tooltip formatter={formatFteTooltip} />
                     <Legend />
                     <Area
                       type="monotone"
