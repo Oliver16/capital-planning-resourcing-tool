@@ -84,13 +84,24 @@ const StaffAssignmentsTab = ({
     const projectSummaries = assignmentPlan.projectSummaries || {};
     const staffUtilization = assignmentPlan.staffUtilization || {};
     const unfilledDemand = assignmentPlan.unfilledDemand || {};
+    const demandByProjectCategory =
+      assignmentPlan.demandByProjectCategory || {};
+    const monthlyDemandByProjectCategory =
+      assignmentPlan.monthlyDemandByProjectCategory || {};
 
     return projects
-      .filter((project) => project && project.type === "project")
+      .filter(
+        (project) =>
+          project &&
+          (project.type === "project" || project.type === "program")
+      )
       .map((project) => {
         const projectId = Number(project.id);
         const projectAllocations = staffAllocations[projectId] || {};
         const manualAssignments = manualAssignmentsByProject[projectId] || {};
+        const projectDemandTotals = demandByProjectCategory[projectId] || {};
+        const projectMonthlyDemand =
+          monthlyDemandByProjectCategory[projectId] || {};
 
         const relevantCategoryIds = new Set();
 
@@ -101,6 +112,18 @@ const StaffAssignmentsTab = ({
             Number(hours?.designHours) > 0 ||
             Number(hours?.constructionHours) > 0;
           if (hasDemand) {
+            relevantCategoryIds.add(numericCategoryId);
+          }
+        });
+
+        Object.entries(projectDemandTotals).forEach(([categoryId, hours]) => {
+          const numericCategoryId = Number(categoryId);
+          const totalHours =
+            Number(hours?.pmHours || 0) +
+            Number(hours?.designHours || 0) +
+            Number(hours?.constructionHours || 0);
+
+          if (totalHours > 0) {
             relevantCategoryIds.add(numericCategoryId);
           }
         });
@@ -198,15 +221,25 @@ const StaffAssignmentsTab = ({
 
             staffRows.sort((a, b) => a.staffName.localeCompare(b.staffName));
 
+            const demandTotals = projectDemandTotals[categoryId] || {};
+            const demandTotalHours =
+              Number(demandTotals.pmHours || 0) +
+              Number(demandTotals.designHours || 0) +
+              Number(demandTotals.constructionHours || 0);
+
+            const monthlyDemandEntry = projectMonthlyDemand[categoryId] || {};
+            const monthlyDemandHours =
+              Number(monthlyDemandEntry.pmHours || 0) +
+              Number(monthlyDemandEntry.designHours || 0) +
+              Number(monthlyDemandEntry.constructionHours || 0);
+
             return {
               categoryId,
               categoryName: category?.name || "Uncategorized",
               staffRows,
               hasStaff: staffRows.length > 0,
-              demand:
-                Number(projectAllocations?.[categoryId]?.pmHours || 0) +
-                Number(projectAllocations?.[categoryId]?.designHours || 0) +
-                Number(projectAllocations?.[categoryId]?.constructionHours || 0),
+              demand: demandTotalHours,
+              monthlyDemand: monthlyDemandHours,
             };
           }
         );
@@ -223,6 +256,21 @@ const StaffAssignmentsTab = ({
           assigned: { totalHours: 0 },
           unfilled: { totalHours: 0 },
         };
+
+        const projectMonthlyDemandTotal = Object.values(
+          projectMonthlyDemand
+        ).reduce((sum, value) => {
+          if (!value) {
+            return sum;
+          }
+
+          return (
+            sum +
+            Number(value.pmHours || 0) +
+            Number(value.designHours || 0) +
+            Number(value.constructionHours || 0)
+          );
+        }, 0);
 
         const projectUnfilledEntries = [];
         const unfilledByCategory = unfilledDemand[projectId] || {};
@@ -248,6 +296,7 @@ const StaffAssignmentsTab = ({
           totalRows,
           summary,
           unfilledEntries: projectUnfilledEntries,
+          monthlyDemandTotal: projectMonthlyDemandTotal,
         };
       })
       .filter((entry) => entry.categories.length > 0);
@@ -376,6 +425,11 @@ const StaffAssignmentsTab = ({
           const isExpanded = expandedProjects[entry.projectId] ?? true;
           const summary = entry.summary || {};
           const hasUnfilled = Number(summary?.unfilled?.totalHours || 0) > 0;
+          const projectTypeLabel =
+            entry.project.type === "program"
+              ? "Annual Program"
+              : "Capital Project";
+          const projectMonthlyDemand = Number(entry.monthlyDemandTotal || 0);
 
           return (
             <div key={entry.projectId} className="rounded-lg bg-white shadow-sm">
@@ -391,11 +445,17 @@ const StaffAssignmentsTab = ({
                     ) : (
                       <ChevronRight size={18} className="text-gray-500" />
                     )}
-                    {entry.project.name}
+                    <span>{entry.project.name}</span>
+                    <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-indigo-700">
+                      {projectTypeLabel}
+                    </span>
                   </button>
                   <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-600">
                     <span>
-                      Demand: {formatHours(summary?.demand?.totalHours || 0)} hrs
+                      Demand: {formatHours(summary?.demand?.totalHours || 0)} hrs total
+                      {projectMonthlyDemand > 0
+                        ? ` (${formatHours(projectMonthlyDemand)} hrs/mo)`
+                        : ""}
                     </span>
                     <span>
                       Assigned: {formatHours(summary?.assigned?.totalHours || 0)} hrs
@@ -487,9 +547,20 @@ const StaffAssignmentsTab = ({
                             <tr className="bg-gray-100 text-xs font-semibold uppercase tracking-wide text-gray-500">
                               <td className="px-3 py-2" colSpan={columnCount}>
                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <span>
-                                    {category.categoryName} · Demand: {formatHours(category.demand)} hrs
-                                  </span>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-semibold text-gray-700">
+                                      {category.categoryName}
+                                    </span>
+                                    <span className="text-xs text-gray-500">
+                                      Demand: {formatHours(category.demand)} hrs total
+                                      {category.monthlyDemand > 0 && (
+                                        <>
+                                          {" · "}
+                                          {formatHours(category.monthlyDemand)} hrs/mo
+                                        </>
+                                      )}
+                                    </span>
+                                  </div>
                                   <span className="text-gray-500">
                                     Available: {formatHours(
                                       staffAvailabilityByCategory?.[category.categoryId]?.total || 0

@@ -15,12 +15,46 @@ const DEFAULT_PHASE_DURATIONS = {
   construction: 1,
 };
 
+const DEFAULT_PROGRAM_DURATION_MONTHS = 12;
+
 const normalizePhaseDuration = (value) => {
   const numeric = toNumber(value);
   return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
 };
 
 const ensurePhaseDuration = (value) => (value > 0 ? value : 1);
+
+const parseDateValue = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const calculateInclusiveMonthSpan = (start, end) => {
+  const startDate = parseDateValue(start);
+  const endDate = parseDateValue(end);
+
+  if (!startDate || !endDate) {
+    return DEFAULT_PROGRAM_DURATION_MONTHS;
+  }
+
+  const startMonth = startDate.getFullYear() * 12 + startDate.getMonth();
+  const endMonth = endDate.getFullYear() * 12 + endDate.getMonth();
+  const difference = endMonth - startMonth;
+
+  if (!Number.isFinite(difference)) {
+    return DEFAULT_PROGRAM_DURATION_MONTHS;
+  }
+
+  if (difference < 0) {
+    return DEFAULT_PROGRAM_DURATION_MONTHS;
+  }
+
+  return Math.max(1, difference + 1);
+};
 
 const getProjectPhaseDurations = (project = {}) => {
   const designRaw = normalizePhaseDuration(project.designDuration);
@@ -34,15 +68,37 @@ const getProjectPhaseDurations = (project = {}) => {
   };
 };
 
+const getProgramPhaseDurations = (project = {}) => {
+  const durationMonths = calculateInclusiveMonthSpan(
+    project.programStartDate,
+    project.programEndDate
+  );
+
+  const normalized = ensurePhaseDuration(durationMonths);
+
+  return {
+    pm: normalized,
+    design: normalized,
+    construction: normalized,
+  };
+};
+
 const buildProjectPhaseDurationMap = (projects = []) => {
   const map = new Map();
 
   projects.forEach((project) => {
-    if (!project || project.id == null || project.type !== "project") {
+    if (!project || project.id == null) {
       return;
     }
 
-    map.set(Number(project.id), getProjectPhaseDurations(project));
+    if (project.type === "program") {
+      map.set(Number(project.id), getProgramPhaseDurations(project));
+      return;
+    }
+
+    if (project.type === "project") {
+      map.set(Number(project.id), getProjectPhaseDurations(project));
+    }
   });
 
   return map;
@@ -190,6 +246,184 @@ const buildProjectCategoryDemand = (staffAllocations = {}) => {
   });
 
   return demand;
+};
+
+const normalizeProgramCategoryDemand = (project = {}) => {
+  const raw = project?.continuousHoursByCategory;
+
+  if (!raw) {
+    return null;
+  }
+
+  let parsed = raw;
+
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      console.warn("Unable to parse program hours config:", error);
+      return null;
+    }
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    return null;
+  }
+
+  const normalized = {};
+
+  Object.entries(parsed).forEach(([categoryId, hours]) => {
+    if (!hours || typeof hours !== "object") {
+      return;
+    }
+
+    const categoryKey = Number(categoryId);
+    if (!Number.isFinite(categoryKey)) {
+      return;
+    }
+
+    const pmHours = Math.max(0, toNumber(hours.pmHours));
+    const designHours = Math.max(0, toNumber(hours.designHours));
+    const constructionHours = Math.max(0, toNumber(hours.constructionHours));
+
+    if (pmHours > 0 || designHours > 0 || constructionHours > 0) {
+      normalized[categoryKey] = { pmHours, designHours, constructionHours };
+    }
+  });
+
+  return Object.keys(normalized).length > 0 ? normalized : null;
+};
+
+const buildProgramMonthlyDemand = (project = {}, staffCategories = []) => {
+  const categoryConfig = normalizeProgramCategoryDemand(project);
+
+  if (categoryConfig) {
+    return categoryConfig;
+  }
+
+  const monthlyByCategory = {};
+
+  const allocatePhase = (phaseKey, value, capacityField) => {
+    const hours = Math.max(0, toNumber(value));
+    if (hours <= 0) {
+      return;
+    }
+
+    const eligibleCategories = (staffCategories || []).filter((category) => {
+      if (!category || category.id == null) {
+        return false;
+      }
+
+      return toNumber(category[capacityField]) > 0;
+    });
+
+    if (eligibleCategories.length === 0) {
+      return;
+    }
+
+    const totalCapacity = eligibleCategories.reduce(
+      (sum, category) => sum + Math.max(0, toNumber(category[capacityField])),
+      0
+    );
+
+    eligibleCategories.forEach((category) => {
+      const categoryId = Number(category.id);
+      if (!Number.isFinite(categoryId)) {
+        return;
+      }
+
+      if (!monthlyByCategory[categoryId]) {
+        monthlyByCategory[categoryId] = {
+          pmHours: 0,
+          designHours: 0,
+          constructionHours: 0,
+        };
+      }
+
+      const capacityValue = Math.max(0, toNumber(category[capacityField]));
+      const weight =
+        totalCapacity > 0
+          ? capacityValue / totalCapacity
+          : 1 / eligibleCategories.length;
+
+      monthlyByCategory[categoryId][`${phaseKey}Hours`] += hours * weight;
+    });
+  };
+
+  allocatePhase("pm", project?.continuousPmHours, "pmCapacity");
+  allocatePhase("design", project?.continuousDesignHours, "designCapacity");
+  allocatePhase(
+    "construction",
+    project?.continuousConstructionHours,
+    "constructionCapacity"
+  );
+
+  return Object.keys(monthlyByCategory).length > 0 ? monthlyByCategory : null;
+};
+
+const buildProgramDemandMaps = (projects = [], staffCategories = []) => {
+  const totals = {};
+  const monthly = {};
+
+  (projects || []).forEach((project) => {
+    if (!project || project.id == null || project.type !== "program") {
+      return;
+    }
+
+    const monthlyDemand = buildProgramMonthlyDemand(project, staffCategories);
+
+    if (!monthlyDemand) {
+      return;
+    }
+
+    const duration = ensurePhaseDuration(
+      calculateInclusiveMonthSpan(
+        project.programStartDate,
+        project.programEndDate
+      )
+    );
+
+    const projectKey = Number(project.id);
+    totals[projectKey] = {};
+    monthly[projectKey] = {};
+
+    Object.entries(monthlyDemand).forEach(([categoryId, hours]) => {
+      const categoryKey = Number(categoryId);
+      if (!Number.isFinite(categoryKey)) {
+        return;
+      }
+
+      const pmMonthly = Math.max(0, toNumber(hours.pmHours));
+      const designMonthly = Math.max(0, toNumber(hours.designHours));
+      const constructionMonthly = Math.max(
+        0,
+        toNumber(hours.constructionHours)
+      );
+
+      if (pmMonthly <= 0 && designMonthly <= 0 && constructionMonthly <= 0) {
+        return;
+      }
+
+      totals[projectKey][categoryKey] = {
+        pmHours: pmMonthly * duration,
+        designHours: designMonthly * duration,
+        constructionHours: constructionMonthly * duration,
+      };
+
+      monthly[projectKey][categoryKey] = {
+        pmHours: pmMonthly,
+        designHours: designMonthly,
+        constructionHours: constructionMonthly,
+      };
+    });
+
+    if (Object.keys(totals[projectKey]).length === 0) {
+      delete totals[projectKey];
+      delete monthly[projectKey];
+    }
+  });
+
+  return { totals, monthly };
 };
 
 const buildManualAssignmentMaps = (
@@ -357,8 +591,34 @@ export const buildStaffAssignmentPlan = ({
   const projectMap = new Map(projects.map((project) => [project.id, project]));
   const staffById = new Map(staffMembers.map((member) => [member.id, member]));
 
-  const demand = buildProjectCategoryDemand(staffAllocations);
   const projectPhaseDurations = buildProjectPhaseDurationMap(projects);
+  const demand = buildProjectCategoryDemand(staffAllocations);
+  const { totals: programDemandTotals } = buildProgramDemandMaps(
+    projects,
+    staffCategories
+  );
+
+  Object.entries(programDemandTotals).forEach(([projectId, categories]) => {
+    const projectKey = Number(projectId);
+    if (!demand[projectKey]) {
+      demand[projectKey] = {};
+    }
+
+    Object.entries(categories || {}).forEach(([categoryId, hours]) => {
+      const categoryKey = Number(categoryId);
+      const existing = demand[projectKey][categoryKey] || emptyHours();
+
+      demand[projectKey][categoryKey] = {
+        pmHours: toNumber(existing.pmHours) + toNumber(hours.pmHours),
+        designHours:
+          toNumber(existing.designHours) + toNumber(hours.designHours),
+        constructionHours:
+          toNumber(existing.constructionHours) +
+          toNumber(hours.constructionHours),
+      };
+    });
+  });
+
   const monthlyDemand = buildMonthlyDemand(demand, projectPhaseDurations);
 
   const {
@@ -399,7 +659,7 @@ export const buildStaffAssignmentPlan = ({
   Object.entries(residualMonthlyDemand).forEach(([projectId, categories]) => {
     const projectKey = Number(projectId);
     const project = projectMap.get(projectKey);
-    if (!project || project.type !== "project") {
+    if (!project) {
       return;
     }
 
@@ -645,6 +905,8 @@ export const buildStaffAssignmentPlan = ({
     projectSummaries,
     staffUtilization,
     totals,
+    demandByProjectCategory: demand,
+    monthlyDemandByProjectCategory: monthlyDemand,
     unfilledDemand: convertProjectCategoryMapToTotals(
       unfilledDemandMonthly,
       projectPhaseDurations
