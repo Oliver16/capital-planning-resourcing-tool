@@ -161,6 +161,8 @@ const formatPercent = (value, digits = 1) => {
   return `${numeric.toFixed(digits)}%`;
 };
 
+const DEFAULT_QUARTER_SPAN = 12;
+
 const formatDateLabel = (value) => {
   if (!value) {
     return "";
@@ -212,8 +214,102 @@ const getYPosition = (value, maxValue, chartHeight, paddingTop) => {
   return paddingTop + chartHeight - normalized * chartHeight;
 };
 
+const getQuarterInfo = (monthValue, fallbackLabel) => {
+  let referenceDate = null;
+
+  if (monthValue instanceof Date) {
+    referenceDate = monthValue;
+  } else if (typeof monthValue === "string" && monthValue) {
+    if (/^\d{4}-\d{1,2}$/.test(monthValue)) {
+      referenceDate = new Date(`${monthValue}-01T00:00:00`);
+    } else {
+      const parsed = new Date(monthValue);
+      if (!Number.isNaN(parsed.getTime())) {
+        referenceDate = parsed;
+      }
+    }
+  }
+
+  if (!referenceDate && typeof fallbackLabel === "string") {
+    const parsed = new Date(fallbackLabel);
+    if (!Number.isNaN(parsed.getTime())) {
+      referenceDate = parsed;
+    }
+  }
+
+  if (!(referenceDate instanceof Date) || Number.isNaN(referenceDate.getTime())) {
+    return null;
+  }
+
+  const year = referenceDate.getFullYear();
+  const monthIndex = referenceDate.getMonth();
+  const quarter = Math.floor(monthIndex / 3) + 1;
+
+  return {
+    key: `${year}-Q${quarter}`,
+    label: `Q${quarter} ${year}`,
+    year,
+    quarter,
+  };
+};
+
+const buildQuarterlySeries = (
+  points,
+  targetQuarters = DEFAULT_QUARTER_SPAN
+) => {
+  if (!Array.isArray(points) || points.length === 0) {
+    return [];
+  }
+
+  const buckets = new Map();
+
+  points.forEach((point) => {
+    const info = getQuarterInfo(point.month, point.monthLabel);
+    if (!info) {
+      return;
+    }
+
+    const bucket = buckets.get(info.key) || {
+      ...info,
+      totalRequired: 0,
+      totalActual: 0,
+      samples: 0,
+    };
+
+    bucket.totalRequired += Number(point.totalRequired) || 0;
+    bucket.totalActual += Number(point.totalActual) || 0;
+    bucket.samples += 1;
+
+    buckets.set(info.key, bucket);
+  });
+
+  const sorted = Array.from(buckets.values()).sort((a, b) => {
+    if (a.year !== b.year) {
+      return a.year - b.year;
+    }
+    return a.quarter - b.quarter;
+  });
+
+  const normalized = sorted.map((bucket) => ({
+    key: bucket.key,
+    label: bucket.label,
+    totalRequired:
+      bucket.samples > 0 ? bucket.totalRequired / bucket.samples : 0,
+    totalActual:
+      bucket.samples > 0 ? bucket.totalActual / bucket.samples : 0,
+  }));
+
+  if (targetQuarters && normalized.length > targetQuarters) {
+    return normalized.slice(0, targetQuarters);
+  }
+
+  return normalized;
+};
+
 const SummaryChart = ({ data = [] }) => {
-  if (!data.length) {
+  const quarterlyData = buildQuarterlySeries(data);
+
+  if (!quarterlyData.length) {
     return <Text>No forecast data available.</Text>;
   }
 
@@ -228,17 +324,22 @@ const SummaryChart = ({ data = [] }) => {
 
   const maxValue = Math.max(
     1,
-    ...data.map((point) => Math.max(point.totalRequired || 0, point.totalActual || 0))
+    ...quarterlyData.map((point) =>
+      Math.max(point.totalRequired || 0, point.totalActual || 0)
+    )
   );
 
   const yTicks = 4;
-  const xLabelCount = Math.min(6, data.length);
-  const xInterval = Math.max(1, Math.floor(data.length / xLabelCount));
 
   const buildLinePoints = (key) =>
-    data
+    quarterlyData
       .map((point, index) => {
-        const x = getXPosition(index, data.length, chartWidth, paddingLeft);
+        const x = getXPosition(
+          index,
+          quarterlyData.length,
+          chartWidth,
+          paddingLeft
+        );
         const y = getYPosition(
           point[key] || 0,
           maxValue,
@@ -250,7 +351,7 @@ const SummaryChart = ({ data = [] }) => {
       .join(" ");
 
   return (
-    <View style={styles.chartCard}>
+    <View style={styles.chartCard} wrap={false}>
       <Svg width={width} height={height}>
         {/* Axes */}
         <Line
@@ -298,21 +399,23 @@ const SummaryChart = ({ data = [] }) => {
         })}
 
         {/* X axis labels */}
-        {data.map((point, index) => {
-          if (index % xInterval !== 0 && index !== data.length - 1) {
-            return null;
-          }
-          const x = getXPosition(index, data.length, chartWidth, paddingLeft);
+        {quarterlyData.map((point, index) => {
+          const x = getXPosition(
+            index,
+            quarterlyData.length,
+            chartWidth,
+            paddingLeft
+          );
           return (
             <SvgText
-              key={`x-${index}`}
+              key={`x-${point.key}`}
               x={x}
               y={paddingTop + chartHeight + 16}
               fontSize={8}
               fill="#6b7280"
               textAnchor="middle"
             >
-              {point.monthLabel}
+              {point.label}
             </SvgText>
           );
         })}
@@ -345,7 +448,7 @@ const SummaryChart = ({ data = [] }) => {
 const CategoryChart = ({ name, data = [] }) => {
   if (!data.length) {
     return (
-      <View style={styles.chartCard}>
+      <View style={styles.chartCard} wrap={false}>
         <Text>{name}</Text>
         <Text>No forecast data available.</Text>
       </View>
@@ -433,7 +536,7 @@ const CategoryChart = ({ name, data = [] }) => {
     .filter(Boolean);
 
   return (
-    <View style={styles.chartCard}>
+    <View style={styles.chartCard} wrap={false}>
       <Text style={{ fontSize: 11, fontWeight: 600, marginBottom: 8 }}>{name}</Text>
       <Svg width={width} height={height}>
         {/* Axes */}
@@ -664,7 +767,7 @@ const GapAnalysisPdf = ({
           <View style={styles.chartGrid}>
             {categorySeries.length > 0 ? (
               categorySeries.map((category) => (
-                <View key={category.name} style={styles.chartWrapper}>
+                <View key={category.name} style={styles.chartWrapper} wrap={false}>
                   <CategoryChart name={category.name} data={category.data} />
                 </View>
               ))
