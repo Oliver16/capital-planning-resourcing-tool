@@ -7,6 +7,8 @@ import {
   Download,
   ChevronDown,
   ChevronRight,
+  SlidersHorizontal,
+  X,
 } from "lucide-react";
 import { downloadCSVTemplate } from "../../utils/dataImport";
 import { groupProjectsByType } from "../../utils/projectGrouping";
@@ -47,6 +49,183 @@ const baseInputClass =
   "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2";
 const projectInputClass = `${baseInputClass} focus:border-blue-500 focus:ring-blue-200`;
 const programInputClass = `${baseInputClass} focus:border-purple-500 focus:ring-purple-200`;
+
+const sanitizeHoursValue = (value) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+};
+
+const parseCategoryHoursConfig = (config) => {
+  if (!config) {
+    return {};
+  }
+
+  if (typeof config === "string") {
+    try {
+      const parsed = JSON.parse(config);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (error) {
+      console.warn("Unable to parse program hours config:", error);
+      return {};
+    }
+  }
+
+  return typeof config === "object" ? config : {};
+};
+
+const sanitizeCategoryHoursMap = (config) => {
+  const parsed = parseCategoryHoursConfig(config);
+  const sanitized = {};
+
+  Object.entries(parsed).forEach(([key, value]) => {
+    if (!value || typeof value !== "object") {
+      return;
+    }
+
+    const pmHours = sanitizeHoursValue(value.pmHours);
+    const designHours = sanitizeHoursValue(value.designHours);
+    const constructionHours = sanitizeHoursValue(value.constructionHours);
+
+    if (pmHours > 0 || designHours > 0 || constructionHours > 0) {
+      sanitized[String(key)] = { pmHours, designHours, constructionHours };
+    }
+  });
+
+  return sanitized;
+};
+
+const getVisibleCategoryHours = (program, staffCategories = []) => {
+  const sanitized = sanitizeCategoryHoursMap(program?.continuousHoursByCategory);
+
+  if (!Array.isArray(staffCategories) || staffCategories.length === 0) {
+    return sanitized;
+  }
+
+  const validCategoryIds = new Set(
+    staffCategories
+      .filter((category) => category && category.id != null)
+      .map((category) => String(category.id))
+  );
+
+  return Object.entries(sanitized).reduce((accumulator, [key, value]) => {
+    if (validCategoryIds.has(key)) {
+      accumulator[key] = value;
+    }
+    return accumulator;
+  }, {});
+};
+
+const buildModalStateForProgram = (program, staffCategories = []) => {
+  const sanitized = sanitizeCategoryHoursMap(program?.continuousHoursByCategory);
+  const config = {};
+  const extraEntries = {};
+  const knownCategoryIds = new Set();
+
+  (staffCategories || []).forEach((category) => {
+    if (!category || category.id == null) {
+      return;
+    }
+
+    const key = String(category.id);
+    knownCategoryIds.add(key);
+    const entry = sanitized[key];
+    config[key] = {
+      pmHours: entry ? String(entry.pmHours) : "",
+      designHours: entry ? String(entry.designHours) : "",
+      constructionHours: entry ? String(entry.constructionHours) : "",
+    };
+  });
+
+  Object.entries(sanitized).forEach(([key, entry]) => {
+    if (!knownCategoryIds.has(key)) {
+      extraEntries[key] = entry;
+    }
+  });
+
+  return {
+    config,
+    extraEntries,
+    hadExistingValues: Object.keys(sanitized).length > 0,
+  };
+};
+
+const buildCategoryUpdatesForSave = (
+  draftConfig,
+  staffCategories = [],
+  extraEntries = {}
+) => {
+  const mergedConfig = {};
+  let totalPm = 0;
+  let totalDesign = 0;
+  let totalConstruction = 0;
+
+  const addEntry = (key, entry) => {
+    if (!entry) {
+      return;
+    }
+
+    const pmHours = sanitizeHoursValue(entry.pmHours);
+    const designHours = sanitizeHoursValue(entry.designHours);
+    const constructionHours = sanitizeHoursValue(entry.constructionHours);
+
+    if (pmHours > 0 || designHours > 0 || constructionHours > 0) {
+      mergedConfig[String(key)] = { pmHours, designHours, constructionHours };
+      totalPm += pmHours;
+      totalDesign += designHours;
+      totalConstruction += constructionHours;
+    }
+  };
+
+  (staffCategories || []).forEach((category) => {
+    if (!category || category.id == null) {
+      return;
+    }
+
+    const key = String(category.id);
+    const entry = draftConfig?.[key];
+
+    if (!entry) {
+      return;
+    }
+
+    addEntry(key, {
+      pmHours: entry.pmHours,
+      designHours: entry.designHours,
+      constructionHours: entry.constructionHours,
+    });
+  });
+
+  Object.entries(extraEntries || {}).forEach(([key, entry]) => {
+    if (mergedConfig[key]) {
+      return;
+    }
+
+    addEntry(key, entry);
+  });
+
+  const hasValues = Object.keys(mergedConfig).length > 0;
+
+  return {
+    sanitizedConfig: hasValues ? mergedConfig : null,
+    totals: {
+      pm: totalPm,
+      design: totalDesign,
+      construction: totalConstruction,
+    },
+  };
+};
+
+const formatHoursSummary = (value) => {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0";
+  }
+
+  if (Number.isInteger(value)) {
+    return value.toLocaleString("en-US");
+  }
+
+  return value.toLocaleString("en-US", { maximumFractionDigits: 1 });
+};
 
 const Field = ({ label, children, hint }) => (
   <label className="flex flex-col gap-1 text-sm text-gray-600">
@@ -290,8 +469,10 @@ const ProgramCard = ({
   program,
   projectTypes,
   fundingSources,
+  staffCategories,
   updateProject,
   deleteProject,
+  onConfigureCategoryHours,
 }) => {
   const { label: typeLabel, color: typeColor } = getProjectTypeInfo(
     projectTypes,
@@ -318,6 +499,25 @@ const ProgramCard = ({
     const parsed = parseInt(rawValue, 10);
     updateProject(program.id, field, Number.isNaN(parsed) ? null : parsed);
   };
+
+  const categoryHours = getVisibleCategoryHours(program, staffCategories);
+  const categoryCount = Object.keys(categoryHours).length;
+  const totalCategoryHours = Object.values(categoryHours).reduce(
+    (sum, entry) =>
+      sum + (entry.pmHours || 0) + (entry.designHours || 0) + (entry.constructionHours || 0),
+    0
+  );
+  const pmHours = sanitizeHoursValue(program.continuousPmHours);
+  const designHours = sanitizeHoursValue(program.continuousDesignHours);
+  const constructionHours = sanitizeHoursValue(
+    program.continuousConstructionHours
+  );
+  const combinedContinuousHours = pmHours + designHours + constructionHours;
+  const hoursBreakdown = [
+    { key: "pm", label: "PM", value: pmHours },
+    { key: "design", label: "Design", value: designHours },
+    { key: "construction", label: "Construction", value: constructionHours },
+  ];
 
   return (
     <div className="rounded-xl border border-purple-200 bg-white shadow-sm">
@@ -463,34 +663,300 @@ const ProgramCard = ({
         </Field>
 
         <div className="md:col-span-2">
-          <Field label="Continuous staffing (hrs per month)">
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <input
-                type="number"
-                min="0"
-                value={program.continuousPmHours || ""}
-                onChange={handleNumberChange("continuousPmHours")}
-                placeholder="PM"
-                className={`${programInputClass} sm:w-28`}
-              />
-              <input
-                type="number"
-                min="0"
-                value={program.continuousDesignHours || ""}
-                onChange={handleNumberChange("continuousDesignHours")}
-                placeholder="Design"
-                className={`${programInputClass} sm:w-28`}
-              />
-              <input
-                type="number"
-                min="0"
-                value={program.continuousConstructionHours || ""}
-                onChange={handleNumberChange("continuousConstructionHours")}
-                placeholder="Construction"
-                className={`${programInputClass} sm:w-32`}
-              />
+          <Field
+            label="Continuous staffing (hrs per month)"
+            hint={
+              categoryCount > 0
+                ? `Detailed staffing defined for ${categoryCount} ${
+                    categoryCount === 1 ? "category" : "categories"
+                  } • ${formatHoursSummary(totalCategoryHours)} hrs/month total`
+                : "Configure by staff category to define monthly PM, design, and construction hours."
+            }
+          >
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex-1 space-y-4">
+                <div className="flex items-center justify-between rounded-lg border border-purple-200 bg-purple-50 px-4 py-2 text-sm font-semibold text-purple-700 shadow-sm">
+                  <span>Total hours/month</span>
+                  <span className="flex items-baseline gap-1 text-lg font-semibold text-purple-900">
+                    {formatHoursSummary(combinedContinuousHours)}
+                    <span className="text-xs font-medium uppercase text-purple-500">
+                      hrs/mo
+                    </span>
+                  </span>
+                </div>
+                <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {hoursBreakdown.map((item) => (
+                    <div
+                      key={item.key}
+                      className="rounded-lg border border-purple-100 bg-white p-3 shadow-sm"
+                    >
+                      <dt className="text-xs font-semibold uppercase tracking-wide text-purple-600">
+                        {item.label}
+                      </dt>
+                      <dd className="mt-1 flex items-baseline gap-2 text-2xl font-semibold text-purple-900">
+                        {formatHoursSummary(item.value)}
+                        <span className="text-xs font-medium uppercase text-purple-500">
+                          hrs/mo
+                        </span>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+              <div className="sm:pl-4 sm:pt-1">
+                <button
+                  type="button"
+                  onClick={() => onConfigureCategoryHours?.(program)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-1 sm:w-auto"
+                >
+                  <SlidersHorizontal size={16} className="text-purple-100" />
+                  Configure by staff category
+                </button>
+              </div>
             </div>
           </Field>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const defaultCategoryModalState = {
+  isOpen: false,
+  programId: null,
+  programName: "",
+  config: {},
+  extraEntries: {},
+  hadExistingValues: false,
+};
+
+const CategoryHoursModal = ({
+  isOpen,
+  programName,
+  staffCategories,
+  config,
+  onChange,
+  onClose,
+  onSave,
+  onClear,
+  hasExistingConfig,
+}) => {
+  React.useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) {
+    return null;
+  }
+
+  const sortedCategories = (staffCategories || [])
+    .filter((category) => category && category.id != null)
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const totals = sortedCategories.reduce(
+    (accumulator, category) => {
+      const entry = config?.[String(category.id)];
+      if (!entry) {
+        return accumulator;
+      }
+
+      const pm = sanitizeHoursValue(entry.pmHours);
+      const design = sanitizeHoursValue(entry.designHours);
+      const construction = sanitizeHoursValue(entry.constructionHours);
+
+      if (pm > 0 || design > 0 || construction > 0) {
+        accumulator.categories += 1;
+      }
+
+      accumulator.pm += pm;
+      accumulator.design += design;
+      accumulator.construction += construction;
+      accumulator.total += pm + design + construction;
+      return accumulator;
+    },
+    { pm: 0, design: 0, construction: 0, total: 0, categories: 0 }
+  );
+
+  const hasCategories = sortedCategories.length > 0;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 px-4 py-6"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-gray-100 p-6">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Configure staffing by category
+            </h2>
+            <p className="text-sm text-gray-500">
+              Assign monthly PM, design, and construction hours for each staff
+              category supporting
+              {" "}
+              <span className="font-medium text-gray-700">
+                {programName || "this program"}
+              </span>
+              .
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full bg-gray-100 p-2 text-gray-500 transition hover:bg-gray-200 hover:text-gray-700"
+            aria-label="Close"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="max-h-[60vh] overflow-y-auto p-6 pt-4">
+          {hasCategories ? (
+            <table className="min-w-full divide-y divide-gray-100 text-sm">
+              <thead>
+                <tr className="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <th className="px-3 py-2">Staff category</th>
+                  <th className="px-3 py-2">PM hours</th>
+                  <th className="px-3 py-2">Design hours</th>
+                  <th className="px-3 py-2">Construction hours</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {sortedCategories.map((category) => {
+                  const key = String(category.id);
+                  const entry = config?.[key] || {
+                    pmHours: "",
+                    designHours: "",
+                    constructionHours: "",
+                  };
+
+                  return (
+                    <tr key={category.id} className="text-gray-700">
+                      <td className="px-3 py-3 font-medium text-gray-800">
+                        {category.name}
+                      </td>
+                      <td className="px-3 py-3">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={entry.pmHours}
+                          onChange={(event) =>
+                            onChange(category.id, "pmHours", event.target.value)
+                          }
+                          className={`${programInputClass} w-full`}
+                        />
+                      </td>
+                      <td className="px-3 py-3">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={entry.designHours}
+                          onChange={(event) =>
+                            onChange(
+                              category.id,
+                              "designHours",
+                              event.target.value
+                            )
+                          }
+                          className={`${programInputClass} w-full`}
+                        />
+                      </td>
+                      <td className="px-3 py-3">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={entry.constructionHours}
+                          onChange={(event) =>
+                            onChange(
+                              category.id,
+                              "constructionHours",
+                              event.target.value
+                            )
+                          }
+                          className={`${programInputClass} w-full`}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
+              No staff categories are available yet. Add categories in the
+              People tab to configure detailed program staffing.
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-3 border-t border-gray-100 p-6">
+          {hasCategories && (
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-gray-600">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-medium text-purple-700">
+                  {totals.categories} {totals.categories === 1 ? "category" : "categories"}
+                  {" "}
+                  configured
+                </span>
+                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
+                  Total {formatHoursSummary(totals.total)} hrs/month
+                </span>
+                <span className="hidden rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 md:inline">
+                  PM {formatHoursSummary(totals.pm)} • Design {formatHoursSummary(totals.design)} • Construction {formatHoursSummary(totals.construction)}
+                </span>
+              </div>
+              {hasExistingConfig && (
+                <button
+                  type="button"
+                  onClick={onClear}
+                  className="text-xs font-medium text-red-600 transition hover:text-red-700"
+                >
+                  Clear custom hours
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="flex flex-wrap justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50 hover:text-gray-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onSave}
+              className="inline-flex items-center gap-2 rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-400"
+              disabled={!hasCategories}
+            >
+              <SlidersHorizontal size={16} className="text-purple-100" />
+              Save configuration
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -513,6 +979,9 @@ const ProjectsPrograms = ({
   );
 
   const [expandedGroups, setExpandedGroups] = useState({});
+  const [categoryModalState, setCategoryModalState] = useState(
+    defaultCategoryModalState
+  );
 
   useEffect(() => {
     setExpandedGroups((previous) => {
@@ -525,6 +994,104 @@ const ProjectsPrograms = ({
       return nextState;
     });
   }, [projectGroups]);
+
+  const openCategoryModal = useCallback(
+    (program) => {
+      if (!program) {
+        return;
+      }
+
+      const { config, extraEntries, hadExistingValues } =
+        buildModalStateForProgram(program, staffCategories);
+
+      setCategoryModalState({
+        isOpen: true,
+        programId: program.id,
+        programName: program.name || "Annual program",
+        config,
+        extraEntries,
+        hadExistingValues,
+      });
+    },
+    [staffCategories]
+  );
+
+  const closeCategoryModal = useCallback(() => {
+    setCategoryModalState(defaultCategoryModalState);
+  }, []);
+
+  const updateModalConfig = useCallback((categoryId, field, value) => {
+    setCategoryModalState((previous) => {
+      if (!previous?.isOpen) {
+        return previous;
+      }
+
+      const key = String(categoryId);
+      const existingEntry = previous.config?.[key] || {
+        pmHours: "",
+        designHours: "",
+        constructionHours: "",
+      };
+
+      return {
+        ...previous,
+        config: {
+          ...previous.config,
+          [key]: {
+            ...existingEntry,
+            [field]: value,
+          },
+        },
+      };
+    });
+  }, []);
+
+  const saveCategoryModal = useCallback(() => {
+    setCategoryModalState((previous) => {
+      if (!previous?.isOpen) {
+        return previous;
+      }
+
+      const { sanitizedConfig, totals } = buildCategoryUpdatesForSave(
+        previous.config,
+        staffCategories,
+        previous.extraEntries
+      );
+
+      if (previous.programId != null) {
+        if (sanitizedConfig) {
+          updateProject(previous.programId, {
+            continuousHoursByCategory: sanitizedConfig,
+            continuousPmHours: totals.pm,
+            continuousDesignHours: totals.design,
+            continuousConstructionHours: totals.construction,
+          });
+        } else {
+          updateProject(previous.programId, {
+            continuousHoursByCategory: null,
+          });
+        }
+      }
+
+      return defaultCategoryModalState;
+    });
+  }, [staffCategories, updateProject]);
+
+  const clearCategoryModal = useCallback(() => {
+    setCategoryModalState((previous) => {
+      if (!previous?.isOpen) {
+        return previous;
+      }
+
+      if (previous.programId != null) {
+        updateProject(previous.programId, {
+          continuousHoursByCategory: null,
+        });
+      }
+
+      return defaultCategoryModalState;
+    });
+  }, [updateProject]);
 
   const toggleGroup = (key) => {
     setExpandedGroups((previous) => ({
@@ -704,8 +1271,10 @@ const ProjectsPrograms = ({
                             program={program}
                             projectTypes={projectTypes}
                             fundingSources={fundingSources}
+                            staffCategories={staffCategories}
                             updateProject={updateProject}
                             deleteProject={deleteProject}
+                            onConfigureCategoryHours={openCategoryModal}
                           />
                         ))}
                       </div>
@@ -744,6 +1313,26 @@ const ProjectsPrograms = ({
           </p>
         </div>
       </div>
+
+      <CategoryHoursModal
+        isOpen={categoryModalState.isOpen}
+        programName={categoryModalState.programName}
+        staffCategories={staffCategories}
+        config={categoryModalState.config}
+        onChange={updateModalConfig}
+        onClose={closeCategoryModal}
+        onSave={saveCategoryModal}
+        onClear={clearCategoryModal}
+        hasExistingConfig={
+          categoryModalState.hadExistingValues ||
+          Object.values(categoryModalState.config || {}).some((entry) =>
+            [entry?.pmHours, entry?.designHours, entry?.constructionHours].some(
+              (value) => sanitizeHoursValue(value) > 0
+            )
+          ) ||
+          Object.keys(categoryModalState.extraEntries || {}).length > 0
+        }
+      />
     </div>
   );
 };
