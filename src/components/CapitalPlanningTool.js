@@ -1138,6 +1138,7 @@ const CapitalPlanningTool = () => {
               staffCategories={staffCategories}
               staffAllocations={staffAllocations}
               staffingGaps={staffingGaps}
+              resourceForecast={resourceForecast}
             />
           )}
 
