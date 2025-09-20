@@ -1,4 +1,6 @@
-import { Document, Page, StyleSheet, Text, View, pdf } from "@react-pdf/renderer";
+import * as ReactPdf from "@react-pdf/renderer";
+
+const { Document, Page, StyleSheet, Text, View, pdf } = ReactPdf;
 
 const HOURS_PER_FTE_MONTH = 4.33 * 40;
 
