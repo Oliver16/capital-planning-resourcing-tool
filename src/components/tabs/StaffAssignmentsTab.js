@@ -467,12 +467,12 @@ const StaffAssignmentsTab = ({
                           <th className="px-3 py-2">Category</th>
                           {phaseKeys.map((phase) => (
                             <th key={`${phase.key}-manual`} className="px-3 py-2 text-center">
-                              {phase.label} (Manual)
+                              {phase.label} (Manual hrs/mo)
                             </th>
                           ))}
                           {phaseKeys.map((phase) => (
                             <th key={`${phase.key}-auto`} className="px-3 py-2 text-center">
-                              {phase.label} (Auto)
+                              {phase.label} (Auto hrs/mo)
                             </th>
                           ))}
                           <th className="px-3 py-2 text-center">Total Assigned</th>
@@ -493,7 +493,7 @@ const StaffAssignmentsTab = ({
                                   <span className="text-gray-500">
                                     Available: {formatHours(
                                       staffAvailabilityByCategory?.[category.categoryId]?.total || 0
-                                    )} hrs
+                                    )} hrs/mo
                                   </span>
                                 </div>
                               </td>
@@ -511,7 +511,7 @@ const StaffAssignmentsTab = ({
                                     <td className="px-3 py-2 align-top text-gray-900">
                                       <div className="font-medium">{row.staffName}</div>
                                       <div className="text-xs text-gray-500">
-                                        Available: {formatHours(row.availability.totalHours)} hrs
+                                        Available: {formatHours(row.availability.totalHours)} hrs/mo
                                       </div>
                                     </td>
                                     <td className="px-3 py-2 align-top text-gray-600">

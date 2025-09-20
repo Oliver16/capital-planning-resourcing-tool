@@ -24,7 +24,7 @@ const buildAssignmentsSheet = (report) => {
     "Total Hours (Manual)",
     "Total Hours (Auto)",
     "Total Hours (Assigned)",
-    "Availability (hrs)",
+    "Availability (hrs/mo)",
     "Utilization (%)",
     "Overbooked",
   ];
@@ -46,10 +46,7 @@ const buildAssignmentsSheet = (report) => {
     toNumber(assignment.auto?.totalHours || 0),
     toNumber(assignment.totals?.totalHours || 0),
     toNumber(assignment.availability?.totalHours || 0),
-    assignment.availability?.totalHours
-      ? (toNumber(assignment.totals?.totalHours || 0) /
-          assignment.availability.totalHours) * 100
-      : 0,
+    toNumber(assignment.utilizationPercent || 0),
     assignment.overbooked ? "Yes" : "No",
   ]);
 
@@ -107,8 +104,8 @@ const buildProjectsSheet = (report) => {
 const buildStaffSheet = (report) => {
   const header = [
     "Staff Member",
-    "Available Hours",
-    "Assigned Hours",
+    "Available Hours (hrs/mo)",
+    "Assigned Hours (hrs/mo)",
     "Overbooked",
   ];
 

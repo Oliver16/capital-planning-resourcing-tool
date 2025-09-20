@@ -9,6 +9,130 @@ const cloneHours = (hours = {}) => ({
   constructionHours: toNumber(hours.constructionHours),
 });
 
+const DEFAULT_PHASE_DURATIONS = {
+  pm: 1,
+  design: 1,
+  construction: 1,
+};
+
+const normalizePhaseDuration = (value) => {
+  const numeric = toNumber(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+};
+
+const ensurePhaseDuration = (value) => (value > 0 ? value : 1);
+
+const getProjectPhaseDurations = (project = {}) => {
+  const designRaw = normalizePhaseDuration(project.designDuration);
+  const constructionRaw = normalizePhaseDuration(project.constructionDuration);
+  const pmRaw = designRaw + constructionRaw;
+
+  return {
+    pm: ensurePhaseDuration(pmRaw),
+    design: ensurePhaseDuration(designRaw),
+    construction: ensurePhaseDuration(constructionRaw),
+  };
+};
+
+const buildProjectPhaseDurationMap = (projects = []) => {
+  const map = new Map();
+
+  projects.forEach((project) => {
+    if (!project || project.id == null || project.type !== "project") {
+      return;
+    }
+
+    map.set(Number(project.id), getProjectPhaseDurations(project));
+  });
+
+  return map;
+};
+
+const convertTotalsToMonthly = (
+  hours = {},
+  durations = DEFAULT_PHASE_DURATIONS
+) => {
+  const pmDuration = Math.max(toNumber(durations.pm) || 0, 1);
+  const designDuration = Math.max(toNumber(durations.design) || 0, 1);
+  const constructionDuration = Math.max(toNumber(durations.construction) || 0, 1);
+
+  const pmHours = toNumber(hours.pmHours) / pmDuration;
+  const designHours = toNumber(hours.designHours) / designDuration;
+  const constructionHours =
+    toNumber(hours.constructionHours) / constructionDuration;
+
+  return {
+    pmHours,
+    designHours,
+    constructionHours,
+    totalHours: pmHours + designHours + constructionHours,
+  };
+};
+
+const convertMonthlyToTotals = (
+  hours = {},
+  durations = DEFAULT_PHASE_DURATIONS
+) => {
+  const pmDuration = Math.max(toNumber(durations.pm) || 0, 1);
+  const designDuration = Math.max(toNumber(durations.design) || 0, 1);
+  const constructionDuration = Math.max(toNumber(durations.construction) || 0, 1);
+
+  const pmHours = toNumber(hours.pmHours) * pmDuration;
+  const designHours = toNumber(hours.designHours) * designDuration;
+  const constructionHours =
+    toNumber(hours.constructionHours) * constructionDuration;
+
+  return {
+    pmHours,
+    designHours,
+    constructionHours,
+    totalHours: pmHours + designHours + constructionHours,
+  };
+};
+
+const buildMonthlyDemand = (demand = {}, projectDurations = new Map()) => {
+  const monthly = {};
+
+  Object.entries(demand).forEach(([projectId, categories]) => {
+    const projectKey = Number(projectId);
+    const durations = projectDurations.get(projectKey) || DEFAULT_PHASE_DURATIONS;
+
+    monthly[projectKey] = {};
+
+    Object.entries(categories || {}).forEach(([categoryId, hours]) => {
+      monthly[projectKey][Number(categoryId)] = convertTotalsToMonthly(
+        hours,
+        durations
+      );
+    });
+  });
+
+  return monthly;
+};
+
+const convertProjectCategoryMapToTotals = (
+  map = {},
+  projectDurations = new Map()
+) => {
+  const converted = {};
+
+  Object.entries(map).forEach(([projectId, categories]) => {
+    const projectKey = Number(projectId);
+    const durations = projectDurations.get(projectKey) || DEFAULT_PHASE_DURATIONS;
+
+    converted[projectKey] = {};
+
+    Object.entries(categories || {}).forEach(([entryId, hours]) => {
+      converted[projectKey][Number(entryId)] = convertMonthlyToTotals(
+        hours,
+        durations
+      );
+    });
+  });
+
+  return converted;
+};
+
 const incrementPhaseValue = (target, phase, value) => {
   if (!target || !phase) {
     return;
@@ -118,7 +242,10 @@ const buildManualAssignmentMaps = (
   return { manualAssignmentsByProject, manualUsageByStaff, manualByProjectCategory };
 };
 
-const subtractManualFromDemand = (demand, manualByProjectCategory) => {
+const subtractManualFromMonthlyDemand = (
+  demand,
+  manualByProjectCategory
+) => {
   const residualDemand = {};
 
   Object.entries(demand).forEach(([projectId, categories]) => {
@@ -231,6 +358,8 @@ export const buildStaffAssignmentPlan = ({
   const staffById = new Map(staffMembers.map((member) => [member.id, member]));
 
   const demand = buildProjectCategoryDemand(staffAllocations);
+  const projectPhaseDurations = buildProjectPhaseDurationMap(projects);
+  const monthlyDemand = buildMonthlyDemand(demand, projectPhaseDurations);
 
   const {
     manualAssignmentsByProject,
@@ -238,8 +367,8 @@ export const buildStaffAssignmentPlan = ({
     manualByProjectCategory,
   } = buildManualAssignmentMaps(assignmentOverrides, staffById);
 
-  const residualDemand = subtractManualFromDemand(
-    demand,
+  const residualMonthlyDemand = subtractManualFromMonthlyDemand(
+    monthlyDemand,
     manualByProjectCategory
   );
 
@@ -265,9 +394,9 @@ export const buildStaffAssignmentPlan = ({
   const assignmentsByProject = {};
   const projectSummaries = {};
   const staffAutoUsage = {};
-  const unfilledDemand = {};
+  const unfilledDemandMonthly = {};
 
-  Object.entries(residualDemand).forEach(([projectId, categories]) => {
+  Object.entries(residualMonthlyDemand).forEach(([projectId, categories]) => {
     const projectKey = Number(projectId);
     const project = projectMap.get(projectKey);
     if (!project || project.type !== "project") {
@@ -342,16 +471,16 @@ export const buildStaffAssignmentPlan = ({
         });
 
         if (remainingDemand > 0) {
-          if (!unfilledDemand[projectKey]) {
-            unfilledDemand[projectKey] = {};
+          if (!unfilledDemandMonthly[projectKey]) {
+            unfilledDemandMonthly[projectKey] = {};
           }
 
-          if (!unfilledDemand[projectKey][categoryKey]) {
-            unfilledDemand[projectKey][categoryKey] = emptyHours();
+          if (!unfilledDemandMonthly[projectKey][categoryKey]) {
+            unfilledDemandMonthly[projectKey][categoryKey] = emptyHours();
           }
 
           incrementPhaseValue(
-            unfilledDemand[projectKey][categoryKey],
+            unfilledDemandMonthly[projectKey][categoryKey],
             phase.key,
             remainingDemand
           );
@@ -401,6 +530,8 @@ export const buildStaffAssignmentPlan = ({
     const projectAuto = emptyHours();
     const projectAssigned = emptyHours();
     const projectUnfilled = emptyHours();
+    const durations =
+      projectPhaseDurations.get(projectKey) || DEFAULT_PHASE_DURATIONS;
 
     Object.entries(categories).forEach(([categoryId, hours]) => {
       const categoryDemand = cloneHours(hours);
@@ -410,29 +541,25 @@ export const buildStaffAssignmentPlan = ({
 
     const manualStaffEntries = manualAssignmentsByProject[projectKey] || {};
     Object.values(manualStaffEntries).forEach((hours) => {
-      const manualHours = cloneHours(hours);
-      manualHours.totalHours = getTotalFromHours(manualHours);
+      const manualHours = convertMonthlyToTotals(hours, durations);
       addHours(projectManual, manualHours);
     });
 
     const autoStaffEntries = autoAssignmentsByProject[projectKey] || {};
     Object.values(autoStaffEntries).forEach((hours) => {
-      const autoHours = cloneHours(hours);
-      autoHours.totalHours = getTotalFromHours(autoHours);
+      const autoHours = convertMonthlyToTotals(hours, durations);
       addHours(projectAuto, autoHours);
     });
 
     const assignedStaffEntries = assignmentsByProject[projectKey] || {};
     Object.values(assignedStaffEntries).forEach((hours) => {
-      const assignedHours = cloneHours(hours);
-      assignedHours.totalHours = getTotalFromHours(assignedHours);
+      const assignedHours = convertMonthlyToTotals(hours, durations);
       addHours(projectAssigned, assignedHours);
     });
 
-    const projectUnfilledEntry = unfilledDemand[projectKey] || {};
+    const projectUnfilledEntry = unfilledDemandMonthly[projectKey] || {};
     Object.values(projectUnfilledEntry).forEach((hours) => {
-      const unfilledHours = cloneHours(hours);
-      unfilledHours.totalHours = getTotalFromHours(unfilledHours);
+      const unfilledHours = convertMonthlyToTotals(hours, durations);
       addHours(projectUnfilled, unfilledHours);
     });
 
@@ -518,7 +645,10 @@ export const buildStaffAssignmentPlan = ({
     projectSummaries,
     staffUtilization,
     totals,
-    unfilledDemand,
+    unfilledDemand: convertProjectCategoryMapToTotals(
+      unfilledDemandMonthly,
+      projectPhaseDurations
+    ),
   };
 };
 
@@ -537,6 +667,7 @@ export const buildStaffUtilizationReportData = ({
   const categoryMap = new Map(
     staffCategories.map((category) => [category.id, category])
   );
+  const projectDurations = buildProjectPhaseDurationMap(projects);
 
   const assignments = [];
   const manualAssignments = [];
@@ -556,17 +687,23 @@ export const buildStaffUtilizationReportData = ({
           return;
         }
 
-        const manualHours = plan.manualAssignmentsByProject?.[projectKey]?.[
+        const durations =
+          projectDurations.get(projectKey) || DEFAULT_PHASE_DURATIONS;
+        const manualMonthly = plan.manualAssignmentsByProject?.[projectKey]?.[
           staffKey
         ] || emptyHours();
-        const autoHours = plan.autoAssignmentsByProject?.[projectKey]?.[
+        const autoMonthly = plan.autoAssignmentsByProject?.[projectKey]?.[
           staffKey
         ] || emptyHours();
-        const totalHours = cloneHours(hours);
-        totalHours.totalHours = getTotalFromHours(totalHours);
+        const totalMonthly = cloneHours(hours);
+        totalMonthly.totalHours = getTotalFromHours(totalMonthly);
 
-        const manualTotal = getTotalFromHours(manualHours);
-        const autoTotal = getTotalFromHours(autoHours);
+        const manualHours = convertMonthlyToTotals(manualMonthly, durations);
+        const autoHours = convertMonthlyToTotals(autoMonthly, durations);
+        const totalHours = convertMonthlyToTotals(totalMonthly, durations);
+
+        const manualTotal = toNumber(manualHours.totalHours);
+        const autoTotal = toNumber(autoHours.totalHours);
 
         const staffUtil = plan.staffUtilization?.[staffKey];
         const availability = staffUtil?.availability || {
@@ -579,9 +716,12 @@ export const buildStaffUtilizationReportData = ({
             toNumber(staff.constructionAvailability),
         };
 
+        const assignedMonthly = toNumber(
+          staffUtil?.assigned?.totalHours || totalMonthly.totalHours
+        );
+
         const utilizationPercent = availability.totalHours
-          ? (toNumber(staffUtil?.assigned?.totalHours || totalHours.totalHours) /
-              availability.totalHours) *
+          ? (assignedMonthly / availability.totalHours) *
             100
           : 0;
 
@@ -649,17 +789,36 @@ export const buildStaffUtilizationReportData = ({
   const unfilledTotal = toNumber(plan.totals?.unfilled?.totalHours);
 
   const staffCoverage = new Map();
-  assignments.forEach((entry) => {
-    const coverage = staffCoverage.get(entry.staffId) || {
-      staffName: entry.staffName,
-      availability: entry.availability.totalHours,
-      assigned: 0,
-      overbooked: false,
+  Object.entries(plan.staffUtilization || {}).forEach(([staffId, usage]) => {
+    const staffKey = Number(staffId);
+    const staff = staffMap.get(staffKey);
+    if (!staff) {
+      return;
+    }
+
+    const availability = usage.availability || {
+      pmHours: toNumber(staff.pmAvailability),
+      designHours: toNumber(staff.designAvailability),
+      constructionHours: toNumber(staff.constructionAvailability),
+      totalHours:
+        toNumber(staff.pmAvailability) +
+        toNumber(staff.designAvailability) +
+        toNumber(staff.constructionAvailability),
     };
 
-    coverage.assigned += toNumber(entry.totals.totalHours);
-    coverage.overbooked = coverage.overbooked || entry.overbooked;
-    staffCoverage.set(entry.staffId, coverage);
+    const assigned = usage.assigned || emptyHours();
+    const assignedTotalMonthly = getTotalFromHours(assigned);
+
+    if (assignedTotalMonthly <= 0) {
+      return;
+    }
+
+    staffCoverage.set(staffKey, {
+      staffName: staff.name,
+      availability: availability.totalHours,
+      assigned: assignedTotalMonthly,
+      overbooked: Boolean(usage.overbooked),
+    });
   });
 
   const projectSummaries = Object.entries(plan.projectSummaries || {}).map(

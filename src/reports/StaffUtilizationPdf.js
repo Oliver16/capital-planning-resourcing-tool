@@ -346,20 +346,23 @@ const StaffUtilizationPdf = ({ report }) => {
           <Text style={styles.sectionTitle}>Staff Utilization Overview</Text>
           <View style={styles.table}>
             <View style={[styles.tableRow, styles.tableHeader]}>
-              {["Staff", "Available", "Assigned", "Overbooked"].map(
-                (label, index, array) => (
-                  <View
-                    key={label}
-                    style={{
-                      ...styles.tableCell,
-                      flex: index === 0 ? 2 : 1,
-                      borderRightWidth: index === array.length - 1 ? 0 : 1,
-                    }}
-                  >
-                    <Text style={styles.tableHeaderText}>{label}</Text>
-                  </View>
-                )
-              )}
+              {[
+                "Staff",
+                "Available (hrs/mo)",
+                "Assigned (hrs/mo)",
+                "Overbooked",
+              ].map((label, index, array) => (
+                <View
+                  key={label}
+                  style={{
+                    ...styles.tableCell,
+                    flex: index === 0 ? 2 : 1,
+                    borderRightWidth: index === array.length - 1 ? 0 : 1,
+                  }}
+                >
+                  <Text style={styles.tableHeaderText}>{label}</Text>
+                </View>
+              ))}
             </View>
             {staffSummaries.length === 0 ? (
               <View style={styles.tableRow}>
