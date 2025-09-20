@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import { AlertTriangle, BarChart3, DownloadCloud, FileSpreadsheet } from "lucide-react";
 import {
   buildCipEffortReport,
@@ -7,14 +7,16 @@ import {
   downloadReport,
   formatReportMeta,
 } from "../../utils/reports";
+import { downloadPdfDocument } from "../../utils/pdf";
+import CipReportPdf from "../../reports/CipReportPdf";
+import GapAnalysisPdf from "../../reports/GapAnalysisPdf";
 
 const ReportCard = ({
   title,
   description,
   icon: Icon,
   stats = [],
-  buttonLabel,
-  onDownload,
+  actions = [],
 }) => (
   <div className="flex flex-col justify-between rounded-lg border border-gray-100 bg-white p-6 shadow-sm">
     <div>
@@ -42,14 +44,19 @@ const ReportCard = ({
       ) : (
         <p className="text-sm text-gray-500">No summary data available yet.</p>
       )}
-      <button
-        type="button"
-        onClick={onDownload}
-        className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
-      >
-        <DownloadCloud size={16} />
-        {buttonLabel}
-      </button>
+      <div className="flex flex-col gap-2">
+        {actions.map((action) => (
+          <button
+            key={action.label}
+            type="button"
+            onClick={action.onClick}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+          >
+            <DownloadCloud size={16} />
+            {action.label}
+          </button>
+        ))}
+      </div>
     </div>
   </div>
 );
@@ -62,6 +69,7 @@ const ReportsTab = ({
   staffCategories,
   staffAllocations,
   staffingGaps,
+  resourceForecast = [],
 }) => {
   const formatCount = (value) => {
     const numeric = Number(value);
@@ -104,6 +112,118 @@ const ReportsTab = ({
     () => formatReportMeta(cipEffortReport),
     [cipEffortReport]
   );
+  const gapMeta = useMemo(() => formatReportMeta(gapReport), [gapReport]);
+
+  const cipPdfFileName = useMemo(
+    () => (cipReport.fileName || `capital_improvement_plan_${Date.now()}.csv`).replace(/\.csv$/i, ".pdf"),
+    [cipReport.fileName]
+  );
+  const gapPdfFileName = useMemo(
+    () => (gapReport.fileName || `staffing_gap_analysis_${Date.now()}.csv`).replace(/\.csv$/i, ".pdf"),
+    [gapReport.fileName]
+  );
+
+  const summarySeries = useMemo(
+    () =>
+      resourceForecast.map((month) => {
+        const totalRequired = staffCategories.reduce(
+          (sum, category) => sum + (month[`${category.name}_required`] || 0),
+          0
+        );
+        const totalActual = staffCategories.reduce(
+          (sum, category) => sum + (month[`${category.name}_actual`] || 0),
+          0
+        );
+
+        return {
+          month: month.month,
+          monthLabel: month.monthLabel,
+          totalRequired: Number(totalRequired.toFixed(2)),
+          totalActual: Number(totalActual.toFixed(2)),
+        };
+      }),
+    [resourceForecast, staffCategories]
+  );
+
+  const categorySeries = useMemo(
+    () =>
+      staffCategories.map((category) => ({
+        id: category.id,
+        name: category.name,
+        data: resourceForecast.map((month) => {
+          const required = Number(month[`${category.name}_required`] || 0);
+          const actual = Number(month[`${category.name}_actual`] || 0);
+          const gap = Math.max(0, required - actual);
+
+          return {
+            month: month.monthLabel,
+            required: Number(required.toFixed(2)),
+            actual: Number(actual.toFixed(2)),
+            gap: Number(gap.toFixed(2)),
+          };
+        }),
+      })),
+    [resourceForecast, staffCategories]
+  );
+
+  const forecastSummary = useMemo(() => {
+    if (summarySeries.length === 0) {
+      return {};
+    }
+
+    const peakMonth = summarySeries.reduce((max, month) =>
+      month.totalRequired > max.totalRequired ? month : max
+    );
+
+    let utilizationSum = 0;
+    let utilizationSamples = 0;
+    summarySeries.forEach((month) => {
+      if (month.totalActual > 0) {
+        utilizationSum += (month.totalRequired / month.totalActual) * 100;
+        utilizationSamples += 1;
+      }
+    });
+
+    return {
+      peakMonth: peakMonth?.monthLabel,
+      averageUtilization:
+        utilizationSamples > 0 ? utilizationSum / utilizationSamples : 0,
+      gapMonths: new Set(staffingGaps.map((gap) => gap.month)).size,
+    };
+  }, [summarySeries, staffingGaps]);
+
+  const handleCipPdfDownload = useCallback(async () => {
+    const documentElement = (
+      <CipReportPdf
+        rows={cipReport.rows}
+        meta={{ ...cipMeta, ...cipReport.meta }}
+        generatedOn={new Date()}
+      />
+    );
+    await downloadPdfDocument(documentElement, cipPdfFileName);
+  }, [cipReport.rows, cipReport.meta, cipMeta, cipPdfFileName]);
+
+  const handleGapPdfDownload = useCallback(async () => {
+    const documentElement = (
+      <GapAnalysisPdf
+        summarySeries={summarySeries}
+        categorySeries={categorySeries}
+        gaps={gapReport.rows}
+        summary={forecastSummary}
+        meta={{ ...gapMeta, ...gapReport.meta }}
+        generatedOn={new Date()}
+      />
+    );
+    await downloadPdfDocument(documentElement, gapPdfFileName);
+  }, [
+    categorySeries,
+    gapMeta,
+    gapPdfFileName,
+    gapReport.rows,
+    gapReport.meta,
+    forecastSummary,
+    summarySeries,
+  ]);
 
   const cipStats = useMemo(() => {
     const stats = [
@@ -200,8 +320,16 @@ const ReportsTab = ({
           description="Portfolio-level export summarizing each project and program with schedule, budget, and delivery details."
           icon={FileSpreadsheet}
           stats={cipStats}
-          buttonLabel="Download CIP CSV"
-          onDownload={() => downloadReport(cipReport)}
+          actions={[
+            {
+              label: "Download CIP CSV",
+              onClick: () => downloadReport(cipReport),
+            },
+            {
+              label: "Download CIP PDF",
+              onClick: handleCipPdfDownload,
+            },
+          ]}
         />
 
         <ReportCard
@@ -209,8 +337,12 @@ const ReportsTab = ({
           description="Detailed view of planned hours, FTE, and costs for every project-category combination to support resource planning."
           icon={BarChart3}
           stats={cipEffortStats}
-          buttonLabel="Download Effort CSV"
-          onDownload={() => downloadReport(cipEffortReport)}
+          actions={[
+            {
+              label: "Download Effort CSV",
+              onClick: () => downloadReport(cipEffortReport),
+            },
+          ]}
         />
 
         <ReportCard
