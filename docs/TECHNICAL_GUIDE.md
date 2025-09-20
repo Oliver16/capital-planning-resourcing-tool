@@ -6,7 +6,7 @@ This guide documents the application architecture, data model, and analytic meth
 
 - **Frontend stack** – React 18 with functional components and hooks, Tailwind CSS utility classes, Lucide icons, and Recharts data visualizations. The CRA toolchain is customized through `react-app-rewired` and `config-overrides.js` to disable Node-specific polyfills that SQLite does not require.
 - **State orchestration** – `CapitalPlanningTool` centralizes application state, loads default data, synchronizes with the database service, and renders feature tabs.
-- **Tab layout** – Eight tabs encapsulate major workflows: Overview, Projects & Programs, Staff Categories, People, Staff Allocations, Schedule View, Resource Forecast, and Settings.
+- **Tab layout** – Eight primary views anchor the navigation bar: Overview, Projects & Programs, People (with Staff and Categories sub-pages), Effort Projections, Scenarios, Schedule View, Resource Forecast, and Settings.
 
 ## 2. Data persistence layer
 
@@ -36,9 +36,9 @@ Foreign key constraints and unique indices preserve referential integrity betwee
 
 - **Projects & programs** – Inline editable tables allow the planner to change names, types, funding sources, budgets, durations, priorities, and delivery strategies. Buttons add new project or program templates.
 - **CSV import** – `handleCSVImport` maps template headers to project fields, normalizes delivery types (`self-perform`, `hybrid`, `consultant`), assigns default IDs, and captures any `PM/Design/Construction Hours - Category` columns before appending the new records. A downloadable template accelerates adoption.
-- **Staff categories** – Editing capacity or rate fields triggers validation to keep the sum of project management, design, and construction hours at or below one FTE (173.33 monthly hours). Warnings explain when thresholds are exceeded.
-- **People roster** – Planners record per-person availability by phase. Totals aggregate into category-level actual availability and FTE counts, which drive dashboards.
-- **Staff allocations** – For each project-category combination planners enter hours per phase. The screen contextualizes delivery guidance (self-perform vs. hybrid vs. consultant) and flags funding sources that require external coordination.
+- **Categories** – Editing capacity or rate fields triggers validation to keep the sum of project management, design, and construction hours at or below one FTE (173.33 monthly hours). Warnings explain when thresholds are exceeded.
+- **Staff roster** – Planners record per-person availability by phase. Totals aggregate into category-level actual availability and FTE counts, which drive dashboards.
+- **Effort projections** – For each project-category combination planners enter hours per phase. The screen contextualizes delivery guidance (self-perform vs. hybrid vs. consultant) and flags funding sources that require external coordination.
 
 ## 4. Forecasting & analytics methodology
 
