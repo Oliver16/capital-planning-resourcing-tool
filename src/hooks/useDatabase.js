@@ -159,6 +159,22 @@ const createTables = (database) => {
       FOREIGN KEY (category_id) REFERENCES staff_categories(id) ON DELETE SET NULL
     );
   `);
+
+  database.run(`
+    CREATE TABLE IF NOT EXISTS staff_assignments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL,
+      staff_id INTEGER NOT NULL,
+      pm_hours REAL DEFAULT 0,
+      design_hours REAL DEFAULT 0,
+      construction_hours REAL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      FOREIGN KEY (staff_id) REFERENCES staff_members(id) ON DELETE CASCADE,
+      UNIQUE(project_id, staff_id)
+    );
+  `);
 };
 
 // Helper function to safely bind parameters
@@ -800,6 +816,93 @@ const DatabaseService = {
     }
   },
 
+  // Staff Assignments
+  async saveStaffAssignment(assignment) {
+    await this.initDatabase();
+
+    try {
+      const stmt = db.prepare(`
+        INSERT INTO staff_assignments (
+          project_id, staff_id, pm_hours, design_hours, construction_hours,
+          created_at, updated_at
+        ) VALUES (?,?,?,?,?,
+          COALESCE((SELECT created_at FROM staff_assignments WHERE project_id=? AND staff_id=?), CURRENT_TIMESTAMP),
+          CURRENT_TIMESTAMP
+        )
+        ON CONFLICT(project_id, staff_id) DO UPDATE SET
+          pm_hours=excluded.pm_hours,
+          design_hours=excluded.design_hours,
+          construction_hours=excluded.construction_hours,
+          updated_at=CURRENT_TIMESTAMP,
+          created_at=excluded.created_at
+      `);
+
+      const params = safeBindParams([
+        assignment.projectId || 0,
+        assignment.staffId || 0,
+        assignment.pmHours || 0,
+        assignment.designHours || 0,
+        assignment.constructionHours || 0,
+        assignment.projectId || 0,
+        assignment.staffId || 0,
+      ]);
+
+      stmt.run(params);
+      stmt.free();
+      await this.saveDatabase();
+      return true;
+    } catch (error) {
+      console.error("Error saving staff assignment:", error);
+      throw error;
+    }
+  },
+
+  async getStaffAssignments() {
+    await this.initDatabase();
+    try {
+      const results = db.exec(`
+        SELECT id, project_id, staff_id, pm_hours, design_hours, construction_hours,
+               created_at, updated_at
+        FROM staff_assignments
+        ORDER BY project_id, staff_id
+      `);
+
+      if (!results.length) {
+        return [];
+      }
+
+      return results[0].values.map((row) => ({
+        id: row[0],
+        projectId: row[1],
+        staffId: row[2],
+        pmHours: row[3] ?? 0,
+        designHours: row[4] ?? 0,
+        constructionHours: row[5] ?? 0,
+        createdAt: row[6],
+        updatedAt: row[7],
+      }));
+    } catch (error) {
+      console.error("Error getting staff assignments:", error);
+      return [];
+    }
+  },
+
+  async deleteStaffAssignment(projectId, staffId) {
+    await this.initDatabase();
+    try {
+      const stmt = db.prepare(
+        "DELETE FROM staff_assignments WHERE project_id = ? AND staff_id = ?"
+      );
+      stmt.run([projectId, staffId]);
+      stmt.free();
+      await this.saveDatabase();
+      return true;
+    } catch (error) {
+      console.error("Error deleting staff assignment:", error);
+      throw error;
+    }
+  },
+
   // Export/Import
   async exportDatabase() {
     await this.initDatabase();
@@ -916,6 +1019,21 @@ const initializeDatabase = async (defaultData) => {
         await DatabaseService.saveProject(mappedProject);
       }
 
+      // Insert staff assignments
+      for (const [projectId, staffMap] of Object.entries(
+        defaultData.staffAssignments || {}
+      )) {
+        for (const [staffId, assignment] of Object.entries(staffMap || {})) {
+          await DatabaseService.saveStaffAssignment({
+            projectId: Number(projectId),
+            staffId: Number(staffId),
+            pmHours: assignment.pmHours || 0,
+            designHours: assignment.designHours || 0,
+            constructionHours: assignment.constructionHours || 0,
+          });
+        }
+      }
+
       console.log("Database initialized successfully");
     }
 
@@ -1019,6 +1137,15 @@ export const useDatabase = (defaultData) => {
       ),
       deleteStaffMember: withErrorHandling(
         DatabaseService.deleteStaffMember.bind(DatabaseService)
+      ),
+      saveStaffAssignment: withErrorHandling(
+        DatabaseService.saveStaffAssignment.bind(DatabaseService)
+      ),
+      getStaffAssignments: withErrorHandling(
+        DatabaseService.getStaffAssignments.bind(DatabaseService)
+      ),
+      deleteStaffAssignment: withErrorHandling(
+        DatabaseService.deleteStaffAssignment.bind(DatabaseService)
       ),
       exportDatabase: withErrorHandling(
         DatabaseService.exportDatabase.bind(DatabaseService)

@@ -167,3 +167,5 @@ export const defaultStaffMembers = [
     constructionAvailability: 152,
   },
 ];
+
+export const defaultStaffAssignments = {};
