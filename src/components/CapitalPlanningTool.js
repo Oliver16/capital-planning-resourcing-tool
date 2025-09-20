@@ -1054,7 +1054,6 @@ const CapitalPlanningTool = () => {
               setScheduleHorizon={setScheduleHorizon}
             />
           )}
-
           {activeTab === "forecast" && (
             <ResourceForecast
               resourceForecast={resourceForecast}
