@@ -671,7 +671,7 @@ const ProjectsPrograms = ({
                           {projectCount} {projectCount === 1 ? "project" : "projects"}
                         </span>
                       </div>
-                      <div className="grid gap-6 lg:grid-cols-2">
+                      <div className="grid grid-cols-1 gap-8 sm:[grid-template-columns:repeat(auto-fit,minmax(22rem,1fr))]">
                         {group.projects.map((project) => (
                           <ProjectCard
                             key={project.id}
@@ -697,7 +697,7 @@ const ProjectsPrograms = ({
                           {programCount} {programCount === 1 ? "program" : "programs"}
                         </span>
                       </div>
-                      <div className="grid gap-6 lg:grid-cols-2">
+                      <div className="grid grid-cols-1 gap-8 sm:[grid-template-columns:repeat(auto-fit,minmax(22rem,1fr))]">
                         {group.programs.map((program) => (
                           <ProgramCard
                             key={program.id}
