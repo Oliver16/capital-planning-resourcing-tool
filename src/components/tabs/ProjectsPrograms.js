@@ -507,6 +507,17 @@ const ProgramCard = ({
       sum + (entry.pmHours || 0) + (entry.designHours || 0) + (entry.constructionHours || 0),
     0
   );
+  const pmHours = sanitizeHoursValue(program.continuousPmHours);
+  const designHours = sanitizeHoursValue(program.continuousDesignHours);
+  const constructionHours = sanitizeHoursValue(
+    program.continuousConstructionHours
+  );
+  const combinedContinuousHours = pmHours + designHours + constructionHours;
+  const hoursBreakdown = [
+    { key: "pm", label: "PM", value: pmHours },
+    { key: "design", label: "Design", value: designHours },
+    { key: "construction", label: "Construction", value: constructionHours },
+  ];
 
   return (
     <div className="rounded-xl border border-purple-200 bg-white shadow-sm">
@@ -653,52 +664,55 @@ const ProgramCard = ({
 
         <div className="md:col-span-2">
           <Field
-            label={
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span>Continuous staffing (hrs per month)</span>
-                <button
-                  type="button"
-                  onClick={() => onConfigureCategoryHours?.(program)}
-                  className="inline-flex items-center gap-1 rounded-md border border-purple-200 bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700 transition hover:border-purple-300 hover:bg-purple-100 hover:text-purple-800 focus:outline-none focus:ring-2 focus:ring-purple-300"
-                >
-                  <SlidersHorizontal size={14} />
-                  Configure by staff category
-                </button>
-              </div>
-            }
+            label="Continuous staffing (hrs per month)"
             hint={
               categoryCount > 0
                 ? `Detailed staffing defined for ${categoryCount} ${
                     categoryCount === 1 ? "category" : "categories"
                   } • ${formatHoursSummary(totalCategoryHours)} hrs/month total`
-                : "Set total monthly hours or configure by staff category for a detailed allocation."
+                : "Configure by staff category to define monthly PM, design, and construction hours."
             }
           >
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <input
-                type="number"
-                min="0"
-                value={program.continuousPmHours || ""}
-                onChange={handleNumberChange("continuousPmHours")}
-                placeholder="PM"
-                className={`${programInputClass} sm:w-28`}
-              />
-              <input
-                type="number"
-                min="0"
-                value={program.continuousDesignHours || ""}
-                onChange={handleNumberChange("continuousDesignHours")}
-                placeholder="Design"
-                className={`${programInputClass} sm:w-28`}
-              />
-              <input
-                type="number"
-                min="0"
-                value={program.continuousConstructionHours || ""}
-                onChange={handleNumberChange("continuousConstructionHours")}
-                placeholder="Construction"
-                className={`${programInputClass} sm:w-32`}
-              />
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex-1 space-y-4">
+                <div className="flex items-center justify-between rounded-lg border border-purple-200 bg-purple-50 px-4 py-2 text-sm font-semibold text-purple-700 shadow-sm">
+                  <span>Total hours/month</span>
+                  <span className="flex items-baseline gap-1 text-lg font-semibold text-purple-900">
+                    {formatHoursSummary(combinedContinuousHours)}
+                    <span className="text-xs font-medium uppercase text-purple-500">
+                      hrs/mo
+                    </span>
+                  </span>
+                </div>
+                <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {hoursBreakdown.map((item) => (
+                    <div
+                      key={item.key}
+                      className="rounded-lg border border-purple-100 bg-white p-3 shadow-sm"
+                    >
+                      <dt className="text-xs font-semibold uppercase tracking-wide text-purple-600">
+                        {item.label}
+                      </dt>
+                      <dd className="mt-1 flex items-baseline gap-2 text-2xl font-semibold text-purple-900">
+                        {formatHoursSummary(item.value)}
+                        <span className="text-xs font-medium uppercase text-purple-500">
+                          hrs/mo
+                        </span>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+              <div className="sm:pl-4 sm:pt-1">
+                <button
+                  type="button"
+                  onClick={() => onConfigureCategoryHours?.(program)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-1 sm:w-auto"
+                >
+                  <SlidersHorizontal size={16} className="text-purple-100" />
+                  Configure by staff category
+                </button>
+              </div>
             </div>
           </Field>
         </div>
