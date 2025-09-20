@@ -1,6 +1,5 @@
 import React, { useMemo } from "react";
 import {
-  LineChart,
   Line,
   XAxis,
   YAxis,
@@ -9,7 +8,7 @@ import {
   Legend,
   ResponsiveContainer,
   Area,
-  AreaChart,
+  ComposedChart,
 } from "recharts";
 import { AlertTriangle, Users } from "lucide-react";
 
@@ -54,20 +53,25 @@ const ResourceForecast = ({
   const summarySeries = useMemo(
     () =>
       resourceForecast.map((month) => {
-        const totalRequired = staffCategories.reduce(
+        const totalRequiredRaw = staffCategories.reduce(
           (sum, category) => sum + (month[`${category.name}_required`] || 0),
           0
         );
-        const totalActual = staffCategories.reduce(
+        const totalActualRaw = staffCategories.reduce(
           (sum, category) => sum + (month[`${category.name}_actual`] || 0),
+          0
+        );
+        const overAllocation = Math.max(
+          totalRequiredRaw - totalActualRaw,
           0
         );
 
         return {
           month: month.month,
           monthLabel: month.monthLabel,
-          totalRequired: roundForChart(totalRequired),
-          totalActual: roundForChart(totalActual),
+          totalRequired: roundForChart(totalRequiredRaw),
+          totalActual: roundForChart(totalActualRaw),
+          overAllocation: roundForChart(overAllocation),
         };
       }),
     [resourceForecast, staffCategories]
@@ -133,11 +137,11 @@ const ResourceForecast = ({
       {/* Resource Demand Chart */}
       <div className="bg-white p-6 rounded-lg shadow-sm">
         <h3 className="text-lg font-semibold mb-4">
-          Required vs. Available Staffing (All Categories)
+          Allocated vs. Available Staffing (All Categories)
         </h3>
         <div className="h-96">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={summarySeries}>
+            <ComposedChart data={summarySeries}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis
                 dataKey="monthLabel"
@@ -155,13 +159,33 @@ const ResourceForecast = ({
               />
               <Tooltip formatter={formatFteTooltip} />
               <Legend />
+              <Area
+                type="monotone"
+                dataKey="totalActual"
+                stackId="allocation"
+                stroke="none"
+                fill="transparent"
+                isAnimationActive={false}
+                activeDot={false}
+                legendType="none"
+              />
+              <Area
+                type="monotone"
+                dataKey="overAllocation"
+                stackId="allocation"
+                stroke="none"
+                fill="rgba(248, 113, 113, 0.35)"
+                isAnimationActive={false}
+                legendType="none"
+                name="Over Allocation"
+              />
               <Line
                 type="monotone"
                 dataKey="totalRequired"
                 stroke="#2563eb"
                 strokeWidth={2}
                 dot={false}
-                name="Required FTEs"
+                name="Allocated FTEs"
               />
               <Line
                 type="monotone"
@@ -172,7 +196,7 @@ const ResourceForecast = ({
                 dot={false}
                 name="Available FTEs"
               />
-            </LineChart>
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </div>
@@ -181,17 +205,15 @@ const ResourceForecast = ({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {staffCategories.map((category) => {
           const categoryData = resourceForecast.map((month) => {
-            const required = roundForChart(
-              month[`${category.name}_required`] || 0
-            );
-            const actual = roundForChart(
-              month[`${category.name}_actual`] || 0
-            );
+            const requiredRaw = month[`${category.name}_required`] || 0;
+            const actualRaw = month[`${category.name}_actual`] || 0;
+            const overAllocation = Math.max(requiredRaw - actualRaw, 0);
 
             return {
               month: month.monthLabel,
-              required,
-              actual,
+              required: roundForChart(requiredRaw),
+              actual: roundForChart(actualRaw),
+              overAllocation: roundForChart(overAllocation),
             };
           });
 
@@ -203,7 +225,7 @@ const ResourceForecast = ({
               <h4 className="text-lg font-semibold mb-4">{category.name}</h4>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={categoryData}>
+                  <ComposedChart data={categoryData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis
                       dataKey="month"
@@ -219,19 +241,41 @@ const ResourceForecast = ({
                     <Area
                       type="monotone"
                       dataKey="actual"
-                      stroke="#10b981"
-                      fill="#10b981"
-                      fillOpacity={0.25}
-                      name="Available FTEs"
+                      stackId="allocation"
+                      stroke="none"
+                      fill="transparent"
+                      isAnimationActive={false}
+                      activeDot={false}
+                      legendType="none"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="overAllocation"
+                      stackId="allocation"
+                      stroke="none"
+                      fill="rgba(248, 113, 113, 0.35)"
+                      isAnimationActive={false}
+                      legendType="none"
+                      name="Over Allocation"
                     />
                     <Line
                       type="monotone"
                       dataKey="required"
                       stroke="#2563eb"
                       strokeWidth={2}
-                      name="Required FTEs"
+                      dot={false}
+                      name="Allocated FTEs"
                     />
-                  </AreaChart>
+                    <Line
+                      type="monotone"
+                      dataKey="actual"
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      strokeDasharray="6 4"
+                      dot={false}
+                      name="Available FTEs"
+                    />
+                  </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </div>
@@ -256,7 +300,7 @@ const ResourceForecast = ({
                     <th className="text-left p-3">Month</th>
                     <th className="text-left p-3">Staff Category</th>
                     <th className="text-left p-3">Allocated (FTE)</th>
-                    <th className="text-left p-3">Actual (FTE)</th>
+                    <th className="text-left p-3">Available (FTE)</th>
                     <th className="text-left p-3">Gap (FTE)</th>
                     <th className="text-left p-3">Severity</th>
                   </tr>
@@ -367,7 +411,7 @@ const ResourceForecast = ({
                 </h4>
                 <ul className="text-green-800 space-y-1">
                   <li>
-                    • Actual availability appears adequate for current
+                    • Available capacity appears adequate for current
                     allocations
                   </li>
                   <li>
@@ -406,7 +450,7 @@ const ResourceForecast = ({
                     <br />
                     Allocated: {peakMonth.totalRequired.toFixed(2)} FTE
                     <br />
-                    Actual: {peakMonth.totalActual.toFixed(2)} FTE
+                    Available: {peakMonth.totalActual.toFixed(2)} FTE
                   </>
                 ) : (
                   "No forecast data available"
@@ -425,7 +469,7 @@ const ResourceForecast = ({
               </h4>
               <p className="text-green-800 text-sm mt-1">
                 {utilizationSamples > 0
-                  ? `${averageUtilization.toFixed(1)}% average utilization of actual availability`
+                  ? `${averageUtilization.toFixed(1)}% average utilization of available capacity`
                   : "Enter people availability data to calculate utilization."}
               </p>
             </div>
