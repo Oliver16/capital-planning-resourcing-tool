@@ -6,6 +6,11 @@ import {
   Text,
   View,
   Svg,
+  Line,
+  Polyline,
+  Rect,
+  Polygon,
+  Text as SvgText,
 } from "@react-pdf/renderer";
 
 const styles = StyleSheet.create({
@@ -248,7 +253,7 @@ const SummaryChart = ({ data = [] }) => {
     <View style={styles.chartCard}>
       <Svg width={width} height={height}>
         {/* Axes */}
-        <Svg.Line
+        <Line
           x1={paddingLeft}
           y1={paddingTop}
           x2={paddingLeft}
@@ -256,7 +261,7 @@ const SummaryChart = ({ data = [] }) => {
           stroke="#9ca3af"
           strokeWidth={1}
         />
-        <Svg.Line
+        <Line
           x1={paddingLeft}
           y1={paddingTop + chartHeight}
           x2={paddingLeft + chartWidth}
@@ -271,7 +276,7 @@ const SummaryChart = ({ data = [] }) => {
           const y = getYPosition(value, maxValue, chartHeight, paddingTop);
           return (
             <React.Fragment key={`y-${index}`}>
-              <Svg.Line
+              <Line
                 x1={paddingLeft}
                 y1={y}
                 x2={paddingLeft + chartWidth}
@@ -279,7 +284,7 @@ const SummaryChart = ({ data = [] }) => {
                 stroke="#e5e7eb"
                 strokeWidth={0.6}
               />
-              <Svg.Text
+              <SvgText
                 x={paddingLeft - 6}
                 y={y + 3}
                 fontSize={8}
@@ -287,7 +292,7 @@ const SummaryChart = ({ data = [] }) => {
                 textAnchor="end"
               >
                 {formatNumber(value, 0)}
-              </Svg.Text>
+              </SvgText>
             </React.Fragment>
           );
         })}
@@ -299,7 +304,7 @@ const SummaryChart = ({ data = [] }) => {
           }
           const x = getXPosition(index, data.length, chartWidth, paddingLeft);
           return (
-            <Svg.Text
+            <SvgText
               key={`x-${index}`}
               x={x}
               y={paddingTop + chartHeight + 16}
@@ -308,18 +313,18 @@ const SummaryChart = ({ data = [] }) => {
               textAnchor="middle"
             >
               {point.monthLabel}
-            </Svg.Text>
+            </SvgText>
           );
         })}
 
         {/* Data lines */}
-        <Svg.Polyline
+        <Polyline
           points={buildLinePoints("totalRequired")}
           fill="none"
           stroke="#2563eb"
           strokeWidth={2}
         />
-        <Svg.Polyline
+        <Polyline
           points={buildLinePoints("totalActual")}
           fill="none"
           stroke="#10b981"
@@ -432,7 +437,7 @@ const CategoryChart = ({ name, data = [] }) => {
       <Text style={{ fontSize: 11, fontWeight: 600, marginBottom: 8 }}>{name}</Text>
       <Svg width={width} height={height}>
         {/* Axes */}
-        <Svg.Line
+        <Line
           x1={paddingLeft}
           y1={paddingTop}
           x2={paddingLeft}
@@ -440,7 +445,7 @@ const CategoryChart = ({ name, data = [] }) => {
           stroke="#9ca3af"
           strokeWidth={1}
         />
-        <Svg.Line
+        <Line
           x1={paddingLeft}
           y1={paddingTop + chartHeight}
           x2={paddingLeft + chartWidth}
@@ -455,7 +460,7 @@ const CategoryChart = ({ name, data = [] }) => {
           const y = getYPosition(value, maxValue, chartHeight, paddingTop);
           return (
             <React.Fragment key={`cat-y-${index}`}>
-              <Svg.Line
+              <Line
                 x1={paddingLeft}
                 y1={y}
                 x2={paddingLeft + chartWidth}
@@ -463,7 +468,7 @@ const CategoryChart = ({ name, data = [] }) => {
                 stroke="#e5e7eb"
                 strokeWidth={0.6}
               />
-              <Svg.Text
+              <SvgText
                 x={paddingLeft - 6}
                 y={y + 3}
                 fontSize={8}
@@ -471,7 +476,7 @@ const CategoryChart = ({ name, data = [] }) => {
                 textAnchor="end"
               >
                 {formatNumber(value, 0)}
-              </Svg.Text>
+              </SvgText>
             </React.Fragment>
           );
         })}
@@ -483,7 +488,7 @@ const CategoryChart = ({ name, data = [] }) => {
           }
           const x = getXPosition(index, data.length, chartWidth, paddingLeft);
           return (
-            <Svg.Text
+            <SvgText
               key={`cat-x-${index}`}
               x={x}
               y={paddingTop + chartHeight + 16}
@@ -492,12 +497,12 @@ const CategoryChart = ({ name, data = [] }) => {
               textAnchor="middle"
             >
               {point.month}
-            </Svg.Text>
+            </SvgText>
           );
         })}
 
         {/* Actual area */}
-        <Svg.Polygon
+        <Polygon
           points={actualAreaPoints}
           fill="#10b981"
           fillOpacity={0.18}
@@ -505,7 +510,7 @@ const CategoryChart = ({ name, data = [] }) => {
 
         {/* Gap bars */}
         {gapRects.map((rect, index) => (
-          <Svg.Rect
+          <Rect
             key={`gap-${index}`}
             x={rect.x}
             y={rect.y}
@@ -517,13 +522,13 @@ const CategoryChart = ({ name, data = [] }) => {
         ))}
 
         {/* Lines */}
-        <Svg.Polyline
+        <Polyline
           points={buildLinePoints("required")}
           fill="none"
           stroke="#2563eb"
           strokeWidth={2}
         />
-        <Svg.Polyline
+        <Polyline
           points={buildLinePoints("actual")}
           fill="none"
           stroke="#10b981"
