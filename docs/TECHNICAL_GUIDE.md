@@ -1,6 +1,6 @@
-# Capital Planning & Resourcing Tool – Technical Guide
+# Vector – Technical Guide
 
-This guide documents the application architecture, data model, and analytic methodology that power the Capital Planning & Resourcing Tool. It is intended for engineers who need to extend the system or audit its planning assumptions.
+This guide documents the application architecture, data model, and analytic methodology that power Vector. It is intended for engineers who need to extend the system or audit its planning assumptions.
 
 ## 1. Application architecture
 

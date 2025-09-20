@@ -892,7 +892,7 @@ const CapitalPlanningTool = () => {
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-lg text-gray-600">
-            Loading Capital Planning Tool...
+            Loading Vector...
           </p>
         </div>
       </div>
@@ -929,13 +929,8 @@ const CapitalPlanningTool = () => {
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                Capital Improvement Planning & Resource Forecasting
-              </h1>
-              <p className="text-gray-600">
-                Utilities infrastructure planning and staff resource management
-                tool
-              </p>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Vector</h1>
+              <p className="text-gray-600">CIP and Resource Planning</p>
             </div>
             {isSaving && (
               <div className="flex items-center gap-2 text-blue-600">
