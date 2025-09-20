@@ -6,6 +6,11 @@ import {
   Text,
   View,
   Svg,
+  Line,
+  Polyline,
+  Rect,
+  Polygon,
+  Text as SvgText,
 } from "@react-pdf/renderer";
 
 const styles = StyleSheet.create({
@@ -156,6 +161,8 @@ const formatPercent = (value, digits = 1) => {
   return `${numeric.toFixed(digits)}%`;
 };
 
+const DEFAULT_QUARTER_SPAN = 12;
+
 const formatDateLabel = (value) => {
   if (!value) {
     return "";
@@ -207,8 +214,102 @@ const getYPosition = (value, maxValue, chartHeight, paddingTop) => {
   return paddingTop + chartHeight - normalized * chartHeight;
 };
 
+const getQuarterInfo = (monthValue, fallbackLabel) => {
+  let referenceDate = null;
+
+  if (monthValue instanceof Date) {
+    referenceDate = monthValue;
+  } else if (typeof monthValue === "string" && monthValue) {
+    if (/^\d{4}-\d{1,2}$/.test(monthValue)) {
+      referenceDate = new Date(`${monthValue}-01T00:00:00`);
+    } else {
+      const parsed = new Date(monthValue);
+      if (!Number.isNaN(parsed.getTime())) {
+        referenceDate = parsed;
+      }
+    }
+  }
+
+  if (!referenceDate && typeof fallbackLabel === "string") {
+    const parsed = new Date(fallbackLabel);
+    if (!Number.isNaN(parsed.getTime())) {
+      referenceDate = parsed;
+    }
+  }
+
+  if (!(referenceDate instanceof Date) || Number.isNaN(referenceDate.getTime())) {
+    return null;
+  }
+
+  const year = referenceDate.getFullYear();
+  const monthIndex = referenceDate.getMonth();
+  const quarter = Math.floor(monthIndex / 3) + 1;
+
+  return {
+    key: `${year}-Q${quarter}`,
+    label: `Q${quarter} ${year}`,
+    year,
+    quarter,
+  };
+};
+
+const buildQuarterlySeries = (
+  points,
+  targetQuarters = DEFAULT_QUARTER_SPAN
+) => {
+  if (!Array.isArray(points) || points.length === 0) {
+    return [];
+  }
+
+  const buckets = new Map();
+
+  points.forEach((point) => {
+    const info = getQuarterInfo(point.month, point.monthLabel);
+    if (!info) {
+      return;
+    }
+
+    const bucket = buckets.get(info.key) || {
+      ...info,
+      totalRequired: 0,
+      totalActual: 0,
+      samples: 0,
+    };
+
+    bucket.totalRequired += Number(point.totalRequired) || 0;
+    bucket.totalActual += Number(point.totalActual) || 0;
+    bucket.samples += 1;
+
+    buckets.set(info.key, bucket);
+  });
+
+  const sorted = Array.from(buckets.values()).sort((a, b) => {
+    if (a.year !== b.year) {
+      return a.year - b.year;
+    }
+    return a.quarter - b.quarter;
+  });
+
+  const normalized = sorted.map((bucket) => ({
+    key: bucket.key,
+    label: bucket.label,
+    totalRequired:
+      bucket.samples > 0 ? bucket.totalRequired / bucket.samples : 0,
+    totalActual:
+      bucket.samples > 0 ? bucket.totalActual / bucket.samples : 0,
+  }));
+
+  if (targetQuarters && normalized.length > targetQuarters) {
+    return normalized.slice(0, targetQuarters);
+  }
+
+  return normalized;
+};
+
 const SummaryChart = ({ data = [] }) => {
-  if (!data.length) {
+  const quarterlyData = buildQuarterlySeries(data);
+
+  if (!quarterlyData.length) {
     return <Text>No forecast data available.</Text>;
   }
 
@@ -223,17 +324,22 @@ const SummaryChart = ({ data = [] }) => {
 
   const maxValue = Math.max(
     1,
-    ...data.map((point) => Math.max(point.totalRequired || 0, point.totalActual || 0))
+    ...quarterlyData.map((point) =>
+      Math.max(point.totalRequired || 0, point.totalActual || 0)
+    )
   );
 
   const yTicks = 4;
-  const xLabelCount = Math.min(6, data.length);
-  const xInterval = Math.max(1, Math.floor(data.length / xLabelCount));
 
   const buildLinePoints = (key) =>
-    data
+    quarterlyData
       .map((point, index) => {
-        const x = getXPosition(index, data.length, chartWidth, paddingLeft);
+        const x = getXPosition(
+          index,
+          quarterlyData.length,
+          chartWidth,
+          paddingLeft
+        );
         const y = getYPosition(
           point[key] || 0,
           maxValue,
@@ -245,10 +351,10 @@ const SummaryChart = ({ data = [] }) => {
       .join(" ");
 
   return (
-    <View style={styles.chartCard}>
+    <View style={styles.chartCard} wrap={false}>
       <Svg width={width} height={height}>
         {/* Axes */}
-        <Svg.Line
+        <Line
           x1={paddingLeft}
           y1={paddingTop}
           x2={paddingLeft}
@@ -256,7 +362,7 @@ const SummaryChart = ({ data = [] }) => {
           stroke="#9ca3af"
           strokeWidth={1}
         />
-        <Svg.Line
+        <Line
           x1={paddingLeft}
           y1={paddingTop + chartHeight}
           x2={paddingLeft + chartWidth}
@@ -271,7 +377,7 @@ const SummaryChart = ({ data = [] }) => {
           const y = getYPosition(value, maxValue, chartHeight, paddingTop);
           return (
             <React.Fragment key={`y-${index}`}>
-              <Svg.Line
+              <Line
                 x1={paddingLeft}
                 y1={y}
                 x2={paddingLeft + chartWidth}
@@ -279,7 +385,7 @@ const SummaryChart = ({ data = [] }) => {
                 stroke="#e5e7eb"
                 strokeWidth={0.6}
               />
-              <Svg.Text
+              <SvgText
                 x={paddingLeft - 6}
                 y={y + 3}
                 fontSize={8}
@@ -287,39 +393,41 @@ const SummaryChart = ({ data = [] }) => {
                 textAnchor="end"
               >
                 {formatNumber(value, 0)}
-              </Svg.Text>
+              </SvgText>
             </React.Fragment>
           );
         })}
 
         {/* X axis labels */}
-        {data.map((point, index) => {
-          if (index % xInterval !== 0 && index !== data.length - 1) {
-            return null;
-          }
-          const x = getXPosition(index, data.length, chartWidth, paddingLeft);
+        {quarterlyData.map((point, index) => {
+          const x = getXPosition(
+            index,
+            quarterlyData.length,
+            chartWidth,
+            paddingLeft
+          );
           return (
-            <Svg.Text
-              key={`x-${index}`}
+            <SvgText
+              key={`x-${point.key}`}
               x={x}
               y={paddingTop + chartHeight + 16}
               fontSize={8}
               fill="#6b7280"
               textAnchor="middle"
             >
-              {point.monthLabel}
-            </Svg.Text>
+              {point.label}
+            </SvgText>
           );
         })}
 
         {/* Data lines */}
-        <Svg.Polyline
+        <Polyline
           points={buildLinePoints("totalRequired")}
           fill="none"
           stroke="#2563eb"
           strokeWidth={2}
         />
-        <Svg.Polyline
+        <Polyline
           points={buildLinePoints("totalActual")}
           fill="none"
           stroke="#10b981"
@@ -340,7 +448,7 @@ const SummaryChart = ({ data = [] }) => {
 const CategoryChart = ({ name, data = [] }) => {
   if (!data.length) {
     return (
-      <View style={styles.chartCard}>
+      <View style={styles.chartCard} wrap={false}>
         <Text>{name}</Text>
         <Text>No forecast data available.</Text>
       </View>
@@ -428,11 +536,11 @@ const CategoryChart = ({ name, data = [] }) => {
     .filter(Boolean);
 
   return (
-    <View style={styles.chartCard}>
+    <View style={styles.chartCard} wrap={false}>
       <Text style={{ fontSize: 11, fontWeight: 600, marginBottom: 8 }}>{name}</Text>
       <Svg width={width} height={height}>
         {/* Axes */}
-        <Svg.Line
+        <Line
           x1={paddingLeft}
           y1={paddingTop}
           x2={paddingLeft}
@@ -440,7 +548,7 @@ const CategoryChart = ({ name, data = [] }) => {
           stroke="#9ca3af"
           strokeWidth={1}
         />
-        <Svg.Line
+        <Line
           x1={paddingLeft}
           y1={paddingTop + chartHeight}
           x2={paddingLeft + chartWidth}
@@ -455,7 +563,7 @@ const CategoryChart = ({ name, data = [] }) => {
           const y = getYPosition(value, maxValue, chartHeight, paddingTop);
           return (
             <React.Fragment key={`cat-y-${index}`}>
-              <Svg.Line
+              <Line
                 x1={paddingLeft}
                 y1={y}
                 x2={paddingLeft + chartWidth}
@@ -463,7 +571,7 @@ const CategoryChart = ({ name, data = [] }) => {
                 stroke="#e5e7eb"
                 strokeWidth={0.6}
               />
-              <Svg.Text
+              <SvgText
                 x={paddingLeft - 6}
                 y={y + 3}
                 fontSize={8}
@@ -471,7 +579,7 @@ const CategoryChart = ({ name, data = [] }) => {
                 textAnchor="end"
               >
                 {formatNumber(value, 0)}
-              </Svg.Text>
+              </SvgText>
             </React.Fragment>
           );
         })}
@@ -483,7 +591,7 @@ const CategoryChart = ({ name, data = [] }) => {
           }
           const x = getXPosition(index, data.length, chartWidth, paddingLeft);
           return (
-            <Svg.Text
+            <SvgText
               key={`cat-x-${index}`}
               x={x}
               y={paddingTop + chartHeight + 16}
@@ -492,12 +600,12 @@ const CategoryChart = ({ name, data = [] }) => {
               textAnchor="middle"
             >
               {point.month}
-            </Svg.Text>
+            </SvgText>
           );
         })}
 
         {/* Actual area */}
-        <Svg.Polygon
+        <Polygon
           points={actualAreaPoints}
           fill="#10b981"
           fillOpacity={0.18}
@@ -505,7 +613,7 @@ const CategoryChart = ({ name, data = [] }) => {
 
         {/* Gap bars */}
         {gapRects.map((rect, index) => (
-          <Svg.Rect
+          <Rect
             key={`gap-${index}`}
             x={rect.x}
             y={rect.y}
@@ -517,13 +625,13 @@ const CategoryChart = ({ name, data = [] }) => {
         ))}
 
         {/* Lines */}
-        <Svg.Polyline
+        <Polyline
           points={buildLinePoints("required")}
           fill="none"
           stroke="#2563eb"
           strokeWidth={2}
         />
-        <Svg.Polyline
+        <Polyline
           points={buildLinePoints("actual")}
           fill="none"
           stroke="#10b981"
@@ -659,7 +767,7 @@ const GapAnalysisPdf = ({
           <View style={styles.chartGrid}>
             {categorySeries.length > 0 ? (
               categorySeries.map((category) => (
-                <View key={category.name} style={styles.chartWrapper}>
+                <View key={category.name} style={styles.chartWrapper} wrap={false}>
                   <CategoryChart name={category.name} data={category.data} />
                 </View>
               ))
