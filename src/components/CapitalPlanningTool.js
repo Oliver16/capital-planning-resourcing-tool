@@ -13,6 +13,7 @@ import {
   UserCircle,
   GitBranch,
   FileSpreadsheet,
+  ChevronDown,
 } from "lucide-react";
 
 // Import components
@@ -114,6 +115,7 @@ const CapitalPlanningTool = () => {
   const [staffAllocations, setStaffAllocations] = useState({});
   const [staffMembers, setStaffMembers] = useState(defaultStaffMembers);
   const [activeTab, setActiveTab] = useState("overview");
+  const [activeDropdown, setActiveDropdown] = useState(null);
   const [timeHorizon, setTimeHorizon] = useState(36);
   const [scheduleHorizon, setScheduleHorizon] = useState(36);
   const [isSaving, setIsSaving] = useState(false);
@@ -920,16 +922,28 @@ const CapitalPlanningTool = () => {
         <div className="bg-white rounded-lg shadow-sm mb-6">
           <div className="border-b border-gray-200">
             <nav className="flex space-x-8 px-6">
-              {[ 
+              {[
                 { id: "overview", label: "Overview", icon: Calendar },
                 {
                   id: "projects",
                   label: "Projects & Programs",
                   icon: FolderOpen,
                 },
-                { id: "staff", label: "Staff Categories", icon: Users },
-                { id: "people", label: "People", icon: UserCircle },
-                { id: "allocations", label: "Staff Allocations", icon: Edit3 },
+                {
+                  type: "dropdown",
+                  id: "people-menu",
+                  label: "People",
+                  icon: Users,
+                  items: [
+                    { id: "people", label: "Staff", icon: UserCircle },
+                    { id: "staff", label: "Categories", icon: Settings },
+                  ],
+                },
+                {
+                  id: "allocations",
+                  label: "Effort Projections",
+                  icon: Edit3,
+                },
                 { id: "scenarios", label: "Scenarios", icon: GitBranch },
                 {
                   id: "schedule",
@@ -941,13 +955,64 @@ const CapitalPlanningTool = () => {
                   label: "Resource Forecast",
                   icon: AlertTriangle,
                 },
-                {
-                  id: "reports",
-                  label: "Reports",
-                  icon: FileSpreadsheet,
-                },
+                { id: "reports", label: "Reports", icon: FileSpreadsheet },
                 { id: "settings", label: "Settings", icon: Settings },
               ].map((tab) => {
+                if (tab.type === "dropdown") {
+                  const Icon = tab.icon;
+                  const isActive = tab.items.some((item) => item.id === activeTab);
+                  return (
+                    <div
+                      key={tab.id}
+                      className="relative"
+                      onMouseEnter={() => setActiveDropdown(tab.id)}
+                      onMouseLeave={() => setActiveDropdown(null)}
+                    >
+                      <button
+                        onClick={() =>
+                          setActiveDropdown((current) =>
+                            current === tab.id ? null : tab.id
+                          )
+                        }
+                        className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                          isActive
+                            ? "border-blue-500 text-blue-600"
+                            : "border-transparent text-gray-500 hover:text-gray-700"
+                        }`}
+                      >
+                        <Icon size={16} />
+                        {tab.label}
+                        <ChevronDown size={14} />
+                      </button>
+                      {activeDropdown === tab.id && (
+                        <div className="absolute left-0 top-full mt-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                          {tab.items.map((item) => {
+                            const SubIcon = item.icon;
+                            const isSubActive = activeTab === item.id;
+                            return (
+                              <button
+                                key={item.id}
+                                onClick={() => {
+                                  setActiveTab(item.id);
+                                  setActiveDropdown(null);
+                                }}
+                                className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 ${
+                                  isSubActive
+                                    ? "bg-blue-50 text-blue-600"
+                                    : "text-gray-700 hover:bg-gray-50"
+                                }`}
+                              >
+                                <SubIcon size={16} />
+                                {item.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
                 const Icon = tab.icon;
                 return (
                   <button
