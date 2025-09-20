@@ -1,3 +1,5 @@
+import { Document, Page, StyleSheet, Text, View, pdf } from "@react-pdf/renderer";
+
 const HOURS_PER_FTE_MONTH = 4.33 * 40;
 
 const DELIVERY_LABELS = {
@@ -246,6 +248,312 @@ const GAP_ANALYSIS_COLUMNS = [
   { key: "gap", header: "Gap FTE" },
   { key: "severity", header: "Severity" },
 ];
+
+const GAP_ANALYSIS_PDF_COLUMNS = [
+  { key: "monthLabel", label: "Month", flex: 1.2, align: "left" },
+  { key: "category", label: "Category", flex: 1.8, align: "left" },
+  {
+    key: "required",
+    label: "Required FTE",
+    flex: 1,
+    align: "right",
+    formatter: formatFte,
+  },
+  {
+    key: "available",
+    label: "Available FTE",
+    flex: 1,
+    align: "right",
+    formatter: formatFte,
+  },
+  {
+    key: "gap",
+    label: "Gap FTE",
+    flex: 1,
+    align: "right",
+    formatter: formatFte,
+  },
+  { key: "severity", label: "Severity", flex: 1, align: "left" },
+];
+
+const gapAnalysisPdfStyles = StyleSheet.create({
+  page: {
+    padding: 36,
+    fontFamily: "Helvetica",
+    fontSize: 10,
+    color: "#1f2937",
+  },
+  header: {
+    marginBottom: 18,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: 700,
+    color: "#111827",
+  },
+  subtitle: {
+    fontSize: 10,
+    color: "#6b7280",
+    marginTop: 4,
+  },
+  summaryRow: {
+    flexDirection: "row",
+    marginBottom: 16,
+  },
+  summaryCard: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#f9fafb",
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  summaryCardSpacer: {
+    marginRight: 12,
+  },
+  summaryLabel: {
+    fontSize: 9,
+    color: "#6b7280",
+  },
+  summaryValue: {
+    fontSize: 16,
+    fontWeight: 700,
+    color: "#111827",
+    marginTop: 2,
+  },
+  table: {
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 6,
+  },
+  tableRow: {
+    flexDirection: "row",
+  },
+  tableHeaderRow: {
+    backgroundColor: "#e5e7eb",
+  },
+  tableHeaderCell: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    fontSize: 9,
+    fontWeight: 700,
+    color: "#111827",
+    borderRightWidth: 1,
+    borderRightColor: "#d1d5db",
+  },
+  tableCell: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    fontSize: 9,
+    color: "#1f2937",
+    borderRightWidth: 1,
+    borderRightColor: "#e5e7eb",
+  },
+  lastColumnCell: {
+    borderRightWidth: 0,
+  },
+  tableRowEven: {
+    backgroundColor: "#ffffff",
+  },
+  tableRowOdd: {
+    backgroundColor: "#f9fafb",
+  },
+  severityCritical: {
+    color: "#b91c1c",
+    fontWeight: 700,
+  },
+  severityModerate: {
+    color: "#92400e",
+    fontWeight: 700,
+  },
+  emptyStateContainer: {
+    marginTop: 24,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 6,
+    padding: 16,
+    backgroundColor: "#f9fafb",
+  },
+  emptyStateTitle: {
+    fontSize: 11,
+    color: "#111827",
+    textAlign: "center",
+    fontWeight: 600,
+  },
+  emptyStateSubtitle: {
+    marginTop: 4,
+    fontSize: 9,
+    color: "#6b7280",
+    textAlign: "center",
+  },
+});
+
+const formatIntegerValue = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "0";
+  }
+
+  return numeric.toLocaleString("en-US");
+};
+
+const GapAnalysisPdfDocument = ({ report }) => {
+  const rows = Array.isArray(report.rows) ? report.rows : [];
+  const meta = report.meta || {};
+
+  const generationDate = new Date();
+  const generatedLabel = `${generationDate.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  })} ${generationDate.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  })}`;
+
+  const summaryCards = [
+    {
+      label: "Gap entries",
+      value: formatIntegerValue(meta.gapCount ?? rows.length ?? 0),
+    },
+    {
+      label: "Critical gaps",
+      value: formatIntegerValue(meta.criticalCount ?? 0),
+    },
+  ];
+
+  return (
+    <Document>
+      <Page size="A4" style={gapAnalysisPdfStyles.page}>
+        <View style={gapAnalysisPdfStyles.header}>
+          <Text style={gapAnalysisPdfStyles.title}>
+            {report.title || "Staffing Gap Analysis"}
+          </Text>
+          <Text style={gapAnalysisPdfStyles.subtitle}>Generated {generatedLabel}</Text>
+        </View>
+
+        <View style={gapAnalysisPdfStyles.summaryRow}>
+          {summaryCards.map((card, index) => {
+            const cardStyles = [gapAnalysisPdfStyles.summaryCard];
+            if (index < summaryCards.length - 1) {
+              cardStyles.push(gapAnalysisPdfStyles.summaryCardSpacer);
+            }
+
+            return (
+              <View key={card.label} style={cardStyles}>
+                <Text style={gapAnalysisPdfStyles.summaryLabel}>{card.label}</Text>
+                <Text style={gapAnalysisPdfStyles.summaryValue}>{card.value}</Text>
+              </View>
+            );
+          })}
+        </View>
+
+        {rows.length > 0 ? (
+          <View style={gapAnalysisPdfStyles.table}>
+            <View style={[gapAnalysisPdfStyles.tableRow, gapAnalysisPdfStyles.tableHeaderRow]}>
+              {GAP_ANALYSIS_PDF_COLUMNS.map((column, index) => {
+                const headerStyles = [
+                  gapAnalysisPdfStyles.tableHeaderCell,
+                  { flex: column.flex, textAlign: column.align },
+                ];
+
+                if (index === GAP_ANALYSIS_PDF_COLUMNS.length - 1) {
+                  headerStyles.push(gapAnalysisPdfStyles.lastColumnCell);
+                }
+
+                return (
+                  <Text key={column.key} style={headerStyles}>
+                    {column.label}
+                  </Text>
+                );
+              })}
+            </View>
+
+            {rows.map((row, rowIndex) => {
+              const rowStyles = [gapAnalysisPdfStyles.tableRow];
+              if (rowIndex % 2 === 0) {
+                rowStyles.push(gapAnalysisPdfStyles.tableRowEven);
+              } else {
+                rowStyles.push(gapAnalysisPdfStyles.tableRowOdd);
+              }
+
+              return (
+                <View
+                  key={`${row.month || row.monthLabel || "row"}-${
+                    row.category || rowIndex
+                  }-${rowIndex}`}
+                  style={rowStyles}
+                >
+                  {GAP_ANALYSIS_PDF_COLUMNS.map((column, columnIndex) => {
+                    const cellStyles = [
+                      gapAnalysisPdfStyles.tableCell,
+                      { flex: column.flex, textAlign: column.align },
+                    ];
+
+                    if (columnIndex === GAP_ANALYSIS_PDF_COLUMNS.length - 1) {
+                      cellStyles.push(gapAnalysisPdfStyles.lastColumnCell);
+                    }
+
+                    let value = row[column.key];
+                    if (column.formatter) {
+                      value = column.formatter(value);
+                    } else if (value === undefined || value === null) {
+                      value = "";
+                    }
+
+                    if (column.key === "severity") {
+                      if (value === "Critical") {
+                        cellStyles.push(gapAnalysisPdfStyles.severityCritical);
+                      } else {
+                        cellStyles.push(gapAnalysisPdfStyles.severityModerate);
+                      }
+                    }
+
+                    return (
+                      <Text key={column.key} style={cellStyles}>
+                        {value}
+                      </Text>
+                    );
+                  })}
+                </View>
+              );
+            })}
+          </View>
+        ) : (
+          <View style={gapAnalysisPdfStyles.emptyStateContainer}>
+            <Text style={gapAnalysisPdfStyles.emptyStateTitle}>
+              No staffing gaps identified
+            </Text>
+            <Text style={gapAnalysisPdfStyles.emptyStateSubtitle}>
+              Current demand does not exceed available staffing capacity for the selected horizon.
+            </Text>
+          </View>
+        )}
+      </Page>
+    </Document>
+  );
+};
+
+const downloadGapAnalysisPdf = async (report) => {
+  const blob = await pdf(<GapAnalysisPdfDocument report={report} />).toBlob();
+  const fileName = report.fileName?.toLowerCase().endsWith(".pdf")
+    ? report.fileName
+    : `${report.fileName || `staffing_gap_analysis_${Date.now()}`}.pdf`;
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+
+  document.body.appendChild(link);
+  try {
+    link.click();
+  } finally {
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+};
 export const buildCipReport = (
   projects = [],
   projectTypes = [],
@@ -517,9 +825,11 @@ export const buildGapAnalysisReport = (staffingGaps = []) => {
   const criticalCount = rows.filter((row) => row.severity === "Critical").length;
 
   return {
+    title: "Staffing Gap Analysis",
+    format: "pdf",
     fileName: `staffing_gap_analysis_${new Date()
       .toISOString()
-      .split("T")[0]}.csv`,
+      .split("T")[0]}.pdf`,
     columns: GAP_ANALYSIS_COLUMNS,
     rows,
     meta: {
@@ -530,7 +840,18 @@ export const buildGapAnalysisReport = (staffingGaps = []) => {
 };
 
 export const downloadReport = (report) => {
-  if (!report || !Array.isArray(report.columns) || report.columns.length === 0) {
+  if (!report) {
+    console.warn("Invalid report configuration provided to downloadReport");
+    return;
+  }
+
+  if (report.format === "pdf") {
+    return downloadGapAnalysisPdf(report).catch((error) => {
+      console.error("Failed to download PDF report", error);
+    });
+  }
+
+  if (!Array.isArray(report.columns) || report.columns.length === 0) {
     console.warn("Invalid report configuration provided to downloadReport");
     return;
   }

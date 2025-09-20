@@ -218,7 +218,7 @@ const ReportsTab = ({
           description="Month-by-month shortage report highlighting where demand exceeds available staffing capacity."
           icon={AlertTriangle}
           stats={gapStats}
-          buttonLabel="Download Gap CSV"
+          buttonLabel="Download Gap PDF"
           onDownload={() => downloadReport(gapReport)}
         />
       </div>
