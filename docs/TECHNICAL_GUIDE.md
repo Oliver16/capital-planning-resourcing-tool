@@ -87,6 +87,7 @@ The resulting array lists each month label along with per-category required vers
 - **Integration points** – JSON exports can feed downstream analytics pipelines. The `exportDatabase` function is a single place to add transforms or delivery to cloud storage.
 - **Scenario planning** – Introduce named scenarios by storing allocation snapshots in a new table and adding selectors to the forecast tabs.
 - **Authentication** – Supabase roles can be extended beyond viewer/editor to support finer-grained permissions or billing-driven entitlements.
+- **Superuser access** – The `superuser` organization role bypasses per-organization RLS checks, allowing trusted operators to administer every organization and manage memberships globally.
 
 ## 7. Related documentation
 
