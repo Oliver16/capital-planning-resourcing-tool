@@ -283,7 +283,7 @@ const ProjectCard = ({
     updateProject(project.id, field, Number.isNaN(parsed) ? 0 : parsed);
   };
 
-  const handleSelectNumber = (field) => (event) => {
+  const handleSelectOption = (field, options = []) => (event) => {
     if (isReadOnly) {
       return;
     }
@@ -293,8 +293,23 @@ const ProjectCard = ({
       return;
     }
 
-    const parsed = parseInt(rawValue, 10);
-    updateProject(project.id, field, Number.isNaN(parsed) ? null : parsed);
+    const matchingOption = options.find((option) => {
+      if (!option) {
+        return false;
+      }
+      const optionId = option.id;
+      if (optionId === undefined || optionId === null) {
+        return false;
+      }
+      return String(optionId) === rawValue;
+    });
+
+    const normalizedValue =
+      matchingOption && matchingOption.id !== undefined
+        ? matchingOption.id
+        : rawValue;
+
+    updateProject(project.id, field, normalizedValue);
   };
 
   return (
@@ -369,7 +384,7 @@ const ProjectCard = ({
         <Field label="Project type">
           <select
             value={project.projectTypeId ?? ""}
-            onChange={handleSelectNumber("projectTypeId")}
+            onChange={handleSelectOption("projectTypeId", projectTypes)}
             className={projectInputClass}
             disabled={isReadOnly}
           >
@@ -385,7 +400,7 @@ const ProjectCard = ({
         <Field label="Funding source">
           <select
             value={project.fundingSourceId ?? ""}
-            onChange={handleSelectNumber("fundingSourceId")}
+            onChange={handleSelectOption("fundingSourceId", fundingSources)}
             className={projectInputClass}
             disabled={isReadOnly}
           >
@@ -543,7 +558,7 @@ const ProgramCard = ({
     updateProject(program.id, field, Number.isNaN(parsed) ? 0 : parsed);
   };
 
-  const handleSelectNumber = (field) => (event) => {
+  const handleSelectOption = (field, options = []) => (event) => {
     if (isReadOnly) {
       return;
     }
@@ -553,8 +568,23 @@ const ProgramCard = ({
       return;
     }
 
-    const parsed = parseInt(rawValue, 10);
-    updateProject(program.id, field, Number.isNaN(parsed) ? null : parsed);
+    const matchingOption = options.find((option) => {
+      if (!option) {
+        return false;
+      }
+      const optionId = option.id;
+      if (optionId === undefined || optionId === null) {
+        return false;
+      }
+      return String(optionId) === rawValue;
+    });
+
+    const normalizedValue =
+      matchingOption && matchingOption.id !== undefined
+        ? matchingOption.id
+        : rawValue;
+
+    updateProject(program.id, field, normalizedValue);
   };
 
   const categoryHours = getVisibleCategoryHours(program, staffCategories);
@@ -649,7 +679,7 @@ const ProgramCard = ({
         <Field label="Program type">
           <select
             value={program.projectTypeId ?? ""}
-            onChange={handleSelectNumber("projectTypeId")}
+            onChange={handleSelectOption("projectTypeId", projectTypes)}
             className={programInputClass}
             disabled={isReadOnly}
           >
@@ -665,7 +695,7 @@ const ProgramCard = ({
         <Field label="Funding source">
           <select
             value={program.fundingSourceId ?? ""}
-            onChange={handleSelectNumber("fundingSourceId")}
+            onChange={handleSelectOption("fundingSourceId", fundingSources)}
             className={programInputClass}
             disabled={isReadOnly}
           >
