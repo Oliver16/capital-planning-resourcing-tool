@@ -71,6 +71,37 @@ const getNumericValue = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const toIdKey = (value) => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const key = String(value).trim();
+  return key ? key : null;
+};
+
+const normalizeStorageId = (value) => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const numeric = Number(trimmed);
+    return Number.isFinite(numeric) ? numeric : trimmed;
+  }
+
+  return null;
+};
+
 const CapitalPlanningTool = () => {
   const { canEditActiveOrg } = useAuth();
   const isReadOnly = !canEditActiveOrg;
@@ -353,7 +384,11 @@ const CapitalPlanningTool = () => {
 
   useEffect(() => {
     setScenarios((prevScenarios) => {
-      const validProjectIds = new Set(projects.map((project) => project.id));
+      const validProjectIds = new Set(
+        projects
+          .map((project) => toIdKey(project?.id))
+          .filter((key) => key !== null)
+      );
       let hasChanges = false;
 
       const cleanedScenarios = prevScenarios.map((scenario) => {
@@ -369,9 +404,9 @@ const CapitalPlanningTool = () => {
 
         Object.entries(scenario.adjustments).forEach(
           ([projectId, adjustment]) => {
-            const numericId = Number(projectId);
-            if (validProjectIds.has(numericId)) {
-              nextAdjustments[numericId] = adjustment;
+            const key = toIdKey(projectId);
+            if (key && validProjectIds.has(key)) {
+              nextAdjustments[key] = adjustment;
             } else {
               scenarioChanged = true;
             }
@@ -576,9 +611,12 @@ const CapitalPlanningTool = () => {
 
     // Save to database
     try {
+      const storageProjectId = normalizeStorageId(projectId);
+      const storageCategoryId = normalizeStorageId(categoryId);
+
       await saveStaffAllocation({
-        projectId: parseInt(projectId),
-        categoryId: parseInt(categoryId),
+        projectId: storageProjectId ?? projectId,
+        categoryId: storageCategoryId ?? categoryId,
         pmHours: newAllocations[projectId][categoryId].pmHours || 0,
         designHours: newAllocations[projectId][categoryId].designHours || 0,
         constructionHours:
@@ -598,10 +636,10 @@ const CapitalPlanningTool = () => {
     if (isReadOnly) {
       return;
     }
-    const numericProjectId = Number(projectId);
-    const numericStaffId = Number(staffId);
+    const projectKey = toIdKey(projectId);
+    const staffKey = toIdKey(staffId);
 
-    if (!Number.isFinite(numericProjectId) || !Number.isFinite(numericStaffId)) {
+    if (!projectKey || !staffKey) {
       return;
     }
 
@@ -619,8 +657,8 @@ const CapitalPlanningTool = () => {
     const sanitizedHours = Math.max(0, Number(value) || 0);
 
     const existingProjectAssignments =
-      staffAssignmentOverrides[numericProjectId] || {};
-    const existingAssignment = existingProjectAssignments[numericStaffId] || {
+      staffAssignmentOverrides[projectKey] || {};
+    const existingAssignment = existingProjectAssignments[staffKey] || {
       pmHours: 0,
       designHours: 0,
       constructionHours: 0,
@@ -638,30 +676,36 @@ const CapitalPlanningTool = () => {
 
     setStaffAssignmentOverrides((previous) => {
       const next = { ...previous };
-      const projectAssignments = { ...(next[numericProjectId] || {}) };
+      const projectAssignments = { ...(next[projectKey] || {}) };
 
       if (isEmptyAssignment) {
-        delete projectAssignments[numericStaffId];
+        delete projectAssignments[staffKey];
       } else {
-        projectAssignments[numericStaffId] = updatedAssignment;
+        projectAssignments[staffKey] = updatedAssignment;
       }
 
       if (Object.keys(projectAssignments).length === 0) {
-        delete next[numericProjectId];
+        delete next[projectKey];
       } else {
-        next[numericProjectId] = projectAssignments;
+        next[projectKey] = projectAssignments;
       }
 
       return next;
     });
 
     try {
+      const storageProjectId = normalizeStorageId(projectId);
+      const storageStaffId = normalizeStorageId(staffId);
+
       if (isEmptyAssignment) {
-        await dbDeleteStaffAssignment(numericProjectId, numericStaffId);
+        await dbDeleteStaffAssignment(
+          storageProjectId ?? projectId,
+          storageStaffId ?? staffId
+        );
       } else {
         await saveStaffAssignment({
-          projectId: numericProjectId,
-          staffId: numericStaffId,
+          projectId: storageProjectId ?? projectId,
+          staffId: storageStaffId ?? staffId,
           pmHours: updatedAssignment.pmHours || 0,
           designHours: updatedAssignment.designHours || 0,
           constructionHours: updatedAssignment.constructionHours || 0,
@@ -673,26 +717,31 @@ const CapitalPlanningTool = () => {
   };
 
   const resetProjectAssignments = async (projectId) => {
-    const numericProjectId = Number(projectId);
-    if (!Number.isFinite(numericProjectId)) {
+    const projectKey = toIdKey(projectId);
+    if (!projectKey) {
       return;
     }
 
-    const existingAssignments = staffAssignmentOverrides[numericProjectId];
+    const existingAssignments = staffAssignmentOverrides[projectKey];
     if (!existingAssignments) {
       return;
     }
 
     setStaffAssignmentOverrides((previous) => {
       const next = { ...previous };
-      delete next[numericProjectId];
+      delete next[projectKey];
       return next;
     });
 
     try {
+      const storageProjectId = normalizeStorageId(projectId) ?? projectId;
+
       await Promise.all(
         Object.keys(existingAssignments).map((staffKey) =>
-          dbDeleteStaffAssignment(numericProjectId, Number(staffKey))
+          dbDeleteStaffAssignment(
+            storageProjectId,
+            normalizeStorageId(staffKey) ?? staffKey
+          )
         )
       );
     } catch (error) {
@@ -911,7 +960,10 @@ const CapitalPlanningTool = () => {
           return previous;
         }
 
-        const numericId = Number(id);
+        const targetKey = toIdKey(id);
+        if (!targetKey) {
+          return previous;
+        }
         let hasChanges = false;
         const next = {};
 
@@ -921,7 +973,7 @@ const CapitalPlanningTool = () => {
           }
 
           const filteredEntries = Object.entries(staffMap).filter(
-            ([staffKey]) => Number(staffKey) !== numericId
+            ([staffKey]) => staffKey !== targetKey
           );
 
           if (filteredEntries.length === 0) {
@@ -1119,8 +1171,13 @@ const CapitalPlanningTool = () => {
           return scenario;
         }
 
+        const projectKey = toIdKey(projectId);
+        if (!projectKey) {
+          return scenario;
+        }
+
         const nextAdjustments = { ...(scenario.adjustments || {}) };
-        const currentAdjustment = { ...(nextAdjustments[projectId] || {}) };
+        const currentAdjustment = { ...(nextAdjustments[projectKey] || {}) };
 
         Object.entries(fields).forEach(([key, value]) => {
           if (!value) {
@@ -1131,9 +1188,9 @@ const CapitalPlanningTool = () => {
         });
 
         if (Object.keys(currentAdjustment).length > 0) {
-          nextAdjustments[projectId] = currentAdjustment;
+          nextAdjustments[projectKey] = currentAdjustment;
         } else {
-          delete nextAdjustments[projectId];
+          delete nextAdjustments[projectKey];
         }
 
         return {
@@ -1154,12 +1211,17 @@ const CapitalPlanningTool = () => {
           return scenario;
         }
 
-        if (!scenario.adjustments || !scenario.adjustments[projectId]) {
+        const projectKey = toIdKey(projectId);
+        if (!projectKey) {
+          return scenario;
+        }
+
+        if (!scenario.adjustments || !scenario.adjustments[projectKey]) {
           return scenario;
         }
 
         const nextAdjustments = { ...scenario.adjustments };
-        delete nextAdjustments[projectId];
+        delete nextAdjustments[projectKey];
 
         return {
           ...scenario,

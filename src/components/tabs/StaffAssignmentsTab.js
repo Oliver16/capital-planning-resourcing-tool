@@ -33,6 +33,15 @@ const phaseKeys = [
   { key: "construction", label: "Construction" },
 ];
 
+const toIdKey = (value) => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const key = String(value).trim();
+  return key ? key : null;
+};
+
 const StaffAssignmentsTab = ({
   projects = [],
   staffMembers = [],
@@ -50,9 +59,12 @@ const StaffAssignmentsTab = ({
   const staffById = useMemo(() => {
     const map = new Map();
     staffMembers.forEach((member) => {
-      if (member?.id != null) {
-        map.set(Number(member.id), member);
+      const key = toIdKey(member?.id);
+      if (!key) {
+        return;
       }
+
+      map.set(key, member);
     });
     return map;
   }, [staffMembers]);
@@ -60,14 +72,15 @@ const StaffAssignmentsTab = ({
   const staffByCategory = useMemo(() => {
     const map = new Map();
     staffMembers.forEach((member) => {
-      if (member?.categoryId == null) {
+      const categoryKey = toIdKey(member?.categoryId);
+      const staffKey = toIdKey(member?.id);
+      if (!categoryKey || !staffKey) {
         return;
       }
-      const categoryId = Number(member.categoryId);
-      if (!map.has(categoryId)) {
-        map.set(categoryId, []);
+      if (!map.has(categoryKey)) {
+        map.set(categoryKey, []);
       }
-      map.get(categoryId).push(Number(member.id));
+      map.get(categoryKey).push(staffKey);
     });
     return map;
   }, [staffMembers]);
@@ -75,9 +88,12 @@ const StaffAssignmentsTab = ({
   const categoriesById = useMemo(() => {
     const map = new Map();
     staffCategories.forEach((category) => {
-      if (category?.id != null) {
-        map.set(Number(category.id), category);
+      const key = toIdKey(category?.id);
+      if (!key) {
+        return;
       }
+
+      map.set(key, category);
     });
     return map;
   }, [staffCategories]);
@@ -97,8 +113,12 @@ const StaffAssignmentsTab = ({
     return projects
       .filter((project) => project && isProjectOrProgram(project))
       .map((project) => {
-        const projectId = Number(project.id);
-        const projectAllocations = staffAllocations[projectId] || {};
+        const projectId = toIdKey(project?.id);
+        if (!projectId) {
+          return null;
+        }
+
+        const projectAllocations = staffAllocations?.[projectId] || {};
         const manualAssignments = manualAssignmentsByProject[projectId] || {};
         const projectDemandTotals = demandByProjectCategory[projectId] || {};
         const projectMonthlyDemand =
@@ -107,32 +127,41 @@ const StaffAssignmentsTab = ({
         const relevantCategoryIds = new Set();
 
         Object.entries(projectAllocations).forEach(([categoryId, hours]) => {
-          const numericCategoryId = Number(categoryId);
+          const categoryKey = toIdKey(categoryId);
+          if (!categoryKey) {
+            return;
+          }
+
           const hasDemand =
             Number(hours?.pmHours) > 0 ||
             Number(hours?.designHours) > 0 ||
             Number(hours?.constructionHours) > 0;
           if (hasDemand) {
-            relevantCategoryIds.add(numericCategoryId);
+            relevantCategoryIds.add(categoryKey);
           }
         });
 
         Object.entries(projectDemandTotals).forEach(([categoryId, hours]) => {
-          const numericCategoryId = Number(categoryId);
+          const categoryKey = toIdKey(categoryId);
+          if (!categoryKey) {
+            return;
+          }
+
           const totalHours =
             Number(hours?.pmHours || 0) +
             Number(hours?.designHours || 0) +
             Number(hours?.constructionHours || 0);
 
           if (totalHours > 0) {
-            relevantCategoryIds.add(numericCategoryId);
+            relevantCategoryIds.add(categoryKey);
           }
         });
 
         Object.keys(manualAssignments).forEach((staffKey) => {
-          const staff = staffById.get(Number(staffKey));
-          if (staff?.categoryId != null) {
-            relevantCategoryIds.add(Number(staff.categoryId));
+          const staff = staffById.get(staffKey);
+          const categoryKey = toIdKey(staff?.categoryId);
+          if (categoryKey) {
+            relevantCategoryIds.add(categoryKey);
           }
         });
 
@@ -276,7 +305,7 @@ const StaffAssignmentsTab = ({
         const projectUnfilledEntries = [];
         const unfilledByCategory = unfilledDemand[projectId] || {};
         Object.entries(unfilledByCategory).forEach(([categoryId, hours]) => {
-          const category = categoriesById.get(Number(categoryId));
+        const category = categoriesById.get(toIdKey(categoryId));
           phaseKeys.forEach((phase) => {
             const key = `${phase.key}Hours`;
             const value = Number(hours?.[key]) || 0;
@@ -300,6 +329,7 @@ const StaffAssignmentsTab = ({
           monthlyDemandTotal: projectMonthlyDemandTotal,
         };
       })
+      .filter(Boolean)
       .filter((entry) => entry.categories.length > 0);
   }, [
     projects,
