@@ -51,8 +51,29 @@ const serializeContinuousConfig = (config) => {
   return JSON.stringify(config);
 };
 
-const normalizeNullable = (value) =>
-  value === undefined || value === null || Number.isNaN(value) ? null : value;
+const normalizeNullable = (value) => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '') {
+      return null;
+    }
+    return trimmed;
+  }
+
+  if (Number.isNaN(value)) {
+    return null;
+  }
+
+  return value;
+};
 
 const projectFromRow = (row) => {
   const camel = camelizeRecord(row);
