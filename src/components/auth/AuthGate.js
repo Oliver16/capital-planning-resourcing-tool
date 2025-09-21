@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import LoginView from './LoginView';
 import OrganizationSetup from './OrganizationSetup';
+import SuperuserAdminPanel from '../admin/SuperuserAdminPanel';
 
 const AuthGate = ({ children }) => {
   const {
@@ -15,7 +16,9 @@ const AuthGate = ({ children }) => {
     canEditActiveOrg,
     user,
     signOut,
+    hasSuperuserAccess,
   } = useAuth();
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
 
   const organizationLabel =
     activeOrganization?.name || 'Select an organization';
@@ -112,6 +115,22 @@ const AuthGate = ({ children }) => {
                 </button>
               </div>
             </div>
+            {hasSuperuserAccess && (
+              <button
+                type="button"
+                onClick={() => setIsAdminPanelOpen(true)}
+                className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 shadow-sm hover:bg-blue-100"
+              >
+                Admin
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={signOut}
+              className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50"
+            >
+              Sign out
+            </button>
           </div>
         </div>
       </header>
@@ -124,6 +143,10 @@ const AuthGate = ({ children }) => {
       )}
 
       <div className="flex-1 overflow-auto">{children}</div>
+
+      {hasSuperuserAccess && isAdminPanelOpen && (
+        <SuperuserAdminPanel onClose={() => setIsAdminPanelOpen(false)} />
+      )}
     </div>
   );
 };
