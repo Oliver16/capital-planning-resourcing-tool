@@ -1,3 +1,5 @@
+import { normalizeProjectBudgetBreakdown } from "./projectBudgets";
+
 const normalizeDeliveryType = (value) => {
   if (!value) {
     return "self-perform";
@@ -29,6 +31,15 @@ const sanitizeHourValue = (value) => {
     return 0;
   }
   return Math.round(parsed * 10) / 10;
+};
+
+const parseOptionalFloat = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
 };
 
 const sumContinuousHours = (config = {}) => {
@@ -125,20 +136,38 @@ export const handleCSVImport = async (
           continuousHoursByCategory
         );
 
-        return {
+        const type =
+          row["Type"]?.toLowerCase() === "program" ? "program" : "project";
+
+        const totalBudget = parseFloat(
+          row["Total Budget"] || row["Budget"] || 0
+        );
+        const designBudget = parseFloat(row["Design Budget"] || 0);
+        const constructionBudget = parseFloat(
+          row["Construction Budget"] || 0
+        );
+
+        const rawDesignPercent = parseOptionalFloat(row["Design %"]);
+        const rawConstructionPercent = parseOptionalFloat(row["Construction %"]);
+
+        const designBudgetPercent =
+          rawDesignPercent ?? (type === "program" ? 15 : null);
+        const constructionBudgetPercent =
+          rawConstructionPercent ?? (type === "program" ? 85 : null);
+
+        return normalizeProjectBudgetBreakdown({
           id: Math.max(...projects.map((p) => p.id), 0) + index + 1,
           name:
             row["Project Name"] ||
             row["Name"] ||
             `Imported Project ${index + 1}`,
-          type:
-            row["Type"]?.toLowerCase() === "program" ? "program" : "project",
+          type,
           projectTypeId: 1, // Default, user can change
           fundingSourceId: 1, // Default, user can change
           deliveryType: normalizeDeliveryType(row["Delivery Type"]),
-          totalBudget: parseFloat(row["Total Budget"] || row["Budget"] || 0),
-          designBudget: parseFloat(row["Design Budget"] || 0),
-          constructionBudget: parseFloat(row["Construction Budget"] || 0),
+          totalBudget,
+          designBudget,
+          constructionBudget,
           designDuration: parseInt(
             row["Design Duration"] || row["Design Months"] || 3
           ),
@@ -153,8 +182,8 @@ export const handleCSVImport = async (
           description: row["Description"] || "",
           // Program-specific fields
           annualBudget: parseFloat(row["Annual Budget"] || 0),
-          designBudgetPercent: parseFloat(row["Design %"] || 15),
-          constructionBudgetPercent: parseFloat(row["Construction %"] || 85),
+          designBudgetPercent,
+          constructionBudgetPercent,
           programStartDate: row["Program Start"] || "2025-01-01",
           programEndDate: row["Program End"] || "2027-12-31",
           continuousPmHours:
@@ -167,7 +196,7 @@ export const handleCSVImport = async (
             totalsFromCategories.construction ||
             sanitizeHourValue(row["Continuous Construction Hours"] || 0),
           continuousHoursByCategory,
-        };
+        });
       });
 
     setProjects([...projects, ...importedProjects]);
