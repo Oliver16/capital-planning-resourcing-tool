@@ -28,6 +28,7 @@ import PeopleTab from "./tabs/PeopleTab";
 import ScenariosTab from "./tabs/ScenariosTab";
 import ReportsTab from "./tabs/ReportsTab";
 import StaffAssignmentsTab from "./tabs/StaffAssignmentsTab";
+import { isProjectOrProgram } from "../utils/projectTypes.js";
 
 // Import data and utilities
 import {
@@ -47,6 +48,7 @@ import { handleCSVImport } from "../utils/dataImport";
 import { useDatabase } from "../hooks/useDatabase";
 import { useAuth } from "../context/AuthContext";
 import { buildStaffAssignmentPlan } from "../utils/staffAssignments";
+import { normalizeProjectBudgetBreakdown } from "../utils/projectBudgets";
 
 const MAX_MONTHLY_FTE_HOURS = 2080 / 12;
 const CAPACITY_FIELDS = [
@@ -76,7 +78,7 @@ const CapitalPlanningTool = () => {
   // Database hook with fixed default data
   const defaultData = useMemo(
     () => ({
-      projects: defaultProjects,
+      projects: defaultProjects.map(normalizeProjectBudgetBreakdown),
       staffCategories: defaultStaffCategories,
       projectTypes: defaultProjectTypes,
       fundingSources: defaultFundingSources,
@@ -121,7 +123,9 @@ const CapitalPlanningTool = () => {
   );
   const [projectTypes, setProjectTypes] = useState(defaultProjectTypes);
   const [fundingSources, setFundingSources] = useState(defaultFundingSources);
-  const [projects, setProjects] = useState(defaultProjects);
+  const [projects, setProjects] = useState(() =>
+    defaultProjects.map(normalizeProjectBudgetBreakdown)
+  );
   const [staffAllocations, setStaffAllocations] = useState({});
   const [staffMembers, setStaffMembers] = useState(defaultStaffMembers);
   const [staffAssignmentOverrides, setStaffAssignmentOverrides] = useState({});
@@ -170,10 +174,12 @@ const CapitalPlanningTool = () => {
           // Only update if we got actual data
           if (projectsData && projectsData.length > 0) {
             setProjects(
-              projectsData.map((project) => ({
-                ...project,
-                deliveryType: project.deliveryType || "self-perform",
-              }))
+              projectsData.map((project) =>
+                normalizeProjectBudgetBreakdown({
+                  ...project,
+                  deliveryType: project.deliveryType || "self-perform",
+                })
+              )
             );
           }
           if (staffCategoriesData && staffCategoriesData.length > 0) {
@@ -441,8 +447,8 @@ const CapitalPlanningTool = () => {
             fundingSourceId: fundingSources[0]?.id || 1,
             deliveryType: "self-perform",
             totalBudget: 1000000,
-            designBudget: 100000,
-            constructionBudget: 900000,
+            designBudgetPercent: 15,
+            constructionBudgetPercent: 85,
             designDuration: 3,
             constructionDuration: 12,
             designStartDate: "2025-01-01",
@@ -459,15 +465,17 @@ const CapitalPlanningTool = () => {
             annualBudget: 500000,
             designBudgetPercent: 15,
             constructionBudgetPercent: 85,
-            continuousPmHours: 20,
-            continuousDesignHours: 40,
-            continuousConstructionHours: 80,
+            continuousPmHours: 0,
+            continuousDesignHours: 0,
+            continuousConstructionHours: 0,
             description: "",
           };
 
+    const normalizedProject = normalizeProjectBudgetBreakdown(newProject);
+
     try {
-      const savedProjectId = await saveProject(newProject);
-      const projectWithId = { ...newProject, id: savedProjectId };
+      const savedProjectId = await saveProject(normalizedProject);
+      const projectWithId = { ...normalizedProject, id: savedProjectId };
       setProjects((prev) => [...prev, projectWithId]);
     } catch (error) {
       console.error("Error adding project:", error);
@@ -497,7 +505,9 @@ const CapitalPlanningTool = () => {
           };
 
     const updatedProjects = projects.map((p) =>
-      p.id === id ? { ...p, ...updates } : p
+      p.id === id
+        ? normalizeProjectBudgetBreakdown({ ...p, ...updates })
+        : p
     );
     setProjects(updatedProjects);
 
@@ -1415,7 +1425,9 @@ const CapitalPlanningTool = () => {
 
           {activeTab === "assignments" && (
             <StaffAssignmentsTab
-              projects={projects.filter((project) => project.type === "project")}
+              projects={projects.filter((project) =>
+                isProjectOrProgram(project)
+              )}
               staffMembers={staffMembers}
               staffCategories={staffCategories}
               staffAllocations={staffAllocations}

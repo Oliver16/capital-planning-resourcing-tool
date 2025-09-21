@@ -1,3 +1,77 @@
+const parseDateValue = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getProjectStartTimestamp = (project) => {
+  if (!project) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const timestamps = [];
+
+  const designStart = parseDateValue(project.designStartDate);
+  if (designStart) {
+    timestamps.push(designStart.getTime());
+  }
+
+  const constructionStart = parseDateValue(project.constructionStartDate);
+  if (constructionStart) {
+    timestamps.push(constructionStart.getTime());
+  }
+
+  if (timestamps.length === 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  return Math.min(...timestamps);
+};
+
+const getProgramStartTimestamp = (program) => {
+  if (!program) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const startDate =
+    parseDateValue(program.programStartDate) ||
+    parseDateValue(program.designStartDate) ||
+    parseDateValue(program.constructionStartDate);
+
+  return startDate ? startDate.getTime() : Number.POSITIVE_INFINITY;
+};
+
+const sortItemsByStart = (items = [], getStartTime) => {
+  if (!Array.isArray(items) || items.length <= 1) {
+    return items;
+  }
+
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      const aTime = getStartTime(a.item);
+      const bTime = getStartTime(b.item);
+
+      if (aTime === bTime) {
+        const aName = a.item?.name ?? "";
+        const bName = b.item?.name ?? "";
+        const nameComparison = aName.localeCompare(bName);
+
+        if (nameComparison !== 0) {
+          return nameComparison;
+        }
+
+        return a.index - b.index;
+      }
+
+      return aTime - bTime;
+    })
+    .map(({ item }) => item);
+};
+
 export const groupProjectsByType = (projects = [], projectTypes = []) => {
   const typeMap = new Map();
   projectTypes.forEach((type) => {
@@ -59,6 +133,11 @@ export const groupProjectsByType = (projects = [], projectTypes = []) => {
     ) {
       orderedGroups.push(group);
     }
+  });
+
+  orderedGroups.forEach((group) => {
+    group.projects = sortItemsByStart(group.projects, getProjectStartTimestamp);
+    group.programs = sortItemsByStart(group.programs, getProgramStartTimestamp);
   });
 
   return orderedGroups.filter(

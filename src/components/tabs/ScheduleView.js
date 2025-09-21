@@ -763,6 +763,12 @@ const ScheduleView = ({
           </div>
         )}
 
+        <div className="sticky top-4 z-30 mt-6">
+          <div className="rounded-lg border border-gray-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur">
+            <ScheduleLegend scheduleHorizon={scheduleHorizon} />
+          </div>
+        </div>
+
         <div className="mt-6">
           <div
             ref={legendContainerRef}

@@ -1,3 +1,5 @@
+import { isCapitalProject, isProgramProject } from "./projectTypes.js";
+
 const toNumber = (value) => {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : 0;
@@ -91,12 +93,12 @@ const buildProjectPhaseDurationMap = (projects = []) => {
       return;
     }
 
-    if (project.type === "program") {
+    if (isProgramProject(project)) {
       map.set(Number(project.id), getProgramPhaseDurations(project));
       return;
     }
 
-    if (project.type === "project") {
+    if (isCapitalProject(project)) {
       map.set(Number(project.id), getProjectPhaseDurations(project));
     }
   });
@@ -366,7 +368,7 @@ const buildProgramDemandMaps = (projects = [], staffCategories = []) => {
   const monthly = {};
 
   (projects || []).forEach((project) => {
-    if (!project || project.id == null || project.type !== "program") {
+    if (!project || project.id == null || !isProgramProject(project)) {
       return;
     }
 
