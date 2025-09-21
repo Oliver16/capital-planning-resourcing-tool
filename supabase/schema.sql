@@ -148,6 +148,40 @@ create index if not exists projects_organization_id_idx on public.projects (orga
 create index if not exists projects_project_type_id_idx on public.projects (project_type_id);
 create index if not exists projects_funding_source_id_idx on public.projects (funding_source_id);
 
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'projects_design_budget_percent_range'
+  ) then
+    alter table public.projects
+      add constraint projects_design_budget_percent_range
+      check (
+        design_budget_percent is null
+        or (design_budget_percent >= 0 and design_budget_percent <= 100)
+      );
+  end if;
+end
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'projects_construction_budget_percent_range'
+  ) then
+    alter table public.projects
+      add constraint projects_construction_budget_percent_range
+      check (
+        construction_budget_percent is null
+        or (construction_budget_percent >= 0 and construction_budget_percent <= 100)
+      );
+  end if;
+end
+$$;
+
 create table if not exists public.staff_allocations (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations (id) on delete cascade,

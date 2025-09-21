@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
+import { normalizeProjectBudgetBreakdown } from '../utils/projectBudgets';
 
 const toCamelCaseKey = (key) =>
   key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
@@ -81,7 +82,7 @@ const projectFromRow = (row) => {
     camel.continuousHoursByCategory,
     {}
   );
-  return camel;
+  return normalizeProjectBudgetBreakdown(camel);
 };
 
 const projectToRow = (project, organizationId) => ({
