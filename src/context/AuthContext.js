@@ -48,12 +48,14 @@ export const AuthProvider = ({ children }) => {
   const [activeOrganizationId, setActiveOrganizationId] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
+  const [pendingJoinRequest, setPendingJoinRequest] = useState(null);
   const sessionRef = useRef(null);
 
   const refreshMemberships = useCallback(async () => {
     if (!supabase) {
       setMemberships([]);
       setActiveOrganizationId(null);
+      setPendingJoinRequest(null);
       setAuthError(
         'Supabase client is not configured. Provide Supabase URL and anon key environment variables (see README for supported names).'
       );
@@ -65,6 +67,7 @@ export const AuthProvider = ({ children }) => {
     if (!currentSession?.user) {
       setMemberships([]);
       setActiveOrganizationId(null);
+      setPendingJoinRequest(null);
       return [];
     }
 
@@ -136,7 +139,29 @@ export const AuthProvider = ({ children }) => {
       }
     }
 
+    let pendingRequestRecord = null;
+
+    if (!membershipList.length) {
+      const { data: pendingRequest, error: pendingRequestError } = await supabase
+        .from('organization_join_requests')
+        .select(
+          'id, status, organization_id, created_at, updated_at, organization:organizations(id, name, slug)'
+        )
+        .eq('user_id', currentSession.user.id)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (pendingRequestError && pendingRequestError.code !== 'PGRST116') {
+        console.error('Unable to load pending join requests', pendingRequestError);
+      } else if (pendingRequest) {
+        pendingRequestRecord = pendingRequest;
+      }
+    }
+
     setMemberships(membershipList);
+    setPendingJoinRequest(pendingRequestRecord);
 
     if (!membershipList.length) {
       setActiveOrganizationId(null);
@@ -285,8 +310,43 @@ export const AuthProvider = ({ children }) => {
     [refreshMemberships]
   );
 
+  const requestOrganizationAffiliation = useCallback(
+    async ({ organizationId }) => {
+      if (!supabase) {
+        throw new Error('Supabase client is not configured.');
+      }
+
+      const currentSession = sessionRef.current;
+
+      if (!currentSession?.user) {
+        throw new Error('You must be signed in to request organization access.');
+      }
+
+      if (!organizationId) {
+        throw new Error('Select an organization before submitting a request.');
+      }
+
+      const normalizedOrganizationId = String(organizationId);
+
+      const { error } = await supabase.from('organization_join_requests').insert({
+        organization_id: normalizedOrganizationId,
+      });
+
+      if (error) {
+        if (error.code === '23505') {
+          throw new Error('An affiliation request for this organization is already pending.');
+        }
+
+        throw error;
+      }
+
+      await refreshMemberships();
+    },
+    [refreshMemberships]
+  );
+
   const signUp = useCallback(
-    async ({ email, password, fullName, organizationName }) => {
+    async ({ email, password, fullName, organizationId }) => {
       if (!supabase) {
         throw new Error(
           'Supabase client is not configured. Supply Supabase URL and anon key environment variables before signing up.'
@@ -317,13 +377,13 @@ export const AuthProvider = ({ children }) => {
       sessionRef.current = nextSession;
       setSession(nextSession);
 
-      if (organizationName && nextSession?.user) {
+      if (organizationId && nextSession?.user) {
         try {
-          await createOrganization({ name: organizationName });
-        } catch (creationError) {
-          console.error('Organization creation failed after sign up', creationError);
-          setAuthError(creationError.message);
-          throw creationError;
+          await requestOrganizationAffiliation({ organizationId });
+        } catch (requestError) {
+          console.error('Organization affiliation request failed after sign up', requestError);
+          setAuthError(requestError.message);
+          throw requestError;
         }
       } else {
         await refreshMemberships();
@@ -334,7 +394,7 @@ export const AuthProvider = ({ children }) => {
         requiresConfirmation: !data.session,
       };
     },
-    [createOrganization, refreshMemberships]
+    [refreshMemberships, requestOrganizationAffiliation]
   );
 
   const signOut = useCallback(async () => {
@@ -367,6 +427,8 @@ export const AuthProvider = ({ children }) => {
       activeMembership: activeMembership || null,
       canEditActiveOrg: hasSuperuserAccess || Boolean(activeMembership?.canEdit),
       hasSuperuserAccess,
+      pendingJoinRequest,
+      hasPendingJoinRequest: Boolean(pendingJoinRequest),
       setActiveOrganizationId: (value) =>
         setActiveOrganizationId(
           value === null || value === undefined ? null : String(value)
@@ -375,6 +437,7 @@ export const AuthProvider = ({ children }) => {
       signUp,
       signOut,
       createOrganization,
+      requestOrganizationAffiliation,
       refreshMemberships,
       clearAuthError: () => setAuthError(null),
     };
@@ -388,6 +451,8 @@ export const AuthProvider = ({ children }) => {
     signUp,
     signOut,
     createOrganization,
+    pendingJoinRequest,
+    requestOrganizationAffiliation,
     refreshMemberships,
   ]);
 

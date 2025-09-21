@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabaseClient';
 
 const tabButtonClasses = (isActive) =>
   `px-4 py-2 text-sm font-medium rounded-md transition-colors ${
@@ -18,12 +19,71 @@ const LoginView = () => {
     email: '',
     password: '',
     fullName: '',
-    organizationName: '',
+    organizationId: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
+  const [organizationOptions, setOrganizationOptions] = useState([]);
+  const [organizationsLoading, setOrganizationsLoading] = useState(true);
+  const [organizationsError, setOrganizationsError] = useState('');
 
   const isSignIn = useMemo(() => mode === 'sign-in', [mode]);
+  const selectedOrganization = useMemo(
+    () => organizationOptions.find((option) => option.id === formState.organizationId) || null,
+    [organizationOptions, formState.organizationId]
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadOrganizations = async () => {
+      if (!supabase) {
+        setOrganizationsError(
+          'Supabase client is not configured. Provide Supabase credentials to enable organization selection.'
+        );
+        setOrganizationsLoading(false);
+        return;
+      }
+
+      setOrganizationsLoading(true);
+      setOrganizationsError('');
+
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('id, name')
+        .order('name', { ascending: true });
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (error) {
+        setOrganizationOptions([]);
+        setOrganizationsError(error.message || 'Unable to load organizations.');
+      } else {
+        setOrganizationOptions(data || []);
+
+        setFormState((previous) => {
+          if (previous.organizationId || !(data && data.length)) {
+            return previous;
+          }
+
+          return {
+            ...previous,
+            organizationId: data[0].id,
+          };
+        });
+      }
+
+      setOrganizationsLoading(false);
+    };
+
+    loadOrganizations();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleInputChange = (event) => {
     const { name, value } = event.target;
@@ -53,6 +113,11 @@ const LoginView = () => {
       return;
     }
 
+    if (!isSignIn && !formState.organizationId) {
+      setStatusMessage('Select an organization to continue.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -66,13 +131,16 @@ const LoginView = () => {
           email: formState.email,
           password: formState.password,
           fullName: formState.fullName,
-          organizationName: formState.organizationName,
+          organizationId: formState.organizationId,
         });
 
         if (result.requiresConfirmation) {
           setStatusMessage('Check your inbox for a confirmation email to finish setting up your account.');
-        } else if (!formState.organizationName) {
-          setStatusMessage('Account created. Create or join an organization to get started.');
+        } else {
+          const organizationName = selectedOrganization?.name || 'the selected organization';
+          setStatusMessage(
+            `Your request to join ${organizationName} has been submitted and is awaiting approval.`
+          );
         }
       }
     } catch (error) {
@@ -125,11 +193,11 @@ const LoginView = () => {
           </div>
 
           {!isSignIn && (
-            <div className="space-y-2">
-              <label htmlFor="fullName" className="text-sm font-medium text-slate-700">
-                Full Name
-              </label>
-              <input
+          <div className="space-y-2">
+            <label htmlFor="fullName" className="text-sm font-medium text-slate-700">
+              Full Name
+            </label>
+            <input
                 id="fullName"
                 name="fullName"
                 type="text"
@@ -160,24 +228,37 @@ const LoginView = () => {
 
           {!isSignIn && (
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label
-                  htmlFor="organizationName"
-                  className="text-sm font-medium text-slate-700"
-                >
-                  Organization Name
-                </label>
-                <span className="text-xs text-slate-400">Optional</span>
-              </div>
-              <input
-                id="organizationName"
-                name="organizationName"
-                type="text"
-                value={formState.organizationName}
+              <label htmlFor="organizationId" className="text-sm font-medium text-slate-700">
+                Organization
+              </label>
+              <select
+                id="organizationId"
+                name="organizationId"
+                value={formState.organizationId}
                 onChange={handleInputChange}
-                className={inputClass}
-                placeholder="e.g. City of Springfield"
-              />
+                className={`${inputClass} bg-white`}
+                disabled={
+                  isSubmitting || organizationsLoading || !!organizationsError || !organizationOptions.length
+                }
+                required
+              >
+                {organizationOptions.map((organization) => (
+                  <option key={organization.id} value={organization.id}>
+                    {organization.name || 'Untitled Organization'}
+                  </option>
+                ))}
+              </select>
+              {organizationsLoading && (
+                <p className="text-xs text-slate-400">Loading organizations…</p>
+              )}
+              {organizationsError && (
+                <p className="text-xs text-amber-600">{organizationsError}</p>
+              )}
+              {!organizationsLoading && !organizationsError && !organizationOptions.length && (
+                <p className="text-xs text-amber-600">
+                  No organizations are available. Contact a platform administrator for assistance.
+                </p>
+              )}
             </div>
           )}
 
@@ -189,7 +270,15 @@ const LoginView = () => {
 
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={
+              isSubmitting ||
+              (!isSignIn && (
+                !formState.organizationId ||
+                organizationsLoading ||
+                !!organizationsError ||
+                !organizationOptions.length
+              ))
+            }
             className={`w-full inline-flex justify-center items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:bg-blue-300`}
           >
             {isSubmitting ? 'Please wait…' : isSignIn ? 'Sign In' : 'Create Account'}
