@@ -27,6 +27,28 @@ const DESIGN_COLOR = "#3b82f6";
 const CONSTRUCTION_COLOR = "#f59e0b";
 const DEFAULT_TYPE_COLOR = "#6b7280";
 
+const ScheduleLegend = ({ scheduleHorizon, className = "" }) => (
+  <div className={`flex flex-wrap items-center gap-4 text-xs text-gray-600 ${className}`}>
+    <div className="flex items-center gap-2">
+      <span
+        className="inline-block h-3 w-3 rounded-full"
+        style={{ backgroundColor: DESIGN_COLOR }}
+      ></span>
+      Design Schedule
+    </div>
+    <div className="flex items-center gap-2">
+      <span
+        className="inline-block h-3 w-3 rounded-full"
+        style={{ backgroundColor: CONSTRUCTION_COLOR }}
+      ></span>
+      Construction Schedule
+    </div>
+    <div className="text-xs text-gray-500">
+      Year dividers help visualize the {scheduleHorizon / 12}-year planning window.
+    </div>
+  </div>
+);
+
 const formatDate = (date) => {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
     return "TBD";
@@ -591,6 +613,12 @@ const ScheduleView = ({
           </div>
         )}
 
+        <div className="sticky top-4 z-30 mt-6">
+          <div className="rounded-lg border border-gray-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur">
+            <ScheduleLegend scheduleHorizon={scheduleHorizon} />
+          </div>
+        </div>
+
         <div className="mt-6">
           <div className="relative h-10 mb-8">
             <div className="absolute inset-x-0 top-4 border-t border-gray-300" />
@@ -687,25 +715,6 @@ const ScheduleView = ({
             )}
           </div>
 
-          <div className="mt-6 flex flex-wrap gap-4 text-xs text-gray-600">
-            <div className="flex items-center gap-2">
-              <span
-                className="inline-block h-3 w-3 rounded-full"
-                style={{ backgroundColor: DESIGN_COLOR }}
-              ></span>
-              Design Schedule
-            </div>
-            <div className="flex items-center gap-2">
-              <span
-                className="inline-block h-3 w-3 rounded-full"
-                style={{ backgroundColor: CONSTRUCTION_COLOR }}
-              ></span>
-              Construction Schedule
-            </div>
-            <div className="text-xs text-gray-500">
-              Year dividers help visualize the {scheduleHorizon / 12}-year planning window.
-            </div>
-          </div>
         </div>
       </div>
 
