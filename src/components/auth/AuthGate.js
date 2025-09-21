@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import LoginView from './LoginView';
 import OrganizationSetup from './OrganizationSetup';
+import SuperuserAdminPanel from '../admin/SuperuserAdminPanel';
 
 const AuthGate = ({ children }) => {
   const {
@@ -15,7 +16,9 @@ const AuthGate = ({ children }) => {
     canEditActiveOrg,
     user,
     signOut,
+    hasSuperuserAccess,
   } = useAuth();
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
 
   if (authLoading) {
     return (
@@ -39,13 +42,13 @@ const AuthGate = ({ children }) => {
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
       <header className="bg-white border-b border-slate-200 shadow-sm">
-        <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4 gap-4">
+        <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4 gap-6">
           <div>
             <h1 className="text-lg font-semibold text-slate-900">Vector</h1>
             <p className="text-xs text-slate-500 uppercase tracking-wide">Capital Planning</p>
           </div>
-          <div className="flex flex-1 items-center justify-end gap-4 flex-wrap">
-            <div className="flex flex-col text-left min-w-[200px]">
+          <div className="ml-auto flex items-center gap-6">
+            <div className="flex min-w-[220px] flex-col text-left">
               <label
                 htmlFor="organization-selector"
                 className="text-xs font-semibold uppercase text-slate-400 tracking-wide"
@@ -65,7 +68,7 @@ const AuthGate = ({ children }) => {
                 ))}
               </select>
             </div>
-            <div className="text-right">
+            <div className="flex flex-col text-right">
               <p className="text-sm font-medium text-slate-700">{user?.email}</p>
               <p className="text-xs text-slate-400">
                 {activeMembership?.isSuperuser
@@ -75,6 +78,15 @@ const AuthGate = ({ children }) => {
                     : 'Viewer access'}
               </p>
             </div>
+            {hasSuperuserAccess && (
+              <button
+                type="button"
+                onClick={() => setIsAdminPanelOpen(true)}
+                className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 shadow-sm transition hover:bg-blue-100"
+              >
+                Admin
+              </button>
+            )}
             <button
               type="button"
               onClick={signOut}
@@ -94,6 +106,10 @@ const AuthGate = ({ children }) => {
       )}
 
       <div className="flex-1 overflow-auto">{children}</div>
+
+      {hasSuperuserAccess && isAdminPanelOpen && (
+        <SuperuserAdminPanel onClose={() => setIsAdminPanelOpen(false)} />
+      )}
     </div>
   );
 };
