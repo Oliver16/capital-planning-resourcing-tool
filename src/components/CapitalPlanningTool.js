@@ -28,6 +28,7 @@ import PeopleTab from "./tabs/PeopleTab";
 import ScenariosTab from "./tabs/ScenariosTab";
 import ReportsTab from "./tabs/ReportsTab";
 import StaffAssignmentsTab from "./tabs/StaffAssignmentsTab";
+import { isProjectOrProgram } from "../utils/projectTypes.js";
 
 // Import data and utilities
 import {
@@ -1415,7 +1416,9 @@ const CapitalPlanningTool = () => {
 
           {activeTab === "assignments" && (
             <StaffAssignmentsTab
-              projects={projects.filter((project) => project.type === "project")}
+              projects={projects.filter((project) =>
+                isProjectOrProgram(project)
+              )}
               staffMembers={staffMembers}
               staffCategories={staffCategories}
               staffAllocations={staffAllocations}
