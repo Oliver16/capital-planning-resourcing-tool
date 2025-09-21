@@ -24,7 +24,15 @@ Vector is a React-based portfolio planning application built for municipal utili
    # REACT_APP_* variables or the STORAGE_NEXT_PUBLIC_* names Vercel's Supabase
    # integration provides.
    ```
-3. **Provision the database schema** – Open the Supabase SQL editor (or use the Supabase CLI) and run [`supabase/schema.sql`](supabase/schema.sql). This creates the organizations, memberships, and portfolio tables along with helper functions and row-level security policies.
+3. **Provision the database schema** – Link the Supabase CLI to your project and push the checked-in migrations. The `SUPABASE_REF` is the project ref from the Supabase dashboard.
+   ```bash
+   # One-time
+   SUPABASE_REF=your-project-ref npm run db:link
+
+   # Apply all migrations
+   npm run db:push
+   ```
+   A full snapshot of the schema still lives at [`supabase/schema.sql`](supabase/schema.sql) if you prefer to run a single SQL script manually.
 4. **Run the development server**
    ```bash
    npm start
@@ -39,6 +47,16 @@ Vector is a React-based portfolio planning application built for municipal utili
    ```
 
 The project targets modern browsers through React 18, Tailwind CSS, and Recharts. `react-app-rewired` applies custom webpack fallbacks so the Supabase client and legacy dependencies bundle cleanly in the browser.
+
+## Database migrations
+
+Vector now tracks database changes with the Supabase CLI:
+
+- `npm run db:mig:new <name>` – scaffold a timestamped SQL file inside `supabase/migrations/`.
+- `npm run db:push` – apply all pending migrations to the linked Supabase project.
+- `npm run db:reset:local` – recreate the local development stack and re-apply migrations (mirrors `supabase db reset --force`).
+
+Set the `SUPABASE_REF` environment variable before running commands that talk to Supabase (such as `npm run db:link` or `npm run db:push`). Migrations ship alongside the existing [`supabase/schema.sql`](supabase/schema.sql) snapshot so you can still inspect the full schema or run it manually if desired. Database seeding continues to happen client-side via [`src/data/defaultData.js`](src/data/defaultData.js), so the `supabase/seed.sql` file is only a placeholder to satisfy the CLI.
 
 ### Supabase environment variables
 
@@ -68,7 +86,10 @@ capital-planning-resourcing-tool/
 │   ├── utils/                       # Calculations and import/export helpers
 │   └── index.css / styles.css       # Tailwind setup & theme overrides
 ├── supabase/
-│   └── schema.sql          # Database schema, helper functions, and RLS policies
+│   ├── config.toml         # Supabase CLI project + local dev config
+│   ├── migrations/         # Incremental SQL migrations applied via supabase db push
+│   ├── schema.sql          # Snapshot of the full schema for reference/manual runs
+│   └── seed.sql            # Placeholder (client seeding handled in src/data/defaultData.js)
 ├── tailwind.config.js      # Tailwind theme extensions
 └── config-overrides.js     # CRA webpack overrides for legacy SQL.js support
 ```

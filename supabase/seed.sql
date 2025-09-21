@@ -1,0 +1,2 @@
+-- Seed data is managed in the React client (see src/data/defaultData.js).
+-- This file exists so Supabase CLI commands that expect a seed file succeed.
