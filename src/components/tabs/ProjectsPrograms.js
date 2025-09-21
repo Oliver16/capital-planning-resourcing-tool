@@ -1118,7 +1118,7 @@ const ProjectsPrograms = ({
       const nextState = { ...previous };
       projectGroups.forEach((group) => {
         if (nextState[group.key] === undefined) {
-          nextState[group.key] = true;
+          nextState[group.key] = false;
         }
       });
       return nextState;
