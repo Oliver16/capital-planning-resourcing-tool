@@ -271,18 +271,20 @@ const CapitalPlanningTool = () => {
     const availability = {};
 
     staffMembers.forEach((member) => {
-      if (!member || !member.categoryId) {
+      if (!member) {
         return;
       }
 
-      const categoryId = parseInt(member.categoryId, 10);
+      const { categoryId } = member;
 
-      if (!Number.isFinite(categoryId)) {
+      if (categoryId === undefined || categoryId === null || categoryId === "") {
         return;
       }
 
-      if (!availability[categoryId]) {
-        availability[categoryId] = {
+      const categoryKey = String(categoryId);
+
+      if (!availability[categoryKey]) {
+        availability[categoryKey] = {
           pm: 0,
           design: 0,
           construction: 0,
@@ -294,10 +296,10 @@ const CapitalPlanningTool = () => {
       const design = getNumericValue(member.designAvailability);
       const construction = getNumericValue(member.constructionAvailability);
 
-      availability[categoryId].pm += pm;
-      availability[categoryId].design += design;
-      availability[categoryId].construction += construction;
-      availability[categoryId].total += pm + design + construction;
+      availability[categoryKey].pm += pm;
+      availability[categoryKey].design += design;
+      availability[categoryKey].construction += construction;
+      availability[categoryKey].total += pm + design + construction;
     });
 
     return availability;
@@ -845,8 +847,28 @@ const CapitalPlanningTool = () => {
     let sanitizedValue = value;
 
     if (field === "categoryId") {
-      const parsed = parseInt(value, 10);
-      sanitizedValue = Number.isFinite(parsed) ? parsed : null;
+      if (value === "" || value === null || value === undefined) {
+        sanitizedValue = null;
+      } else {
+        const matchingCategory = staffCategories.find((category) => {
+          if (!category) {
+            return false;
+          }
+
+          const categoryId = category.id;
+          if (categoryId === undefined || categoryId === null) {
+            return false;
+          }
+
+          return String(categoryId) === String(value);
+        });
+
+        if (matchingCategory && matchingCategory.id !== undefined) {
+          sanitizedValue = matchingCategory.id;
+        } else {
+          sanitizedValue = value;
+        }
+      }
     } else if (AVAILABILITY_FIELDS.includes(field)) {
       sanitizedValue = Math.max(0, getNumericValue(value));
     }
