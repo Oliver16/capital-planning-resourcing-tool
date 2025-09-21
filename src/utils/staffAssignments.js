@@ -1101,6 +1101,13 @@ export const buildStaffUtilizationReportData = ({
         const totalMonthly = cloneHours(hours);
         totalMonthly.totalHours = getTotalFromHours(totalMonthly);
 
+        const monthlyTotals = {
+          pmHours: toNumber(totalMonthly.pmHours),
+          designHours: toNumber(totalMonthly.designHours),
+          constructionHours: toNumber(totalMonthly.constructionHours),
+          totalHours: toNumber(totalMonthly.totalHours),
+        };
+
         const manualHours = convertMonthlyToTotals(manualMonthly, durations);
         const autoHours = convertMonthlyToTotals(autoMonthly, durations);
         const totalHours = convertMonthlyToTotals(totalMonthly, durations);
@@ -1149,6 +1156,7 @@ export const buildStaffUtilizationReportData = ({
             constructionHours: toNumber(autoHours.constructionHours),
             totalHours: autoTotal,
           },
+          monthly: monthlyTotals,
           totals: {
             pmHours: toNumber(totalHours.pmHours),
             designHours: toNumber(totalHours.designHours),
