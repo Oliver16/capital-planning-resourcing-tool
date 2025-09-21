@@ -6,6 +6,10 @@ import {
   Info,
   RefreshCw,
 } from "lucide-react";
+import {
+  getProjectTypeDisplayLabel,
+  isProjectOrProgram,
+} from "../../utils/projectTypes.js";
 
 const formatHours = (value) => {
   const numeric = Number(value);
@@ -91,11 +95,7 @@ const StaffAssignmentsTab = ({
       assignmentPlan.monthlyDemandByProjectCategory || {};
 
     return projects
-      .filter(
-        (project) =>
-          project &&
-          (project.type === "project" || project.type === "program")
-      )
+      .filter((project) => project && isProjectOrProgram(project))
       .map((project) => {
         const projectId = Number(project.id);
         const projectAllocations = staffAllocations[projectId] || {};
@@ -431,10 +431,7 @@ const StaffAssignmentsTab = ({
           const isExpanded = expandedProjects[entry.projectId] ?? true;
           const summary = entry.summary || {};
           const hasUnfilled = Number(summary?.unfilled?.totalHours || 0) > 0;
-          const projectTypeLabel =
-            entry.project.type === "program"
-              ? "Annual Program"
-              : "Capital Project";
+          const projectTypeLabel = getProjectTypeDisplayLabel(entry.project);
           const projectMonthlyDemand = Number(entry.monthlyDemandTotal || 0);
 
           return (
