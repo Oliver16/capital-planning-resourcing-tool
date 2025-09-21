@@ -1,11 +1,12 @@
 import React from 'react';
 import CapitalPlanningTool from './components/CapitalPlanningTool';
+import AuthGate from './components/auth/AuthGate';
 
 function App() {
   return (
-    <div className="App">
+    <AuthGate>
       <CapitalPlanningTool />
-    </div>
+    </AuthGate>
   );
 }
 

@@ -45,6 +45,7 @@ import {
 } from "../utils/calculations";
 import { handleCSVImport } from "../utils/dataImport";
 import { useDatabase } from "../hooks/useDatabase";
+import { useAuth } from "../context/AuthContext";
 import { buildStaffAssignmentPlan } from "../utils/staffAssignments";
 
 const MAX_MONTHLY_FTE_HOURS = 2080 / 12;
@@ -69,6 +70,9 @@ const getNumericValue = (value) => {
 };
 
 const CapitalPlanningTool = () => {
+  const { activeOrganization, canEditActiveOrg } = useAuth();
+  const isReadOnly = !canEditActiveOrg;
+
   // Database hook with fixed default data
   const defaultData = useMemo(
     () => ({
@@ -109,7 +113,6 @@ const CapitalPlanningTool = () => {
     getStaffAssignments,
     deleteStaffAssignment: dbDeleteStaffAssignment,
     exportDatabase,
-    importDatabase,
   } = useDatabase(defaultData);
 
   // Core data states
@@ -424,6 +427,9 @@ const CapitalPlanningTool = () => {
 
   // Project management functions
   const addProject = async (type = "project") => {
+    if (isReadOnly) {
+      return;
+    }
     const newProject =
       type === "project"
         ? {
@@ -467,6 +473,9 @@ const CapitalPlanningTool = () => {
   };
 
   const updateProject = async (id, fieldOrUpdates, value) => {
+    if (isReadOnly) {
+      return;
+    }
     const normalizeDeliveryType = (input) =>
       ["self-perform", "hybrid", "consultant"].includes(input)
         ? input
@@ -502,6 +511,9 @@ const CapitalPlanningTool = () => {
   };
 
   const deleteProject = async (id) => {
+    if (isReadOnly) {
+      return;
+    }
     try {
       await dbDeleteProject(id);
       setProjects(projects.filter((p) => p.id !== id));
@@ -528,6 +540,9 @@ const CapitalPlanningTool = () => {
 
   // Staff management functions
   const updateStaffAllocation = async (projectId, categoryId, phase, hours) => {
+    if (isReadOnly) {
+      return;
+    }
     const existingAllocation =
       staffAllocations[projectId]?.[categoryId] || {
         pmHours: 0,
@@ -568,6 +583,9 @@ const CapitalPlanningTool = () => {
     phase,
     value
   ) => {
+    if (isReadOnly) {
+      return;
+    }
     const numericProjectId = Number(projectId);
     const numericStaffId = Number(staffId);
 
@@ -671,6 +689,9 @@ const CapitalPlanningTool = () => {
   };
 
   const addStaffCategory = async () => {
+    if (isReadOnly) {
+      return;
+    }
     const newCategory = {
       name: "New Category",
       hourlyRate: 65,
@@ -689,6 +710,9 @@ const CapitalPlanningTool = () => {
   };
 
   const updateStaffCategory = async (id, field, value) => {
+    if (isReadOnly) {
+      return;
+    }
     const currentCategory = staffCategories.find((category) => category.id === id);
 
     if (!currentCategory) {
@@ -769,6 +793,9 @@ const CapitalPlanningTool = () => {
   };
 
   const deleteStaffCategory = async (id) => {
+    if (isReadOnly) {
+      return;
+    }
     try {
       await dbDeleteStaffCategory(id);
       setStaffCategories(staffCategories.filter((c) => c.id !== id));
@@ -784,6 +811,9 @@ const CapitalPlanningTool = () => {
 
   // Staff Members Management
   const addStaffMember = async () => {
+    if (isReadOnly) {
+      return;
+    }
     const defaultCategoryId = staffCategories[0]?.id ?? null;
     const newMember = {
       name: "New Team Member",
@@ -803,6 +833,9 @@ const CapitalPlanningTool = () => {
   };
 
   const updateStaffMember = async (id, field, value) => {
+    if (isReadOnly) {
+      return;
+    }
     const existingMember = staffMembers.find((member) => member.id === id);
 
     if (!existingMember) {
@@ -835,6 +868,9 @@ const CapitalPlanningTool = () => {
   };
 
   const deleteStaffMember = async (id) => {
+    if (isReadOnly) {
+      return;
+    }
     try {
       await dbDeleteStaffMember(id);
       setStaffMembers((prev) => prev.filter((member) => member.id !== id));
@@ -879,6 +915,9 @@ const CapitalPlanningTool = () => {
 
   // Project Types Management
   const addProjectType = async () => {
+    if (isReadOnly) {
+      return;
+    }
     const colors = [
       "#3b82f6",
       "#10b981",
@@ -904,6 +943,9 @@ const CapitalPlanningTool = () => {
   };
 
   const updateProjectType = async (id, field, value) => {
+    if (isReadOnly) {
+      return;
+    }
     const updatedTypes = projectTypes.map((t) =>
       t.id === id ? { ...t, [field]: value } : t
     );
@@ -921,6 +963,9 @@ const CapitalPlanningTool = () => {
   };
 
   const deleteProjectType = async (id) => {
+    if (isReadOnly) {
+      return;
+    }
     try {
       await dbDeleteProjectType(id);
       setProjectTypes(projectTypes.filter((t) => t.id !== id));
@@ -931,6 +976,9 @@ const CapitalPlanningTool = () => {
 
   // Funding Sources Management
   const addFundingSource = async () => {
+    if (isReadOnly) {
+      return;
+    }
     const newSource = {
       name: "New Funding Source",
       description: "",
@@ -946,6 +994,9 @@ const CapitalPlanningTool = () => {
   };
 
   const updateFundingSource = async (id, field, value) => {
+    if (isReadOnly) {
+      return;
+    }
     const updatedSources = fundingSources.map((f) =>
       f.id === id ? { ...f, [field]: value } : f
     );
@@ -963,6 +1014,9 @@ const CapitalPlanningTool = () => {
   };
 
   const deleteFundingSource = async (id) => {
+    if (isReadOnly) {
+      return;
+    }
     try {
       await dbDeleteFundingSource(id);
       setFundingSources(fundingSources.filter((f) => f.id !== id));
@@ -973,6 +1027,9 @@ const CapitalPlanningTool = () => {
 
   // Scenario planning helpers
   const createScenario = () => {
+    if (isReadOnly) {
+      return;
+    }
     const timestamp = Date.now();
     const newScenario = {
       id: `scenario-${timestamp}`,
@@ -986,6 +1043,9 @@ const CapitalPlanningTool = () => {
   };
 
   const duplicateScenario = (scenarioId) => {
+    if (isReadOnly) {
+      return;
+    }
     const sourceScenario = scenarios.find((scenario) => scenario.id === scenarioId);
     if (!sourceScenario) {
       return;
@@ -1005,6 +1065,9 @@ const CapitalPlanningTool = () => {
   };
 
   const updateScenarioMeta = (scenarioId, updates) => {
+    if (isReadOnly) {
+      return;
+    }
     setScenarios((prev) =>
       prev.map((scenario) =>
         scenario.id === scenarioId && !scenario.isBaseline
@@ -1015,6 +1078,9 @@ const CapitalPlanningTool = () => {
   };
 
   const updateScenarioAdjustment = (scenarioId, projectId, fields) => {
+    if (isReadOnly) {
+      return;
+    }
     setScenarios((prev) =>
       prev.map((scenario) => {
         if (scenario.id !== scenarioId || scenario.isBaseline) {
@@ -1047,6 +1113,9 @@ const CapitalPlanningTool = () => {
   };
 
   const resetScenarioProject = (scenarioId, projectId) => {
+    if (isReadOnly) {
+      return;
+    }
     setScenarios((prev) =>
       prev.map((scenario) => {
         if (scenario.id !== scenarioId || scenario.isBaseline) {
@@ -1070,6 +1139,10 @@ const CapitalPlanningTool = () => {
 
   // Data import/export
   const handleImport = (file) => {
+    if (isReadOnly) {
+      return;
+    }
+
     handleCSVImport(file, projects, setProjects, staffCategories);
   };
 
@@ -1079,9 +1152,9 @@ const CapitalPlanningTool = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `capital_plan_database_${
+      a.download = `vector_organization_snapshot_${
         new Date().toISOString().split("T")[0]
-      }.sqlite`;
+      }.json`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -1144,6 +1217,11 @@ const CapitalPlanningTool = () => {
               className="h-20 w-auto mb-3"
             />
             <p className="text-gray-600">CIP and Resource Planning</p>
+            {activeOrganization?.name && (
+              <p className="mt-1 text-sm text-gray-500">
+                {activeOrganization.name}
+              </p>
+            )}
           </div>
         </div>
 
@@ -1303,6 +1381,7 @@ const CapitalPlanningTool = () => {
               updateProject={updateProject}
               deleteProject={deleteProject}
               handleImport={handleImport}
+              isReadOnly={isReadOnly}
             />
           )}
           {activeTab === "staff" && (
@@ -1313,6 +1392,7 @@ const CapitalPlanningTool = () => {
               deleteStaffCategory={deleteStaffCategory}
               capacityWarnings={categoryCapacityWarnings}
               maxMonthlyFteHours={MAX_MONTHLY_FTE_HOURS}
+              isReadOnly={isReadOnly}
             />
           )}
 
@@ -1324,6 +1404,7 @@ const CapitalPlanningTool = () => {
               updateStaffMember={updateStaffMember}
               deleteStaffMember={deleteStaffMember}
               staffAvailabilityByCategory={staffAvailabilityByCategory}
+              isReadOnly={isReadOnly}
             />
           )}
 
@@ -1338,6 +1419,7 @@ const CapitalPlanningTool = () => {
               onUpdateAssignment={updateStaffAssignmentOverride}
               onResetProjectAssignments={resetProjectAssignments}
               staffAvailabilityByCategory={staffAvailabilityByCategory}
+              isReadOnly={isReadOnly}
             />
           )}
 
@@ -1349,6 +1431,7 @@ const CapitalPlanningTool = () => {
               staffAllocations={staffAllocations}
               updateStaffAllocation={updateStaffAllocation}
               fundingSources={fundingSources}
+              isReadOnly={isReadOnly}
             />
           )}
 
@@ -1368,6 +1451,7 @@ const CapitalPlanningTool = () => {
               onUpdateScenarioAdjustment={updateScenarioAdjustment}
               onResetScenarioProject={resetScenarioProject}
               timeHorizon={timeHorizon}
+              isReadOnly={isReadOnly}
             />
           )}
 
@@ -1417,6 +1501,7 @@ const CapitalPlanningTool = () => {
               addFundingSource={addFundingSource}
               updateFundingSource={updateFundingSource}
               deleteFundingSource={deleteFundingSource}
+              isReadOnly={isReadOnly}
             />
           )}
         </div>
@@ -1424,59 +1509,29 @@ const CapitalPlanningTool = () => {
         {/* Export/Import Controls */}
         <div className="bg-white rounded-lg shadow-sm p-6 mt-6">
           <h3 className="text-lg font-semibold mb-4">Data Management</h3>
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-4 items-center">
             <button
               className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2"
               onClick={handleExport}
             >
               <Download size={16} />
-              Export SQLite Database
+              Export JSON Snapshot
             </button>
-            <label className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2 cursor-pointer">
+            <div className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-4 py-2 text-sm text-slate-500">
               <Upload size={16} />
-              Import SQLite Database
-              <input
-                type="file"
-                accept=".sqlite,.db,.sqlite3"
-                className="hidden"
-                onChange={async (e) => {
-                  const file = e.target.files[0];
-                  if (file) {
-                    try {
-                      await importDatabase(file);
-                      window.location.reload();
-                    } catch (error) {
-                      alert(
-                        "Error importing database. Please check file format."
-                      );
-                    }
-                  }
-                }}
-              />
-            </label>
-          </div>
-          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-            <h4 className="font-medium text-gray-900 mb-2">
-              Database Features
-            </h4>
-            <div className="text-gray-700 text-sm space-y-1">
-              <p>
-                • <strong>SQLite Database:</strong> Full relational database
-                with foreign keys and constraints
-              </p>
-              <p>
-                • <strong>Large Storage:</strong> Can handle hundreds of MB of
-                project data
-              </p>
-              <p>
-                • <strong>Data Integrity:</strong> ACID transactions and
-                referential integrity
-              </p>
-              <p>
-                • <strong>Portable:</strong> Export as .sqlite files that work
-                with any SQLite client
-              </p>
+              Import snapshots coming soon
             </div>
+          </div>
+          <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-100 text-sm text-blue-900 space-y-1">
+            <p>
+              • <strong>Supabase Postgres:</strong> All organization data is stored securely in a hosted Postgres database with row-level security.
+            </p>
+            <p>
+              • <strong>Automatic persistence:</strong> Changes are saved instantly. Export a snapshot when you need a point-in-time backup or to share data with support.
+            </p>
+            <p>
+              • <strong>Imports:</strong> Snapshot imports will be available in a future release.
+            </p>
           </div>
         </div>
       </div>

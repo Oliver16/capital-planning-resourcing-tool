@@ -39,6 +39,7 @@ const StaffAssignmentsTab = ({
   onUpdateAssignment,
   onResetProjectAssignments,
   staffAvailabilityByCategory = {},
+  isReadOnly = false,
 }) => {
   const [expandedProjects, setExpandedProjects] = useState({});
 
@@ -329,14 +330,14 @@ const StaffAssignmentsTab = ({
   };
 
   const handleManualChange = (projectId, staffId, phase) => (event) => {
-    if (!onUpdateAssignment) {
+    if (!onUpdateAssignment || isReadOnly) {
       return;
     }
     onUpdateAssignment(projectId, staffId, phase, event.target.value);
   };
 
   const handleClearOverride = (projectId, staffId) => {
-    if (!onUpdateAssignment) {
+    if (!onUpdateAssignment || isReadOnly) {
       return;
     }
     phaseKeys.forEach((phase) => {
@@ -380,6 +381,11 @@ const StaffAssignmentsTab = ({
 
   return (
     <div className="space-y-6">
+      {isReadOnly && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          View-only mode: assignment overrides are locked.
+        </div>
+      )}
       <div className="rounded-lg bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -490,8 +496,18 @@ const StaffAssignmentsTab = ({
                   )}
                   <button
                     type="button"
-                    className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50"
-                    onClick={() => onResetProjectAssignments?.(entry.projectId)}
+                    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${
+                      isReadOnly
+                        ? "border-gray-200 text-gray-400 cursor-not-allowed"
+                        : "border-gray-200 text-gray-700 hover:bg-gray-50"
+                    }`}
+                    onClick={() => {
+                      if (isReadOnly) {
+                        return;
+                      }
+                      onResetProjectAssignments?.(entry.projectId);
+                    }}
+                    disabled={isReadOnly}
                   >
                     <RefreshCw size={16} />
                     Reset overrides
@@ -519,7 +535,11 @@ const StaffAssignmentsTab = ({
                     </div>
                   )}
 
-                  <div className="overflow-x-auto">
+                  <div
+                    className={`overflow-x-auto ${
+                      isReadOnly ? "pointer-events-none opacity-60" : ""
+                    }`}
+                  >
                     <table className="min-w-full text-left text-sm">
                       <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                         <tr>
@@ -600,7 +620,8 @@ const StaffAssignmentsTab = ({
                                             row.staffId,
                                             phase.key
                                           )}
-                                          className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
+                                          disabled={isReadOnly}
+                                          className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-gray-700 focus:border-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-100"
                                         />
                                       </td>
                                     ))}
@@ -640,8 +661,12 @@ const StaffAssignmentsTab = ({
                                       <button
                                         type="button"
                                         onClick={() => handleClearOverride(entry.projectId, row.staffId)}
-                                        className="text-xs font-medium text-blue-600 hover:text-blue-700"
-                                        disabled={!isManual}
+                                        className={`text-xs font-medium ${
+                                          isManual && !isReadOnly
+                                            ? "text-blue-600 hover:text-blue-700"
+                                            : "text-gray-400 cursor-not-allowed"
+                                        }`}
+                                        disabled={!isManual || isReadOnly}
                                       >
                                         Clear
                                       </button>

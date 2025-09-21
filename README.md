@@ -9,7 +9,7 @@ Vector is a React-based portfolio planning application built for municipal utili
 - **Phase-aware staffing allocations** – Allocate level of effort separately across project management, design, and construction phases and monitor the impact on budgets and FTE demand.
 - **People-centric availability tracking** – Record the monthly availability of real staff by discipline to ground forecasts in actual hours on hand.
 - **Resource & schedule visualizations** – Explore staffing demand versus availability, timeline views, and staffing gap summaries to identify when hiring or rescheduling is required.
-- **Offline-ready persistence** – The embedded SQLite database (via `sql.js`) runs in the browser, persists to `localStorage`, and can be exported/imported as a `.sqlite` file for sharing or archival.
+- **Multi-tenant Supabase backend** – Organizations, memberships, and all planning data live in PostgreSQL with row-level security that enforces per-organization isolation and view vs. edit permissions.
 
 ## Quick start
 
@@ -17,20 +17,39 @@ Vector is a React-based portfolio planning application built for municipal utili
    ```bash
    npm install
    ```
-2. **Run the development server**
+2. **Configure Supabase credentials**
+   ```bash
+   cp .env.example .env.local
+   # Then edit .env.local with your Supabase URL + anon key. The app accepts either
+   # REACT_APP_* variables or the STORAGE_NEXT_PUBLIC_* names Vercel's Supabase
+   # integration provides.
+   ```
+3. **Provision the database schema** – Open the Supabase SQL editor (or use the Supabase CLI) and run [`supabase/schema.sql`](supabase/schema.sql). This creates the organizations, memberships, and portfolio tables along with helper functions and row-level security policies.
+4. **Run the development server**
    ```bash
    npm start
    ```
-3. **Execute the automated test suite** (optional)
+5. **Execute the automated test suite** (optional)
    ```bash
    npm test
    ```
-4. **Create a production build**
+6. **Create a production build**
    ```bash
    npm run build
    ```
 
-The project targets modern browsers through React 18, Tailwind CSS, and Recharts. `react-app-rewired` applies custom webpack fallbacks so the SQL.js build loads cleanly in the browser.
+The project targets modern browsers through React 18, Tailwind CSS, and Recharts. `react-app-rewired` applies custom webpack fallbacks so the Supabase client and legacy dependencies bundle cleanly in the browser.
+
+### Supabase environment variables
+
+Vector looks for Supabase credentials under several environment variable prefixes so both local `.env` files and Vercel's Supabase integration work out of the box. Provide any of the following pairs and the build will normalize them at compile time:
+
+| Purpose | Local `.env` name | Vercel integration name(s) |
+| --- | --- | --- |
+| Supabase URL | `REACT_APP_SUPABASE_URL` | `STORAGE_NEXT_PUBLIC_SUPABASE_URL`, `STORAGE_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_URL` |
+| Supabase anon key | `REACT_APP_SUPABASE_ANON_KEY` | `STORAGE_NEXT_PUBLIC_SUPABASE_ANON_KEY`, `STORAGE_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_ANON_KEY` |
+
+During development you can stick to the `REACT_APP_*` names. When deploying on Vercel, enabling the Supabase integration automatically injects the `STORAGE_*` variables listed above, and the client will pick them up without additional configuration.
 
 ## Application structure
 
@@ -42,12 +61,16 @@ capital-planning-resourcing-tool/
 │   ├── components/
 │   │   ├── CapitalPlanningTool.js   # State orchestration & tab navigation
 │   │   └── tabs/                    # Feature-specific UI panels
+│   ├── context/AuthContext.js       # Supabase auth + organization gatekeeper
 │   ├── data/defaultData.js          # Seed data for first-load experience
-│   ├── hooks/useDatabase.js         # SQLite + localStorage persistence layer
+│   ├── hooks/useDatabase.js         # Supabase persistence + seeding layer
+│   ├── lib/supabaseClient.js        # Supabase JS client factory
 │   ├── utils/                       # Calculations and import/export helpers
 │   └── index.css / styles.css       # Tailwind setup & theme overrides
+├── supabase/
+│   └── schema.sql          # Database schema, helper functions, and RLS policies
 ├── tailwind.config.js      # Tailwind theme extensions
-└── config-overrides.js     # CRA webpack overrides for SQL.js
+└── config-overrides.js     # CRA webpack overrides for legacy SQL.js support
 ```
 
 ## Core workflows
@@ -72,7 +95,7 @@ Distribute level-of-effort hours for each project/program and staff category by 
 
 ## Data persistence & sharing
 
-On first load the app seeds the SQLite database with realistic example data. Subsequent edits are written to the in-browser database and serialized to `localStorage` for offline resilience. Users can export the full dataset as a portable `.sqlite` file or import an existing database to resume work on another machine.
+Vector persists application data in Supabase Postgres. Every portfolio table carries an `organization_id` foreign key, and row-level security policies ensure users can only read or modify data for organizations where they hold a membership. When a new organization is created the app seeds project types, funding sources, categories, projects, staff, and assignments from `src/data/defaultData.js`. Users can export the current organization to JSON (via the **Settings → Export data** action) or import a compatible export to bootstrap another environment.
 
 ## Assumptions & calculation highlights
 

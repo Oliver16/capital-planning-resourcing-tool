@@ -118,6 +118,7 @@ const ScenariosTab = ({
   onUpdateScenarioAdjustment,
   onResetScenarioProject,
   timeHorizon,
+  isReadOnly = false,
 }) => {
   const projectTypeMap = useMemo(() => {
     const map = new Map();
@@ -358,29 +359,34 @@ const ScenariosTab = ({
     affectedCategories: [],
   };
 
-  const handleScenarioMetaChange = (field, value) => {
-    if (!activeScenario || activeScenario.isBaseline) {
-      return;
-    }
-    onUpdateScenarioMeta(activeScenario.id, { [field]: value });
-  };
+    const handleScenarioMetaChange = (field, value) => {
+      if (!activeScenario || activeScenario.isBaseline || isReadOnly) {
+        return;
+      }
+      onUpdateScenarioMeta(activeScenario.id, { [field]: value });
+    };
 
-  const handleProjectDateChange = (projectId, field, value) => {
-    if (!activeScenario || activeScenario.isBaseline) {
-      return;
-    }
-    onUpdateScenarioAdjustment(activeScenario.id, projectId, { [field]: value });
-  };
+    const handleProjectDateChange = (projectId, field, value) => {
+      if (!activeScenario || activeScenario.isBaseline || isReadOnly) {
+        return;
+      }
+      onUpdateScenarioAdjustment(activeScenario.id, projectId, { [field]: value });
+    };
 
-  const handleResetProject = (projectId) => {
-    if (!activeScenario || activeScenario.isBaseline) {
-      return;
-    }
-    onResetScenarioProject(activeScenario.id, projectId);
-  };
+    const handleResetProject = (projectId) => {
+      if (!activeScenario || activeScenario.isBaseline || isReadOnly) {
+        return;
+      }
+      onResetScenarioProject(activeScenario.id, projectId);
+    };
 
   return (
     <div className="space-y-6">
+      {isReadOnly && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Scenario adjustments are disabled in view-only mode.
+        </div>
+      )}
       <div className="bg-white p-6 rounded-lg shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
@@ -394,7 +400,12 @@ const ScenariosTab = ({
           <button
             type="button"
             onClick={onCreateScenario}
-            className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            disabled={isReadOnly}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-white transition ${
+              isReadOnly
+                ? 'bg-gray-300 cursor-not-allowed'
+                : 'bg-blue-600 hover:bg-blue-700'
+            }`}
           >
             <PlusCircle size={16} /> Create New Scenario
           </button>
@@ -462,9 +473,17 @@ const ScenariosTab = ({
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
+                      if (isReadOnly) {
+                        return;
+                      }
                       onDuplicateScenario(scenario.id);
                     }}
-                    className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700"
+                    disabled={isReadOnly}
+                    className={`inline-flex items-center gap-1 ${
+                      isReadOnly
+                        ? 'text-gray-400 cursor-not-allowed'
+                        : 'text-blue-600 hover:text-blue-700'
+                    }`}
                   >
                     <Copy size={14} /> Duplicate
                   </button>
@@ -489,7 +508,12 @@ const ScenariosTab = ({
             <button
               type="button"
               onClick={() => onDuplicateScenario(activeScenario.id)}
-              className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700"
+              disabled={isReadOnly}
+              className={`inline-flex items-center gap-2 ${
+                isReadOnly
+                  ? 'text-gray-400 cursor-not-allowed'
+                  : 'text-blue-600 hover:text-blue-700'
+              }`}
             >
               <Copy size={16} /> Duplicate Scenario
             </button>
@@ -502,7 +526,7 @@ const ScenariosTab = ({
               type="text"
               value={activeScenario?.name || ""}
               onChange={(event) => handleScenarioMetaChange("name", event.target.value)}
-              disabled={activeScenario?.isBaseline}
+              disabled={activeScenario?.isBaseline || isReadOnly}
               className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
             />
           </div>
@@ -514,7 +538,7 @@ const ScenariosTab = ({
               onChange={(event) =>
                 handleScenarioMetaChange("description", event.target.value)
               }
-              disabled={activeScenario?.isBaseline}
+              disabled={activeScenario?.isBaseline || isReadOnly}
               className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
             />
           </div>
@@ -640,19 +664,28 @@ const ScenariosTab = ({
                                   {project.type === "project" ? "Capital Project" : "Program"}
                                 </p>
                               </div>
-                              {!activeScenario?.isBaseline && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleResetProject(project.id)}
-                                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
-                                >
-                                  <RefreshCcw size={14} /> Reset to baseline
-                                </button>
-                              )}
+                                {!activeScenario?.isBaseline && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResetProject(project.id)}
+                                    disabled={isReadOnly}
+                                    className={`inline-flex items-center gap-1 text-xs ${
+                                      isReadOnly
+                                        ? "text-gray-400 cursor-not-allowed"
+                                        : "text-blue-600 hover:text-blue-700"
+                                    }`}
+                                  >
+                                    <RefreshCcw size={14} /> Reset to baseline
+                                  </button>
+                                )}
                             </div>
 
-                            {project.type === "project" ? (
-                              <div className="mt-4 space-y-4">
+                              {project.type === "project" ? (
+                                <div
+                                  className={`mt-4 space-y-4 ${
+                                    isReadOnly ? "pointer-events-none opacity-60" : ""
+                                  }`}
+                                >
                                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
                                   <div>
                                     <p className="text-xs text-gray-500">Baseline design start</p>
@@ -662,19 +695,19 @@ const ScenariosTab = ({
                                   </div>
                                   <div className="md:col-span-2">
                                     <label className="text-xs text-gray-500">Scenario design start</label>
-                                    <input
-                                      type="date"
-                                      value={scenarioProject.designStartDate || ""}
-                                      onChange={(event) =>
-                                        handleProjectDateChange(
-                                          project.id,
-                                          "designStartDate",
-                                          event.target.value
-                                        )
-                                      }
-                                      disabled={activeScenario?.isBaseline}
-                                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                                    />
+                                      <input
+                                        type="date"
+                                        value={scenarioProject.designStartDate || ""}
+                                        onChange={(event) =>
+                                          handleProjectDateChange(
+                                            project.id,
+                                            "designStartDate",
+                                            event.target.value
+                                          )
+                                        }
+                                        disabled={activeScenario?.isBaseline || isReadOnly}
+                                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                                      />
                                   </div>
                                   <div>
                                     <p className="text-xs text-gray-500">Scenario design end</p>
@@ -705,19 +738,19 @@ const ScenariosTab = ({
                                   </div>
                                   <div className="md:col-span-2">
                                     <label className="text-xs text-gray-500">Scenario construction start</label>
-                                    <input
-                                      type="date"
-                                      value={scenarioProject.constructionStartDate || ""}
-                                      onChange={(event) =>
-                                        handleProjectDateChange(
-                                          project.id,
-                                          "constructionStartDate",
-                                          event.target.value
-                                        )
-                                      }
-                                      disabled={activeScenario?.isBaseline}
-                                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                                    />
+                                      <input
+                                        type="date"
+                                        value={scenarioProject.constructionStartDate || ""}
+                                        onChange={(event) =>
+                                          handleProjectDateChange(
+                                            project.id,
+                                            "constructionStartDate",
+                                            event.target.value
+                                          )
+                                        }
+                                        disabled={activeScenario?.isBaseline || isReadOnly}
+                                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                                      />
                                   </div>
                                   <div>
                                     <p className="text-xs text-gray-500">Scenario construction end</p>
@@ -741,7 +774,11 @@ const ScenariosTab = ({
                                 </div>
                               </div>
                             ) : (
-                              <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                                <div
+                                  className={`mt-4 grid grid-cols-1 md:grid-cols-4 gap-4 items-end ${
+                                    isReadOnly ? "pointer-events-none opacity-60" : ""
+                                  }`}
+                                >
                                 <div>
                                   <p className="text-xs text-gray-500">Baseline start</p>
                                   <p className="text-sm font-medium text-gray-900">
@@ -750,35 +787,35 @@ const ScenariosTab = ({
                                 </div>
                                 <div>
                                   <label className="text-xs text-gray-500">Scenario start</label>
-                                  <input
-                                    type="date"
-                                    value={scenarioProject.programStartDate || ""}
-                                    onChange={(event) =>
-                                      handleProjectDateChange(
-                                        project.id,
-                                        "programStartDate",
-                                        event.target.value
-                                      )
-                                    }
-                                    disabled={activeScenario?.isBaseline}
-                                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                                  />
+                                    <input
+                                      type="date"
+                                      value={scenarioProject.programStartDate || ""}
+                                      onChange={(event) =>
+                                        handleProjectDateChange(
+                                          project.id,
+                                          "programStartDate",
+                                          event.target.value
+                                        )
+                                      }
+                                      disabled={activeScenario?.isBaseline || isReadOnly}
+                                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                                    />
                                 </div>
                                 <div>
                                   <label className="text-xs text-gray-500">Scenario end</label>
-                                  <input
-                                    type="date"
-                                    value={scenarioProject.programEndDate || ""}
-                                    onChange={(event) =>
-                                      handleProjectDateChange(
-                                        project.id,
-                                        "programEndDate",
-                                        event.target.value
-                                      )
-                                    }
-                                    disabled={activeScenario?.isBaseline}
-                                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                                  />
+                                    <input
+                                      type="date"
+                                      value={scenarioProject.programEndDate || ""}
+                                      onChange={(event) =>
+                                        handleProjectDateChange(
+                                          project.id,
+                                          "programEndDate",
+                                          event.target.value
+                                        )
+                                      }
+                                      disabled={activeScenario?.isBaseline || isReadOnly}
+                                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                                    />
                                 </div>
                                 <div className="flex flex-col gap-2">
                                   <span className="text-xs text-gray-500">Shift</span>

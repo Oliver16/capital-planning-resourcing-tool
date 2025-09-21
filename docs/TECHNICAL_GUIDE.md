@@ -4,18 +4,20 @@ This guide documents the application architecture, data model, and analytic meth
 
 ## 1. Application architecture
 
-- **Frontend stack** – React 18 with functional components and hooks, Tailwind CSS utility classes, Lucide icons, and Recharts data visualizations. The CRA toolchain is customized through `react-app-rewired` and `config-overrides.js` to disable Node-specific polyfills that SQLite does not require.
+- **Frontend stack** – React 18 with functional components and hooks, Tailwind CSS utility classes, Lucide icons, and Recharts data visualizations. The CRA toolchain is customized through `react-app-rewired` and `config-overrides.js` to keep the bundle lean while integrating the Supabase client.
 - **State orchestration** – `CapitalPlanningTool` centralizes application state, loads default data, synchronizes with the database service, and renders feature tabs.
 - **Tab layout** – Eight primary views anchor the navigation bar: Overview, Projects & Programs, People (with Staff and Categories sub-pages), Effort Projections, Scenarios, Schedule View, Resource Forecast, and Settings.
 
 ## 2. Data persistence layer
 
-The application runs entirely in the browser using SQLite compiled to WebAssembly (`sql.js`).
+Vector stores application data and authentication state in Supabase. The browser communicates directly with Supabase Postgres through the official JavaScript client and every request carries the user's JWT for authorization.
 
-1. **Initialization** – `useDatabase` lazy-loads the SQL.js module, creates required tables, and runs idempotent migrations such as adding `delivery_type` and `pm_hours` columns when absent.
-2. **Persistence** – All writes are wrapped in SQLite transactions and the resulting database file is serialized into `localStorage` so edits survive refreshes and offline use.
-3. **Exports/imports** – Users can export the database to a `.sqlite` blob for archival and later import that same file to restore prior work.
-4. **Default data** – On first load the hook seeds projects, staff categories, funding sources, and staff members from `src/data/defaultData.js`.
+1. **Authentication orchestration** – `AuthContext` wraps Supabase Auth, surfaces the active session, and loads the user's organization memberships and roles.
+2. **Organization scoping** – `useDatabase` gates reads and writes on `activeOrganizationId` and enforces permission checks via `canEditActiveOrg` before mutating data.
+3. **Default data seeding** – When an organization is empty, the hook seeds project types, funding sources, staff categories, staff, projects, allocations, and assignments from `src/data/defaultData.js`.
+4. **Exports/imports** – Helper methods collect all organization-scoped rows into a JSON payload for export and bulk insert/update incoming payloads during import.
+
+> **Supabase credentials** – The build system maps both local `REACT_APP_*` variables and the `STORAGE_NEXT_PUBLIC_*` keys provisioned by Vercel's Supabase integration to the Supabase client. Providing either pair (`*_SUPABASE_URL` + `*_SUPABASE_ANON_KEY`) is sufficient.
 
 ### 2.1 Schema overview
 
@@ -23,12 +25,12 @@ The application runs entirely in the browser using SQLite compiled to WebAssembl
 
 | Table | Purpose | Notable columns |
 | --- | --- | --- |
-| `project_types` | Lookup values for theming and filtering. | `name`, `color` |
-| `funding_sources` | Catalog of funding mechanisms. | `name`, `description` |
-| `staff_categories` | Labor roles with capacity and rate data. | `hourly_rate`, `pm_capacity`, `design_capacity`, `construction_capacity` |
-| `projects` | Capital projects and annual programs. | Budgets, durations, start dates, `delivery_type`, continuous PM/design/construction hours, per-category continuous hours config |
-| `staff_allocations` | Level-of-effort assignments per project/category. | `pm_hours`, `design_hours`, `construction_hours` |
-| `staff_members` | Named individuals and their availability. | `category_id`, per-phase availability hours |
+| `project_types` | Lookup values for theming and filtering. | `organization_id`, `name`, `color` |
+| `funding_sources` | Catalog of funding mechanisms. | `organization_id`, `name`, `description` |
+| `staff_categories` | Labor roles with capacity and rate data. | `organization_id`, `hourly_rate`, `pm_capacity`, `design_capacity`, `construction_capacity` |
+| `projects` | Capital projects and annual programs. | `organization_id`, budgets, durations, start dates, `delivery_type`, continuous PM/design/construction hours, per-category continuous hours config |
+| `staff_allocations` | Level-of-effort assignments per project/category. | `organization_id`, `project_id`, `category_id`, `pm_hours`, `design_hours`, `construction_hours` |
+| `staff_members` | Named individuals and their availability. | `organization_id`, `category_id`, per-phase availability hours |
 
 Foreign key constraints and unique indices preserve referential integrity between projects, categories, and allocations.
 
@@ -81,10 +83,10 @@ The resulting array lists each month label along with per-category required vers
 ## 6. Extensibility considerations
 
 - **Additional phases** – The calculations utilities isolate phase-specific handling, so adding environmental review or commissioning phases would involve extending allocation objects and the forecast converter.
-- **Alternative persistence** – `useDatabase` can be swapped for an IndexedDB-backed service if larger datasets or multi-user synchronization are required.
-- **Integration points** – Exported SQLite files can be processed in external analytics tools. The `exportDatabase` function could be extended to push data to cloud storage or APIs.
+- **Service integrations** – `useDatabase` centralizes Supabase access, so replacing Supabase with another backend (or layering server-side APIs) only requires swapping that hook.
+- **Integration points** – JSON exports can feed downstream analytics pipelines. The `exportDatabase` function is a single place to add transforms or delivery to cloud storage.
 - **Scenario planning** – Introduce named scenarios by storing allocation snapshots in a new table and adding selectors to the forecast tabs.
-- **Authentication** – Wrap the React app in an authentication provider and move persistence to a server when multi-user governance becomes necessary.
+- **Authentication** – Supabase roles can be extended beyond viewer/editor to support finer-grained permissions or billing-driven entitlements.
 
 ## 7. Related documentation
 
