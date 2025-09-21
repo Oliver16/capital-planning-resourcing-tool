@@ -26,6 +26,8 @@ const HORIZON_OPTIONS = [
 const DESIGN_COLOR = "#3b82f6";
 const CONSTRUCTION_COLOR = "#f59e0b";
 const DEFAULT_TYPE_COLOR = "#6b7280";
+const TIMELINE_OVERLAY_SPACING = 16;
+const TIMELINE_BASE_MARGIN = 24;
 
 const findScrollParent = (element) => {
   if (typeof window === "undefined" || !element) {
@@ -186,9 +188,23 @@ const ScheduleView = ({
   const [isTypeFilterOpen, setIsTypeFilterOpen] = useState(false);
   const typeFilterRef = useRef(null);
   const legendContainerRef = useRef(null);
+  const timelineOverlayRef = useRef(null);
   const stickyOffsetRef = useRef(16);
   const [legendStickyTop, setLegendStickyTop] = useState(16);
   const [isLegendSticky, setIsLegendSticky] = useState(false);
+  const [timelineOverlayHeight, setTimelineOverlayHeight] = useState(0);
+
+  const overlayOffset =
+    timelineOverlayHeight > 0
+      ? timelineOverlayHeight + TIMELINE_OVERLAY_SPACING
+      : 0;
+  const timelineListStyle =
+    timelineOverlayHeight > 0
+      ? {
+          marginTop: TIMELINE_BASE_MARGIN - overlayOffset,
+          paddingTop: overlayOffset,
+        }
+      : {};
 
   useEffect(() => {
     setSelectedTypeMap((previous) => {
@@ -618,6 +634,43 @@ const ScheduleView = ({
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const overlayElement = timelineOverlayRef.current;
+
+    if (!overlayElement) {
+      setTimelineOverlayHeight(0);
+      return undefined;
+    }
+
+    const measureOverlay = () => {
+      const rect = overlayElement.getBoundingClientRect();
+      setTimelineOverlayHeight(Math.round(rect.height));
+    };
+
+    measureOverlay();
+
+    let resizeObserver;
+
+    if ("ResizeObserver" in window) {
+      resizeObserver = new ResizeObserver(measureOverlay);
+      resizeObserver.observe(overlayElement);
+    } else {
+      window.addEventListener("resize", measureOverlay);
+    }
+
+    return () => {
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      } else {
+        window.removeEventListener("resize", measureOverlay);
+      }
+    };
+  }, [yearMarkers]);
+
   return (
     <div className="space-y-6">
       <div className="bg-white p-6 rounded-lg shadow-sm">
@@ -763,13 +816,7 @@ const ScheduleView = ({
           </div>
         )}
 
-        <div className="sticky top-4 z-30 mt-6">
-          <div className="rounded-lg border border-gray-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur">
-            <ScheduleLegend scheduleHorizon={scheduleHorizon} />
-          </div>
-        </div>
-
-        <div className="mt-6">
+        <div className="mt-6 relative">
           <div
             ref={legendContainerRef}
             style={{
@@ -777,6 +824,7 @@ const ScheduleView = ({
               top: legendStickyTop,
               zIndex: 30,
             }}
+            className="space-y-3"
           >
             <div
               className={`rounded-lg border border-gray-200 bg-white/90 px-4 py-3 backdrop-blur transition-shadow ${
@@ -785,54 +833,58 @@ const ScheduleView = ({
             >
               <ScheduleLegend scheduleHorizon={scheduleHorizon} />
             </div>
-          </div>
-        </div>
 
-        <div className="mt-6">
-          <div className="relative h-10 mb-8">
-            <div className="absolute inset-x-0 top-4 border-t border-gray-300" />
-            {yearMarkers.map((marker, index) => (
-              <div key={`${marker.label}-${index}`}>
-                <div
-                  className="absolute top-0 bottom-0 w-px bg-gray-200"
-                  style={{ left: `${marker.offsetPercent}%` }}
-                />
-                <div
-                  className="absolute top-5 text-xs text-gray-500 -translate-x-1/2"
-                  style={{ left: `${marker.offsetPercent}%` }}
-                >
-                  {marker.label}
-                </div>
+            <div ref={timelineOverlayRef} className="pointer-events-none">
+              <div
+                className={`relative h-12 rounded-lg border border-gray-200 bg-white/90 px-0 py-2 backdrop-blur transition-shadow ${
+                  isLegendSticky ? "shadow-md" : "shadow-sm"
+                }`}
+              >
+                <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 border-t border-gray-300" />
+                {yearMarkers.map((marker, index) => (
+                  <div key={`${marker.label}-${index}`}>
+                    <div
+                      className="absolute top-0 bottom-0 w-px bg-gray-200"
+                      style={{ left: `${marker.offsetPercent}%` }}
+                    />
+                    <div
+                      className="absolute top-[1.9rem] -translate-x-1/2 text-xs text-gray-500"
+                      style={{ left: `${marker.offsetPercent}%` }}
+                    >
+                      {marker.label}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
 
-          <div className="space-y-5">
+          <div className="mt-6 space-y-5" style={timelineListStyle}>
             {timelineRows.length > 0 ? (
               timelineRows.map((row) => (
                 <div
                   key={row.project.id}
                   className="grid grid-cols-1 gap-4 md:grid-cols-12 md:items-center"
-                >
-                  <div className="md:col-span-3">
-                    <div className="font-medium text-gray-900">
-                      {row.project.name}
+                  >
+                    <div className="md:col-span-3">
+                      <div className="font-medium text-gray-900">
+                        {row.project.name}
+                      </div>
+                      <div className="text-xs text-gray-500 flex items-center gap-2">
+                        <span
+                          className="inline-block h-2 w-2 rounded-full"
+                          style={{ backgroundColor: row.projectType?.color || "#3b82f6" }}
+                        ></span>
+                        {row.project.type === "program" ? "Program" : "Project"}
+                        {row.projectType?.name && ` • ${row.projectType.name}`}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        {formatDate(row.project.designStart)} – {formatDate(row.project.constructionEnd)}
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-500 flex items-center gap-2">
-                      <span
-                        className="inline-block h-2 w-2 rounded-full"
-                        style={{ backgroundColor: row.projectType?.color || "#3b82f6" }}
-                      ></span>
-                      {row.project.type === "program" ? "Program" : "Project"}
-                      {row.projectType?.name && ` • ${row.projectType.name}`}
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      {formatDate(row.project.designStart)} – {formatDate(row.project.constructionEnd)}
-                    </div>
-                  </div>
                   <div className="md:col-span-9">
                     <div
-                      className="relative h-12 rounded-md bg-gray-100 overflow-hidden"
+                      className="relative h-12 overflow-hidden rounded-md bg-gray-100"
                       style={yearGridStyle}
                     >
                       {row.designSegment && (
@@ -883,7 +935,6 @@ const ScheduleView = ({
               </div>
             )}
           </div>
-
         </div>
       </div>
 
