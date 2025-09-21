@@ -41,7 +41,6 @@ const SuperuserAdminPanel = ({ onClose }) => {
   const [addMemberForm, setAddMemberForm] = useState({
     email: '',
     role: 'viewer',
-    makeEditor: false,
   });
   const [isCreatingOrg, setIsCreatingOrg] = useState(false);
   const [isUpdatingOrg, setIsUpdatingOrg] = useState(false);
@@ -366,11 +365,16 @@ const SuperuserAdminPanel = ({ onClose }) => {
     setIsAddingMember(true);
 
     try {
+      const makeEditor =
+        addMemberForm.role === 'editor' ||
+        addMemberForm.role === 'admin' ||
+        addMemberForm.role === 'superuser';
+
       const { error } = await supabase.rpc('superuser_add_user_to_organization', {
         target_email: addMemberForm.email,
         org_id: selectedOrgId,
         member_role: addMemberForm.role,
-        make_editor: addMemberForm.makeEditor,
+        make_editor: makeEditor,
       });
 
       if (error) {
@@ -378,7 +382,7 @@ const SuperuserAdminPanel = ({ onClose }) => {
       }
 
       showFeedback('success', 'Member access updated.');
-      setAddMemberForm({ email: '', role: 'viewer', makeEditor: false });
+      setAddMemberForm({ email: '', role: 'viewer' });
       await Promise.all([loadMembers(selectedOrgId), refreshMemberships()]);
     } catch (error) {
       console.error('Unable to add member', error);
@@ -784,20 +788,9 @@ const SuperuserAdminPanel = ({ onClose }) => {
                     </select>
                   </div>
                 </div>
-                <label className="inline-flex items-center gap-2 text-xs text-slate-600">
-                  <input
-                    type="checkbox"
-                    checked={addMemberForm.makeEditor}
-                    onChange={(event) =>
-                      setAddMemberForm((previous) => ({
-                        ...previous,
-                        makeEditor: event.target.checked,
-                      }))
-                    }
-                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  Grant edit permissions
-                </label>
+                <p className="text-xs text-slate-500">
+                  Editing permissions are granted automatically to editors, admins, and superusers.
+                </p>
                 <button
                   type="submit"
                   disabled={isAddingMember}
