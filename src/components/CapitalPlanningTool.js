@@ -459,9 +459,9 @@ const CapitalPlanningTool = () => {
             annualBudget: 500000,
             designBudgetPercent: 15,
             constructionBudgetPercent: 85,
-            continuousPmHours: 20,
-            continuousDesignHours: 40,
-            continuousConstructionHours: 80,
+            continuousPmHours: 0,
+            continuousDesignHours: 0,
+            continuousConstructionHours: 0,
             description: "",
           };
 
