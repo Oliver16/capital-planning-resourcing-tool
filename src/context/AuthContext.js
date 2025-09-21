@@ -24,11 +24,14 @@ const mapMembership = (row) => {
   }
 
   const organization = row.organization || row.organizations || null;
+  const role = row.role || (row.can_edit ? 'editor' : 'viewer');
+  const isSuperuser = role === 'superuser';
 
   return {
     id: row.id,
-    role: row.role || (row.can_edit ? 'editor' : 'viewer'),
-    canEdit: Boolean(row.can_edit),
+    role,
+    isSuperuser,
+    canEdit: isSuperuser || Boolean(row.can_edit),
     organizationId:
       row.organization_id === null || row.organization_id === undefined
         ? null
@@ -80,21 +83,68 @@ export const AuthProvider = ({ children }) => {
     }
 
     const mapped = (data || [])
-      .map((row) => mapMembership({
-        ...row,
-        organization: row.organization,
-      }))
+      .map((row) =>
+        mapMembership({
+          ...row,
+          organization: row.organization,
+        })
+      )
       .filter(Boolean);
 
-    setMemberships(mapped);
+    let membershipList = mapped;
+    const hasSuperuserMembership = mapped.some((membership) => membership.isSuperuser);
 
-    if (!mapped.length) {
-      setActiveOrganizationId(null);
-    } else if (!mapped.some((item) => item.organizationId === activeOrganizationId)) {
-      setActiveOrganizationId(mapped[0].organizationId);
+    if (hasSuperuserMembership) {
+      const { data: allOrganizations, error: organizationsError } = await supabase
+        .from('organizations')
+        .select('id, name, slug, created_at, updated_at, created_by')
+        .order('name', { ascending: true });
+
+      if (organizationsError) {
+        console.error('Unable to load organizations for superuser', organizationsError);
+        setAuthError(organizationsError.message);
+      } else if (allOrganizations) {
+        const membershipByOrgId = new Map(
+          membershipList
+            .filter((membership) => membership.organizationId !== null)
+            .map((membership) => [membership.organizationId, membership])
+        );
+
+        membershipList = allOrganizations.map((organization) => {
+          const orgId = String(organization.id);
+          const existingMembership = membershipByOrgId.get(orgId);
+
+          if (existingMembership) {
+            return {
+              ...existingMembership,
+              organization: existingMembership.organization || organization,
+            };
+          }
+
+          return {
+            id: `superuser-${orgId}`,
+            role: 'superuser',
+            isSuperuser: true,
+            canEdit: true,
+            organizationId: orgId,
+            organization,
+            createdAt: organization.created_at || null,
+            updatedAt: organization.updated_at || null,
+            isSynthetic: true,
+          };
+        });
+      }
     }
 
-    return mapped;
+    setMemberships(membershipList);
+
+    if (!membershipList.length) {
+      setActiveOrganizationId(null);
+    } else if (!membershipList.some((item) => item.organizationId === activeOrganizationId)) {
+      setActiveOrganizationId(membershipList[0].organizationId);
+    }
+
+    return membershipList;
   }, [activeOrganizationId]);
 
   useEffect(() => {
@@ -303,6 +353,7 @@ export const AuthProvider = ({ children }) => {
     const activeMembership = memberships.find(
       (membership) => membership.organizationId === activeOrganizationId
     );
+    const hasSuperuserAccess = memberships.some((membership) => membership.isSuperuser);
 
     return {
       authLoading,
@@ -314,7 +365,8 @@ export const AuthProvider = ({ children }) => {
       activeOrganizationId,
       activeOrganization: activeMembership?.organization || null,
       activeMembership: activeMembership || null,
-      canEditActiveOrg: Boolean(activeMembership?.canEdit),
+      canEditActiveOrg: hasSuperuserAccess || Boolean(activeMembership?.canEdit),
+      hasSuperuserAccess,
       setActiveOrganizationId: (value) =>
         setActiveOrganizationId(
           value === null || value === undefined ? null : String(value)
