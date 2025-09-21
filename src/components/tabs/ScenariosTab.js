@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   PlusCircle,
   Copy,
@@ -10,8 +10,6 @@ import {
   Users,
   GitBranch,
   DollarSign,
-  ChevronDown,
-  ChevronRight,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -133,26 +131,27 @@ const ScenariosTab = ({
     [projects, projectTypes]
   );
 
-  const [expandedGroups, setExpandedGroups] = useState({});
+  const projectMap = useMemo(() => {
+    const map = new Map();
+    (projects || []).forEach((project) => {
+      if (!project || (!project.id && project.id !== 0)) {
+        return;
+      }
+
+      map.set(String(project.id), project);
+    });
+
+    return map;
+  }, [projects]);
+
+  const [selectedProjectIds, setSelectedProjectIds] = useState([]);
+  const previousScenarioIdRef = useRef(null);
 
   useEffect(() => {
-    setExpandedGroups((previous) => {
-      const nextState = { ...previous };
-      projectGroups.forEach((group) => {
-        if (nextState[group.key] === undefined) {
-          nextState[group.key] = true;
-        }
-      });
-      return nextState;
-    });
-  }, [projectGroups]);
-
-  const toggleGroup = (key) => {
-    setExpandedGroups((previous) => ({
-      ...previous,
-      [key]: !previous[key],
-    }));
-  };
+    setSelectedProjectIds((previous) =>
+      previous.filter((projectId) => projectMap.has(projectId))
+    );
+  }, [projectMap]);
 
   const scenarioAnalyses = useMemo(() => {
     const results = {};
@@ -182,6 +181,30 @@ const ScenariosTab = ({
   const baselineAnalysis = scenarioAnalyses["baseline"];
   const activeAnalysis =
     (activeScenario && scenarioAnalyses[activeScenario.id]) || baselineAnalysis;
+
+  useEffect(() => {
+    const scenarioId = activeScenario?.id
+      ? String(activeScenario.id)
+      : null;
+
+    if (previousScenarioIdRef.current === scenarioId) {
+      return;
+    }
+
+    previousScenarioIdRef.current = scenarioId;
+
+    if (!scenarioId) {
+      setSelectedProjectIds([]);
+      return;
+    }
+
+    const adjustmentIds = Object.keys(activeScenario?.adjustments || {});
+    const validIds = adjustmentIds
+      .map((id) => String(id))
+      .filter((id) => projectMap.has(id));
+
+    setSelectedProjectIds(validIds);
+  }, [activeScenario, projectMap]);
 
   const comparisonSeries = useMemo(() => {
     if (!baselineAnalysis || !activeAnalysis) {
@@ -224,6 +247,38 @@ const ScenariosTab = ({
       };
     });
   }, [baselineAnalysis, activeAnalysis, staffCategories, timeHorizon]);
+
+  const selectedProjects = useMemo(
+    () =>
+      selectedProjectIds
+        .map((projectId) => projectMap.get(projectId))
+        .filter(Boolean),
+    [projectMap, selectedProjectIds]
+  );
+
+  const availableProjectGroups = useMemo(() => {
+    const selectedSet = new Set(selectedProjectIds);
+
+    return projectGroups
+      .map((group) => {
+        const options = [...group.projects, ...group.programs].filter(
+          (project) => !selectedSet.has(String(project.id))
+        );
+
+        if (options.length === 0) {
+          return null;
+        }
+
+        return {
+          key: group.key,
+          label: group.label,
+          options,
+        };
+      })
+      .filter(Boolean);
+  }, [projectGroups, selectedProjectIds]);
+
+  const hasAvailableProjects = availableProjectGroups.length > 0;
 
   const gapComparisonRows = useMemo(() => {
     if (!baselineAnalysis || !activeAnalysis) {
@@ -394,6 +449,39 @@ const ScenariosTab = ({
         return;
       }
       onResetScenarioProject(activeScenario.id, projectId);
+    };
+
+    const handleProjectSelectionChange = (event) => {
+      if (!activeScenario || activeScenario.isBaseline || isReadOnly) {
+        event.target.value = "";
+        return;
+      }
+
+      const selectedValue = event.target.value;
+      if (!selectedValue) {
+        return;
+      }
+
+      setSelectedProjectIds((previous) => {
+        if (previous.includes(selectedValue)) {
+          return previous;
+        }
+
+        return [...previous, selectedValue];
+      });
+
+      event.target.value = "";
+    };
+
+    const handleRemoveSelectedProject = (projectId) => {
+      if (!activeScenario || activeScenario.isBaseline || isReadOnly) {
+        return;
+      }
+
+      onResetScenarioProject(activeScenario.id, projectId);
+      setSelectedProjectIds((previous) =>
+        previous.filter((id) => id !== String(projectId))
+      );
     };
 
   return (
@@ -579,287 +667,323 @@ const ScenariosTab = ({
           )}
         </div>
 
-        <div className="space-y-5">
-          {projectGroups.length === 0 ? (
-            <div className="text-sm text-gray-500">
-              No projects or programs are available for scenario adjustments.
+        {projectGroups.length === 0 ? (
+          <div className="mt-4 text-sm text-gray-500">
+            No projects or programs are available for scenario adjustments.
+          </div>
+        ) : (
+          <>
+            <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-end md:gap-4">
+              <div className="md:w-80">
+                <label className="text-sm font-medium text-gray-700">
+                  Add project to scenario
+                </label>
+                <select
+                  defaultValue=""
+                  onChange={handleProjectSelectionChange}
+                  disabled={
+                    !hasAvailableProjects ||
+                    !activeScenario ||
+                    activeScenario.isBaseline ||
+                    isReadOnly
+                  }
+                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                >
+                  <option value="">
+                    {activeScenario?.isBaseline
+                      ? "Duplicate the baseline scenario to make edits"
+                      : hasAvailableProjects
+                      ? "Select a project to adjust"
+                      : "All projects have been added"}
+                  </option>
+                  {availableProjectGroups.map((group) => (
+                    <optgroup key={group.key} label={group.label}>
+                      {group.options.map((projectOption) => (
+                        <option key={projectOption.id} value={projectOption.id}>
+                          {projectOption.name}
+                          {projectOption.type === "program"
+                            ? " • Program"
+                            : " • Project"}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                {!activeScenario?.isBaseline && !isReadOnly && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    Selecting a project adds it to the list below for schedule adjustments.
+                  </p>
+                )}
+                {(activeScenario?.isBaseline || isReadOnly) && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    {activeScenario?.isBaseline
+                      ? "The baseline scenario is read-only. Duplicate it to experiment with adjustments."
+                      : "Scenario editing is disabled in view-only mode."}
+                  </p>
+                )}
+              </div>
             </div>
-          ) : (
-            projectGroups.map((group) => {
-              const capitalCount = group.projects.length;
-              const programCount = group.programs.length;
-              const summaryParts = [];
-              if (capitalCount > 0) {
-                summaryParts.push(`${capitalCount} ${capitalCount === 1 ? "Project" : "Projects"}`);
-              }
-              if (programCount > 0) {
-                summaryParts.push(`${programCount} ${programCount === 1 ? "Program" : "Programs"}`);
-              }
-              const summaryText = summaryParts.join(" • ");
-              const isExpanded = Boolean(expandedGroups[group.key]);
 
-              return (
-                <div key={group.key} className="border border-gray-200 rounded-lg">
-                  <button
-                    type="button"
-                    onClick={() => toggleGroup(group.key)}
-                    className="w-full flex items-center justify-between gap-4 px-4 py-3 md:px-5 md:py-4"
-                  >
-                    <div className="flex items-center gap-3 text-left">
-                      <span className="text-gray-500">
-                        {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                      </span>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="inline-block h-2.5 w-2.5 rounded-full"
-                            style={{ backgroundColor: group.color }}
-                          ></span>
-                          <span className="text-base font-semibold text-gray-900">
-                            {group.label}
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {summaryText || "No items assigned yet"}
-                        </p>
-                      </div>
-                    </div>
-                    <span className="text-xs font-medium text-gray-400">
-                      {isExpanded ? "Hide" : "Show"}
-                    </span>
-                  </button>
+            <div className="mt-6 space-y-5">
+              {selectedProjects.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-500">
+                  {activeScenario?.isBaseline
+                    ? "Duplicate the baseline scenario to begin adding projects."
+                    : "Use the dropdown above to choose which projects to include in this scenario."}
+                </div>
+              ) : (
+                selectedProjects.map((project) => {
+                  const projectKey = String(project.id);
+                  const scenarioProject =
+                    activeAnalysis?.projects?.find(
+                      (item) => String(item.id) === projectKey
+                    ) || project;
+                  const designShift = calculateMonthDifference(
+                    project.designStartDate,
+                    scenarioProject.designStartDate
+                  );
+                  const constructionShift = calculateMonthDifference(
+                    project.constructionStartDate,
+                    scenarioProject.constructionStartDate
+                  );
+                  const programStartShift = calculateMonthDifference(
+                    project.programStartDate,
+                    scenarioProject.programStartDate
+                  );
+                  const programEndShift = calculateMonthDifference(
+                    project.programEndDate,
+                    scenarioProject.programEndDate
+                  );
+                  const projectType = projectTypeMap.get(project.projectTypeId);
 
-                  {isExpanded && (
-                    <div className="space-y-5 border-t border-gray-200 p-4 md:p-5">
-                      {[...group.projects, ...group.programs].map((project) => {
-                        const scenarioProject =
-                          activeAnalysis?.projects?.find((item) => item.id === project.id) ||
-                          project;
-                        const designShift = calculateMonthDifference(
-                          project.designStartDate,
-                          scenarioProject.designStartDate
-                        );
-                        const constructionShift = calculateMonthDifference(
-                          project.constructionStartDate,
-                          scenarioProject.constructionStartDate
-                        );
-                        const programStartShift = calculateMonthDifference(
-                          project.programStartDate,
-                          scenarioProject.programStartDate
-                        );
-                        const programEndShift = calculateMonthDifference(
-                          project.programEndDate,
-                          scenarioProject.programEndDate
-                        );
-                        const projectType = projectTypeMap.get(project.projectTypeId);
-
-                        return (
-                          <div
-                            key={project.id}
-                            className="border border-gray-200 rounded-lg p-4 shadow-sm bg-white"
-                          >
-                            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-                              <div>
-                                <div className="flex items-center gap-3">
-                                  <h4 className="text-lg font-semibold text-gray-900">
-                                    {project.name}
-                                  </h4>
-                                  {projectType?.name && (
-                                    <span
-                                      className="text-xs font-medium px-2 py-0.5 rounded-full"
-                                      style={{
-                                        backgroundColor: `${projectType.color || "#e2e8f0"}1A`,
-                                        color: projectType.color || "#1f2937",
-                                      }}
-                                    >
-                                      {projectType.name}
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-xs uppercase tracking-wide text-gray-400 mt-1">
-                                  {project.type === "project" ? "Capital Project" : "Program"}
-                                </p>
-                              </div>
-                                {!activeScenario?.isBaseline && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleResetProject(project.id)}
-                                    disabled={isReadOnly}
-                                    className={`inline-flex items-center gap-1 text-xs ${
-                                      isReadOnly
-                                        ? "text-gray-400 cursor-not-allowed"
-                                        : "text-blue-600 hover:text-blue-700"
-                                    }`}
-                                  >
-                                    <RefreshCcw size={14} /> Reset to baseline
-                                  </button>
-                                )}
-                            </div>
-
-                              {project.type === "project" ? (
-                                <div
-                                  className={`mt-4 space-y-4 ${
-                                    isReadOnly ? "pointer-events-none opacity-60" : ""
-                                  }`}
-                                >
-                                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-                                  <div>
-                                    <p className="text-xs text-gray-500">Baseline design start</p>
-                                    <p className="text-sm font-medium text-gray-900">
-                                      {formatDate(project.designStartDate)}
-                                    </p>
-                                  </div>
-                                  <div className="md:col-span-2">
-                                    <label className="text-xs text-gray-500">Scenario design start</label>
-                                      <input
-                                        type="date"
-                                        value={scenarioProject.designStartDate || ""}
-                                        onChange={(event) =>
-                                          handleProjectDateChange(
-                                            project.id,
-                                            "designStartDate",
-                                            event.target.value
-                                          )
-                                        }
-                                        disabled={activeScenario?.isBaseline || isReadOnly}
-                                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                                      />
-                                  </div>
-                                  <div>
-                                    <p className="text-xs text-gray-500">Scenario design end</p>
-                                    <p className="text-sm font-medium text-gray-900">
-                                      {formatDate(
-                                        computeEndDate(
-                                          scenarioProject.designStartDate,
-                                          scenarioProject.designDuration || project.designDuration
-                                        )
-                                      )}
-                                    </p>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs text-gray-500">Shift</span>
-                                    <span
-                                      className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${formatShiftBadge(designShift).className}`}
-                                    >
-                                      {formatShiftBadge(designShift).text}
-                                    </span>
-                                  </div>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-                                  <div>
-                                    <p className="text-xs text-gray-500">Baseline construction start</p>
-                                    <p className="text-sm font-medium text-gray-900">
-                                      {formatDate(project.constructionStartDate)}
-                                    </p>
-                                  </div>
-                                  <div className="md:col-span-2">
-                                    <label className="text-xs text-gray-500">Scenario construction start</label>
-                                      <input
-                                        type="date"
-                                        value={scenarioProject.constructionStartDate || ""}
-                                        onChange={(event) =>
-                                          handleProjectDateChange(
-                                            project.id,
-                                            "constructionStartDate",
-                                            event.target.value
-                                          )
-                                        }
-                                        disabled={activeScenario?.isBaseline || isReadOnly}
-                                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                                      />
-                                  </div>
-                                  <div>
-                                    <p className="text-xs text-gray-500">Scenario construction end</p>
-                                    <p className="text-sm font-medium text-gray-900">
-                                      {formatDate(
-                                        computeEndDate(
-                                          scenarioProject.constructionStartDate,
-                                          scenarioProject.constructionDuration || project.constructionDuration
-                                        )
-                                      )}
-                                    </p>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs text-gray-500">Shift</span>
-                                    <span
-                                      className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${formatShiftBadge(constructionShift).className}`}
-                                    >
-                                      {formatShiftBadge(constructionShift).text}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            ) : (
-                                <div
-                                  className={`mt-4 grid grid-cols-1 md:grid-cols-4 gap-4 items-end ${
-                                    isReadOnly ? "pointer-events-none opacity-60" : ""
-                                  }`}
-                                >
-                                <div>
-                                  <p className="text-xs text-gray-500">Baseline start</p>
-                                  <p className="text-sm font-medium text-gray-900">
-                                    {formatDate(project.programStartDate)}
-                                  </p>
-                                </div>
-                                <div>
-                                  <label className="text-xs text-gray-500">Scenario start</label>
-                                    <input
-                                      type="date"
-                                      value={scenarioProject.programStartDate || ""}
-                                      onChange={(event) =>
-                                        handleProjectDateChange(
-                                          project.id,
-                                          "programStartDate",
-                                          event.target.value
-                                        )
-                                      }
-                                      disabled={activeScenario?.isBaseline || isReadOnly}
-                                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                                    />
-                                </div>
-                                <div>
-                                  <label className="text-xs text-gray-500">Scenario end</label>
-                                    <input
-                                      type="date"
-                                      value={scenarioProject.programEndDate || ""}
-                                      onChange={(event) =>
-                                        handleProjectDateChange(
-                                          project.id,
-                                          "programEndDate",
-                                          event.target.value
-                                        )
-                                      }
-                                      disabled={activeScenario?.isBaseline || isReadOnly}
-                                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                                    />
-                                </div>
-                                <div className="flex flex-col gap-2">
-                                  <span className="text-xs text-gray-500">Shift</span>
-                                  <div className="flex gap-2">
-                                    <span
-                                      className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${formatShiftBadge(programStartShift).className}`}
-                                    >
-                                      Start {formatShiftBadge(programStartShift).text}
-                                    </span>
-                                    <span
-                                      className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${formatShiftBadge(programEndShift).className}`}
-                                    >
-                                      End {formatShiftBadge(programEndShift).text}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
+                  return (
+                    <div
+                      key={project.id}
+                      className="border border-gray-200 rounded-lg p-4 shadow-sm bg-white"
+                    >
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div>
+                          <div className="flex items-center gap-3">
+                            <h4 className="text-lg font-semibold text-gray-900">
+                              {project.name}
+                            </h4>
+                            {projectType?.name && (
+                              <span
+                                className="text-xs font-medium px-2 py-0.5 rounded-full"
+                                style={{
+                                  backgroundColor: `${projectType.color || "#e2e8f0"}1A`,
+                                  color: projectType.color || "#1f2937",
+                                }}
+                              >
+                                {projectType.name}
+                              </span>
                             )}
                           </div>
-                        );
-                      })}
+                          <p className="text-xs uppercase tracking-wide text-gray-400 mt-1">
+                            {project.type === "project"
+                              ? "Capital Project"
+                              : "Program"}
+                          </p>
+                        </div>
+                        {!activeScenario?.isBaseline && (
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => handleResetProject(project.id)}
+                              disabled={isReadOnly}
+                              className={`inline-flex items-center gap-1 text-xs ${
+                                isReadOnly
+                                  ? "text-gray-400 cursor-not-allowed"
+                                  : "text-blue-600 hover:text-blue-700"
+                              }`}
+                            >
+                              <RefreshCcw size={14} /> Reset to baseline
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSelectedProject(project.id)}
+                              disabled={isReadOnly}
+                              className={`text-xs ${
+                                isReadOnly
+                                  ? "text-gray-400 cursor-not-allowed"
+                                  : "text-rose-600 hover:text-rose-700"
+                              }`}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {project.type === "project" ? (
+                        <div
+                          className={`mt-4 space-y-4 ${
+                            isReadOnly ? "pointer-events-none opacity-60" : ""
+                          }`}
+                        >
+                          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                            <div>
+                              <p className="text-xs text-gray-500">Baseline design start</p>
+                              <p className="text-sm font-medium text-gray-900">
+                                {formatDate(project.designStartDate)}
+                              </p>
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="text-xs text-gray-500">Scenario design start</label>
+                              <input
+                                type="date"
+                                value={scenarioProject.designStartDate || ""}
+                                onChange={(event) =>
+                                  handleProjectDateChange(
+                                    project.id,
+                                    "designStartDate",
+                                    event.target.value
+                                  )
+                                }
+                                disabled={activeScenario?.isBaseline || isReadOnly}
+                                className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                              />
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500">Scenario design end</p>
+                              <p className="text-sm font-medium text-gray-900">
+                                {formatDate(
+                                  computeEndDate(
+                                    scenarioProject.designStartDate,
+                                    scenarioProject.designDuration || project.designDuration
+                                  )
+                                )}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-500">Shift</span>
+                              <span
+                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${formatShiftBadge(
+                                  designShift
+                                ).className}`}
+                              >
+                                {formatShiftBadge(designShift).text}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                            <div>
+                              <p className="text-xs text-gray-500">Baseline construction start</p>
+                              <p className="text-sm font-medium text-gray-900">
+                                {formatDate(project.constructionStartDate)}
+                              </p>
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="text-xs text-gray-500">Scenario construction start</label>
+                              <input
+                                type="date"
+                                value={scenarioProject.constructionStartDate || ""}
+                                onChange={(event) =>
+                                  handleProjectDateChange(
+                                    project.id,
+                                    "constructionStartDate",
+                                    event.target.value
+                                  )
+                                }
+                                disabled={activeScenario?.isBaseline || isReadOnly}
+                                className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                              />
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500">Scenario construction end</p>
+                              <p className="text-sm font-medium text-gray-900">
+                                {formatDate(
+                                  computeEndDate(
+                                    scenarioProject.constructionStartDate,
+                                    scenarioProject.constructionDuration || project.constructionDuration
+                                  )
+                                )}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-500">Shift</span>
+                              <span
+                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${formatShiftBadge(
+                                  constructionShift
+                                ).className}`}
+                              >
+                                {formatShiftBadge(constructionShift).text}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          className={`mt-4 grid grid-cols-1 md:grid-cols-4 gap-4 items-end ${
+                            isReadOnly ? "pointer-events-none opacity-60" : ""
+                          }`}
+                        >
+                          <div>
+                            <p className="text-xs text-gray-500">Baseline start</p>
+                            <p className="text-sm font-medium text-gray-900">
+                              {formatDate(project.programStartDate)}
+                            </p>
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500">Scenario start</label>
+                            <input
+                              type="date"
+                              value={scenarioProject.programStartDate || ""}
+                              onChange={(event) =>
+                                handleProjectDateChange(
+                                  project.id,
+                                  "programStartDate",
+                                  event.target.value
+                                )
+                              }
+                              disabled={activeScenario?.isBaseline || isReadOnly}
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500">Scenario end</label>
+                            <input
+                              type="date"
+                              value={scenarioProject.programEndDate || ""}
+                              onChange={(event) =>
+                                handleProjectDateChange(
+                                  project.id,
+                                  "programEndDate",
+                                  event.target.value
+                                )
+                              }
+                              disabled={activeScenario?.isBaseline || isReadOnly}
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <span className="text-xs text-gray-500">Shift</span>
+                            <div className="flex gap-2">
+                              <span
+                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${formatShiftBadge(
+                                  programStartShift
+                                ).className}`}
+                              >
+                                Start {formatShiftBadge(programStartShift).text}
+                              </span>
+                              <span
+                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${formatShiftBadge(
+                                  programEndShift
+                                ).className}`}
+                              >
+                                End {formatShiftBadge(programEndShift).text}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
+                  );
+                })
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       <div className="bg-white p-6 rounded-lg shadow-sm">
