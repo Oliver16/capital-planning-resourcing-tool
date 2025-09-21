@@ -5,7 +5,7 @@ const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn(
-    'Supabase client is missing REACT_APP_SUPABASE_URL or REACT_APP_SUPABASE_ANON_KEY environment variables.'
+    'Supabase client is missing REACT_APP_SUPABASE_URL or REACT_APP_SUPABASE_ANON_KEY. Add them to your .env file (see README).' 
   );
 }
 

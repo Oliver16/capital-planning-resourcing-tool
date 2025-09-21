@@ -52,7 +52,7 @@ export const AuthProvider = ({ children }) => {
       setMemberships([]);
       setActiveOrganizationId(null);
       setAuthError(
-        'Supabase client is not configured. Please provide REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_ANON_KEY.'
+        'Supabase client is not configured. Provide REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_ANON_KEY in your .env file.'
       );
       return [];
     }
@@ -104,7 +104,7 @@ export const AuthProvider = ({ children }) => {
       if (!supabase) {
         setAuthLoading(false);
         setAuthError(
-          'Supabase client is not configured. Please verify your environment variables.'
+          'Supabase client is not configured. Verify REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_ANON_KEY are set.'
         );
         return;
       }
@@ -200,7 +200,11 @@ export const AuthProvider = ({ children }) => {
 
       const { data: organization, error: organizationError } = await supabase
         .from('organizations')
-        .insert({ name, slug })
+        .insert({
+          name,
+          slug,
+          created_by: currentSession.user.id,
+        })
         .select()
         .single();
 
