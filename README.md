@@ -20,7 +20,9 @@ Vector is a React-based portfolio planning application built for municipal utili
 2. **Configure Supabase credentials**
    ```bash
    cp .env.example .env.local
-   # Then edit .env.local with your REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_ANON_KEY
+   # Then edit .env.local with your Supabase URL + anon key. The app accepts either
+   # REACT_APP_* variables or the STORAGE_NEXT_PUBLIC_* names Vercel's Supabase
+   # integration provides.
    ```
 3. **Provision the database schema** – Open the Supabase SQL editor (or use the Supabase CLI) and run [`supabase/schema.sql`](supabase/schema.sql). This creates the organizations, memberships, and portfolio tables along with helper functions and row-level security policies.
 4. **Run the development server**
@@ -37,6 +39,17 @@ Vector is a React-based portfolio planning application built for municipal utili
    ```
 
 The project targets modern browsers through React 18, Tailwind CSS, and Recharts. `react-app-rewired` applies custom webpack fallbacks so the Supabase client and legacy dependencies bundle cleanly in the browser.
+
+### Supabase environment variables
+
+Vector looks for Supabase credentials under several environment variable prefixes so both local `.env` files and Vercel's Supabase integration work out of the box. Provide any of the following pairs and the build will normalize them at compile time:
+
+| Purpose | Local `.env` name | Vercel integration name(s) |
+| --- | --- | --- |
+| Supabase URL | `REACT_APP_SUPABASE_URL` | `STORAGE_NEXT_PUBLIC_SUPABASE_URL`, `STORAGE_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_URL` |
+| Supabase anon key | `REACT_APP_SUPABASE_ANON_KEY` | `STORAGE_NEXT_PUBLIC_SUPABASE_ANON_KEY`, `STORAGE_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_ANON_KEY` |
+
+During development you can stick to the `REACT_APP_*` names. When deploying on Vercel, enabling the Supabase integration automatically injects the `STORAGE_*` variables listed above, and the client will pick them up without additional configuration.
 
 ## Application structure
 

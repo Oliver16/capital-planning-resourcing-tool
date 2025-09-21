@@ -150,7 +150,7 @@ export const useDatabase = (defaultData = {}) => {
   const assertReady = useCallback(() => {
     if (!supabase) {
       const message =
-        'Supabase client is not configured. Ensure environment variables are provided.';
+        'Supabase client is not configured. Ensure Supabase URL and anon key environment variables are provided.';
       setError(message);
       throw new Error(message);
     }

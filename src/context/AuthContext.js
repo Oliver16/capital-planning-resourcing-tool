@@ -52,7 +52,7 @@ export const AuthProvider = ({ children }) => {
       setMemberships([]);
       setActiveOrganizationId(null);
       setAuthError(
-        'Supabase client is not configured. Provide REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_ANON_KEY in your .env file.'
+        'Supabase client is not configured. Provide Supabase URL and anon key environment variables (see README for supported names).'
       );
       return [];
     }
@@ -104,7 +104,7 @@ export const AuthProvider = ({ children }) => {
       if (!supabase) {
         setAuthLoading(false);
         setAuthError(
-          'Supabase client is not configured. Verify REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_ANON_KEY are set.'
+          'Supabase client is not configured. Verify Supabase URL and anon key environment variables are set (see README).'
         );
         return;
       }
@@ -163,7 +163,7 @@ export const AuthProvider = ({ children }) => {
     async ({ email, password }) => {
       if (!supabase) {
         throw new Error(
-          'Supabase client is not configured. Unable to sign in without environment variables.'
+          'Supabase client is not configured. Supply Supabase URL and anon key environment variables before signing in.'
         );
       }
 
@@ -239,7 +239,7 @@ export const AuthProvider = ({ children }) => {
     async ({ email, password, fullName, organizationName }) => {
       if (!supabase) {
         throw new Error(
-          'Supabase client is not configured. Unable to sign up without environment variables.'
+          'Supabase client is not configured. Supply Supabase URL and anon key environment variables before signing up.'
         );
       }
 

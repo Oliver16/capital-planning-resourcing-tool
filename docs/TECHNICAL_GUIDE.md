@@ -17,6 +17,8 @@ Vector stores application data and authentication state in Supabase. The browser
 3. **Default data seeding** – When an organization is empty, the hook seeds project types, funding sources, staff categories, staff, projects, allocations, and assignments from `src/data/defaultData.js`.
 4. **Exports/imports** – Helper methods collect all organization-scoped rows into a JSON payload for export and bulk insert/update incoming payloads during import.
 
+> **Supabase credentials** – The build system maps both local `REACT_APP_*` variables and the `STORAGE_NEXT_PUBLIC_*` keys provisioned by Vercel's Supabase integration to the Supabase client. Providing either pair (`*_SUPABASE_URL` + `*_SUPABASE_ANON_KEY`) is sufficient.
+
 ### 2.1 Schema overview
 
 `useDatabase.js` provisions the following tables:
