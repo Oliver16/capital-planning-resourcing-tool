@@ -27,6 +27,33 @@ const DESIGN_COLOR = "#3b82f6";
 const CONSTRUCTION_COLOR = "#f59e0b";
 const DEFAULT_TYPE_COLOR = "#6b7280";
 
+const findScrollParent = (element) => {
+  if (typeof window === "undefined" || !element) {
+    return null;
+  }
+
+  let current = element.parentElement;
+
+  while (current) {
+    const style = window.getComputedStyle(current);
+
+    if (!style) {
+      break;
+    }
+
+    const overflowY = style.getPropertyValue("overflow-y");
+    const overflow = style.getPropertyValue("overflow");
+
+    if (["auto", "scroll"].includes(overflowY) || ["auto", "scroll"].includes(overflow)) {
+      return current;
+    }
+
+    current = current.parentElement;
+  }
+
+  return null;
+};
+
 const isValidDate = (value) =>
   value instanceof Date && !Number.isNaN(value.getTime());
 
@@ -158,6 +185,10 @@ const ScheduleView = ({
   const [selectedTypeMap, setSelectedTypeMap] = useState({});
   const [isTypeFilterOpen, setIsTypeFilterOpen] = useState(false);
   const typeFilterRef = useRef(null);
+  const legendContainerRef = useRef(null);
+  const stickyOffsetRef = useRef(16);
+  const [legendStickyTop, setLegendStickyTop] = useState(16);
+  const [isLegendSticky, setIsLegendSticky] = useState(false);
 
   useEffect(() => {
     setSelectedTypeMap((previous) => {
@@ -522,6 +553,71 @@ const ScheduleView = ({
     };
   }, [totalMonths]);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || !legendContainerRef.current) {
+      return undefined;
+    }
+
+    const scrollParent = findScrollParent(legendContainerRef.current);
+    const scrollTarget = scrollParent || window;
+
+    const computeStickyOffset = () => {
+      let nextOffset = 16;
+
+      if (scrollParent && scrollParent !== document.body && scrollParent !== document.documentElement) {
+        const style = window.getComputedStyle(scrollParent);
+        const paddingTop = parseFloat(style.getPropertyValue("padding-top")) || 0;
+        const borderTop = parseFloat(style.getPropertyValue("border-top-width")) || 0;
+        nextOffset = Math.max(16, Math.round(paddingTop + borderTop + 16));
+      }
+
+      stickyOffsetRef.current = nextOffset;
+
+      setLegendStickyTop((previous) => (Math.abs(previous - nextOffset) > 0.5 ? nextOffset : previous));
+    };
+
+    const evaluateStickyState = () => {
+      const legendElement = legendContainerRef.current;
+
+      if (!legendElement) {
+        return;
+      }
+
+      const rect = legendElement.getBoundingClientRect();
+      const threshold = stickyOffsetRef.current + 0.5;
+      const shouldBeSticky = rect.top <= threshold;
+
+      setIsLegendSticky((previous) => (previous !== shouldBeSticky ? shouldBeSticky : previous));
+    };
+
+    const handleResize = () => {
+      computeStickyOffset();
+      evaluateStickyState();
+    };
+
+    computeStickyOffset();
+    evaluateStickyState();
+
+    scrollTarget.addEventListener("scroll", evaluateStickyState, { passive: true });
+    window.addEventListener("resize", handleResize);
+
+    let resizeObserver;
+
+    if (scrollParent && "ResizeObserver" in window) {
+      resizeObserver = new ResizeObserver(handleResize);
+      resizeObserver.observe(scrollParent);
+    }
+
+    return () => {
+      scrollTarget.removeEventListener("scroll", evaluateStickyState);
+      window.removeEventListener("resize", handleResize);
+
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+    };
+  }, []);
+
   return (
     <div className="space-y-6">
       <div className="bg-white p-6 rounded-lg shadow-sm">
@@ -670,6 +766,25 @@ const ScheduleView = ({
         <div className="sticky top-4 z-30 mt-6">
           <div className="rounded-lg border border-gray-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur">
             <ScheduleLegend scheduleHorizon={scheduleHorizon} />
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <div
+            ref={legendContainerRef}
+            style={{
+              position: "sticky",
+              top: legendStickyTop,
+              zIndex: 30,
+            }}
+          >
+            <div
+              className={`rounded-lg border border-gray-200 bg-white/90 px-4 py-3 backdrop-blur transition-shadow ${
+                isLegendSticky ? "shadow-md" : "shadow-sm"
+              }`}
+            >
+              <ScheduleLegend scheduleHorizon={scheduleHorizon} />
+            </div>
           </div>
         </div>
 
