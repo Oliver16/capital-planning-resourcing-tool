@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -26,33 +26,8 @@ const HORIZON_OPTIONS = [
 const DESIGN_COLOR = "#3b82f6";
 const CONSTRUCTION_COLOR = "#f59e0b";
 const DEFAULT_TYPE_COLOR = "#6b7280";
-
-const findScrollParent = (element) => {
-  if (typeof window === "undefined" || !element) {
-    return null;
-  }
-
-  let current = element.parentElement;
-
-  while (current) {
-    const style = window.getComputedStyle(current);
-
-    if (!style) {
-      break;
-    }
-
-    const overflowY = style.getPropertyValue("overflow-y");
-    const overflow = style.getPropertyValue("overflow");
-
-    if (["auto", "scroll"].includes(overflowY) || ["auto", "scroll"].includes(overflow)) {
-      return current;
-    }
-
-    current = current.parentElement;
-  }
-
-  return null;
-};
+const TIMELINE_OVERLAY_SPACING = 16;
+const TIMELINE_BASE_MARGIN = 24;
 
 const isValidDate = (value) =>
   value instanceof Date && !Number.isNaN(value.getTime());
@@ -185,10 +160,23 @@ const ScheduleView = ({
   const [selectedTypeMap, setSelectedTypeMap] = useState({});
   const [isTypeFilterOpen, setIsTypeFilterOpen] = useState(false);
   const typeFilterRef = useRef(null);
-  const legendContainerRef = useRef(null);
-  const stickyOffsetRef = useRef(16);
-  const [legendStickyTop, setLegendStickyTop] = useState(16);
-  const [isLegendSticky, setIsLegendSticky] = useState(false);
+  const scrollContainerRef = useRef(null);
+  const timelineOverlayRef = useRef(null);
+  const [isLegendPinned, setIsLegendPinned] = useState(false);
+  const [timelineOverlayHeight, setTimelineOverlayHeight] = useState(0);
+
+  const overlayOffset =
+    timelineOverlayHeight > 0
+      ? timelineOverlayHeight + TIMELINE_OVERLAY_SPACING
+      : 0;
+
+  const timelineListStyle =
+    timelineOverlayHeight > 0
+      ? {
+          marginTop: TIMELINE_BASE_MARGIN - overlayOffset,
+          paddingTop: overlayOffset,
+        }
+      : {};
 
   useEffect(() => {
     setSelectedTypeMap((previous) => {
@@ -249,6 +237,11 @@ const ScheduleView = ({
       .filter((option) => selectedTypeMap[option.key] !== false)
       .map((option) => option.key);
   }, [typeOptions, selectedTypeMap]);
+
+  const activeTypeSignature = useMemo(
+    () => activeTypeKeys.join("|"),
+    [activeTypeKeys]
+  );
 
   const filteredProjectTimelines = useMemo(() => {
     if (activeTypeKeys.length === 0) {
@@ -525,6 +518,17 @@ const ScheduleView = ({
     totalMonths,
   ]);
 
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+
+    if (!scrollContainer) {
+      return;
+    }
+
+    scrollContainer.scrollTop = 0;
+    setIsLegendPinned(false);
+  }, [scheduleHorizon, activeTypeSignature, timelineRows.length]);
+
   const filteredGaps = useMemo(() => {
     if (!Array.isArray(scheduleGaps) || scheduleGaps.length === 0) {
       return [];
@@ -554,69 +558,60 @@ const ScheduleView = ({
   }, [totalMonths]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !legendContainerRef.current) {
+    const scrollContainer = scrollContainerRef.current;
+
+    if (!scrollContainer) {
+      return;
+    }
+
+    const handleScroll = () => {
+      setIsLegendPinned(scrollContainer.scrollTop > 4);
+    };
+
+    handleScroll();
+    scrollContainer.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      scrollContainer.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
       return undefined;
     }
 
-    const scrollParent = findScrollParent(legendContainerRef.current);
-    const scrollTarget = scrollParent || window;
+    const overlayElement = timelineOverlayRef.current;
 
-    const computeStickyOffset = () => {
-      let nextOffset = 16;
+    if (!overlayElement) {
+      setTimelineOverlayHeight(0);
+      return undefined;
+    }
 
-      if (scrollParent && scrollParent !== document.body && scrollParent !== document.documentElement) {
-        const style = window.getComputedStyle(scrollParent);
-        const paddingTop = parseFloat(style.getPropertyValue("padding-top")) || 0;
-        const borderTop = parseFloat(style.getPropertyValue("border-top-width")) || 0;
-        nextOffset = Math.max(16, Math.round(paddingTop + borderTop + 16));
-      }
-
-      stickyOffsetRef.current = nextOffset;
-
-      setLegendStickyTop((previous) => (Math.abs(previous - nextOffset) > 0.5 ? nextOffset : previous));
+    const measureOverlay = () => {
+      const rect = overlayElement.getBoundingClientRect();
+      setTimelineOverlayHeight(Math.round(rect.height));
     };
 
-    const evaluateStickyState = () => {
-      const legendElement = legendContainerRef.current;
-
-      if (!legendElement) {
-        return;
-      }
-
-      const rect = legendElement.getBoundingClientRect();
-      const threshold = stickyOffsetRef.current + 0.5;
-      const shouldBeSticky = rect.top <= threshold;
-
-      setIsLegendSticky((previous) => (previous !== shouldBeSticky ? shouldBeSticky : previous));
-    };
-
-    const handleResize = () => {
-      computeStickyOffset();
-      evaluateStickyState();
-    };
-
-    computeStickyOffset();
-    evaluateStickyState();
-
-    scrollTarget.addEventListener("scroll", evaluateStickyState, { passive: true });
-    window.addEventListener("resize", handleResize);
+    measureOverlay();
 
     let resizeObserver;
 
-    if (scrollParent && "ResizeObserver" in window) {
-      resizeObserver = new ResizeObserver(handleResize);
-      resizeObserver.observe(scrollParent);
+    if ("ResizeObserver" in window) {
+      resizeObserver = new ResizeObserver(measureOverlay);
+      resizeObserver.observe(overlayElement);
+    } else {
+      window.addEventListener("resize", measureOverlay);
     }
 
     return () => {
-      scrollTarget.removeEventListener("scroll", evaluateStickyState);
-      window.removeEventListener("resize", handleResize);
-
       if (resizeObserver) {
         resizeObserver.disconnect();
+      } else {
+        window.removeEventListener("resize", measureOverlay);
       }
     };
-  }, []);
+  }, [yearMarkers]);
 
   return (
     <div className="space-y-6">
@@ -763,131 +758,121 @@ const ScheduleView = ({
           </div>
         )}
 
-        <div className="sticky top-4 z-30 mt-6">
-          <div className="rounded-lg border border-gray-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur">
-            <ScheduleLegend scheduleHorizon={scheduleHorizon} />
-          </div>
-        </div>
-
         <div className="mt-6">
           <div
-            ref={legendContainerRef}
-            style={{
-              position: "sticky",
-              top: legendStickyTop,
-              zIndex: 30,
-            }}
+            ref={scrollContainerRef}
+            className="relative max-h-[60vh] overflow-y-auto pr-2 md:max-h-[70vh]"
           >
-            <div
-              className={`rounded-lg border border-gray-200 bg-white/90 px-4 py-3 backdrop-blur transition-shadow ${
-                isLegendSticky ? "shadow-md" : "shadow-sm"
-              }`}
-            >
-              <ScheduleLegend scheduleHorizon={scheduleHorizon} />
+            <div className="sticky top-0 z-30 space-y-3">
+              <div
+                className={`pointer-events-auto rounded-lg border border-gray-200 bg-white/90 px-4 py-3 backdrop-blur transition-shadow ${
+                  isLegendPinned ? "shadow-md" : "shadow-sm"
+                }`}
+              >
+                <ScheduleLegend scheduleHorizon={scheduleHorizon} />
+              </div>
+              <div ref={timelineOverlayRef} className="pointer-events-none">
+                <div
+                  className={`relative h-12 rounded-lg border border-gray-200 bg-white/90 px-0 py-2 backdrop-blur transition-shadow ${
+                    isLegendPinned ? "shadow-md" : "shadow-sm"
+                  }`}
+                >
+                  <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 border-t border-gray-300" />
+                  {yearMarkers.map((marker) => (
+                    <Fragment key={`${marker.label}-${marker.offsetPercent}`}>
+                      <div
+                        className="absolute top-0 bottom-0 w-px bg-gray-200"
+                        style={{ left: `${marker.offsetPercent}%` }}
+                      />
+                      <div
+                        className="absolute top-[1.9rem] -translate-x-1/2 text-xs text-gray-500"
+                        style={{ left: `${marker.offsetPercent}%` }}
+                      >
+                        {marker.label}
+                      </div>
+                    </Fragment>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-5 pb-6" style={timelineListStyle}>
+              {timelineRows.length > 0 ? (
+                timelineRows.map((row) => (
+                  <div
+                    key={row.project.id}
+                    className="grid grid-cols-1 gap-4 md:grid-cols-12 md:items-center"
+                  >
+                    <div className="md:col-span-3">
+                      <div className="font-medium text-gray-900">{row.project.name}</div>
+                      <div className="text-xs text-gray-500 flex items-center gap-2">
+                        <span
+                          className="inline-block h-2 w-2 rounded-full"
+                          style={{ backgroundColor: row.projectType?.color || "#3b82f6" }}
+                        ></span>
+                        {row.project.type === "program" ? "Program" : "Project"}
+                        {row.projectType?.name && ` • ${row.projectType.name}`}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        {formatDate(row.project.designStart)} – {formatDate(row.project.constructionEnd)}
+                      </div>
+                    </div>
+                    <div className="md:col-span-9">
+                      <div
+                        className="relative h-12 overflow-hidden rounded-md bg-gray-100"
+                        style={yearGridStyle}
+                      >
+                        {row.designSegment && (
+                          <div
+                            className="absolute top-[18%] h-3 rounded-full"
+                            style={{
+                              left: `${row.designSegment.offsetPercent}%`,
+                              width: `${row.designSegment.widthPercent}%`,
+                              backgroundColor: DESIGN_COLOR,
+                            }}
+                            title={`Design: ${formatDate(row.project.designStart)} – ${formatDate(
+                              row.project.designEnd
+                            )}`}
+                          />
+                        )}
+                        {row.constructionSegment && (
+                          <div
+                            className="absolute bottom-[18%] h-3 rounded-full"
+                            style={{
+                              left: `${row.constructionSegment.offsetPercent}%`,
+                              width: `${row.constructionSegment.widthPercent}%`,
+                              backgroundColor: CONSTRUCTION_COLOR,
+                            }}
+                            title={`Construction: ${formatDate(
+                              row.project.constructionStart
+                            )} – ${formatDate(row.project.constructionEnd)}`}
+                          />
+                        )}
+                      </div>
+                      <div className="mt-2 flex flex-wrap justify-between text-[11px] text-gray-500">
+                        <span>
+                          Design: {formatDate(row.project.designStart)} – {formatDate(row.project.designEnd)}
+                        </span>
+                        <span>
+                          Construction: {formatDate(row.project.constructionStart)} – {formatDate(row.project.constructionEnd)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="py-10 text-center text-gray-500">
+                  {typeOptions.length > 0 && activeTypeKeys.length === 0
+                    ? "Select at least one project type to display timelines."
+                    : "No projects fall within the selected horizon."}
+                </div>
+              )}
             </div>
           </div>
+          </div>
         </div>
 
-        <div className="mt-6">
-          <div className="relative h-10 mb-8">
-            <div className="absolute inset-x-0 top-4 border-t border-gray-300" />
-            {yearMarkers.map((marker, index) => (
-              <div key={`${marker.label}-${index}`}>
-                <div
-                  className="absolute top-0 bottom-0 w-px bg-gray-200"
-                  style={{ left: `${marker.offsetPercent}%` }}
-                />
-                <div
-                  className="absolute top-5 text-xs text-gray-500 -translate-x-1/2"
-                  style={{ left: `${marker.offsetPercent}%` }}
-                >
-                  {marker.label}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="space-y-5">
-            {timelineRows.length > 0 ? (
-              timelineRows.map((row) => (
-                <div
-                  key={row.project.id}
-                  className="grid grid-cols-1 gap-4 md:grid-cols-12 md:items-center"
-                >
-                  <div className="md:col-span-3">
-                    <div className="font-medium text-gray-900">
-                      {row.project.name}
-                    </div>
-                    <div className="text-xs text-gray-500 flex items-center gap-2">
-                      <span
-                        className="inline-block h-2 w-2 rounded-full"
-                        style={{ backgroundColor: row.projectType?.color || "#3b82f6" }}
-                      ></span>
-                      {row.project.type === "program" ? "Program" : "Project"}
-                      {row.projectType?.name && ` • ${row.projectType.name}`}
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      {formatDate(row.project.designStart)} – {formatDate(row.project.constructionEnd)}
-                    </div>
-                  </div>
-                  <div className="md:col-span-9">
-                    <div
-                      className="relative h-12 rounded-md bg-gray-100 overflow-hidden"
-                      style={yearGridStyle}
-                    >
-                      {row.designSegment && (
-                        <div
-                          className="absolute top-[18%] h-3 rounded-full"
-                          style={{
-                            left: `${row.designSegment.offsetPercent}%`,
-                            width: `${row.designSegment.widthPercent}%`,
-                            backgroundColor: DESIGN_COLOR,
-                          }}
-                          title={`Design: ${formatDate(row.project.designStart)} – ${formatDate(
-                            row.project.designEnd
-                          )}`}
-                        />
-                      )}
-                      {row.constructionSegment && (
-                        <div
-                          className="absolute bottom-[18%] h-3 rounded-full"
-                          style={{
-                            left: `${row.constructionSegment.offsetPercent}%`,
-                            width: `${row.constructionSegment.widthPercent}%`,
-                            backgroundColor: CONSTRUCTION_COLOR,
-                          }}
-                          title={`Construction: ${formatDate(
-                            row.project.constructionStart
-                          )} – ${formatDate(row.project.constructionEnd)}`}
-                        />
-                      )}
-                    </div>
-                    <div className="mt-2 flex flex-wrap justify-between text-[11px] text-gray-500">
-                      <span>
-                        Design: {formatDate(row.project.designStart)} – {formatDate(row.project.designEnd)}
-                      </span>
-                      <span>
-                        Construction: {formatDate(row.project.constructionStart)} – {formatDate(
-                          row.project.constructionEnd
-                        )}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="py-10 text-center text-gray-500">
-                {typeOptions.length > 0 && activeTypeKeys.length === 0
-                  ? "Select at least one project type to display timelines."
-                  : "No projects fall within the selected horizon."}
-              </div>
-            )}
-          </div>
-
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-lg shadow-sm">
           <h3 className="text-lg font-semibold mb-4">Staffing Availability vs Demand</h3>
           <div className="h-80">
