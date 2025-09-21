@@ -538,7 +538,7 @@ const StaffUtilizationPdf = ({ report }) => {
 
   return (
     <Document>
-      <Page size="A4" style={styles.page}>
+      <Page size="A4" orientation="landscape" style={styles.page}>
         <View style={styles.header}>
           <Text style={styles.title}>Staff Utilization Plan</Text>
           <Text style={styles.subtitle}>
