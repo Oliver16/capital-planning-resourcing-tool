@@ -320,11 +320,11 @@ begin
 
   return query
   select
-    m.id as membership_id,
-    m.organization_id,
-    m.user_id,
-    u.email,
-    coalesce(u.raw_user_meta_data->>'full_name', '') as full_name,
+    m.id::uuid as membership_id,
+    m.organization_id::uuid,
+    m.user_id::uuid,
+    coalesce(u.email::text, ''::text) as email,
+    coalesce((u.raw_user_meta_data->>'full_name')::text, ''::text) as full_name,
     m.role,
     m.can_edit,
     m.created_at,
@@ -431,8 +431,8 @@ begin
     r.organization_id,
     o.name as organization_name,
     r.user_id,
-    u.email,
-    coalesce(u.raw_user_meta_data->>'full_name', '') as full_name,
+    coalesce(u.email::text, ''::text) as email,
+    coalesce((u.raw_user_meta_data->>'full_name')::text, ''::text) as full_name,
     r.status,
     r.created_at,
     r.updated_at,
