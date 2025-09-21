@@ -204,6 +204,7 @@ export const isCapitalProject = (projectOrType) => {
   }
 
   return false;
+
 };
 
 export const isProjectOrProgram = (projectOrType) =>

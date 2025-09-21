@@ -1118,7 +1118,7 @@ const ProjectsPrograms = ({
       const nextState = { ...previous };
       projectGroups.forEach((group) => {
         if (nextState[group.key] === undefined) {
-          nextState[group.key] = true;
+          nextState[group.key] = false;
         }
       });
       return nextState;
@@ -1199,6 +1199,9 @@ const ProjectsPrograms = ({
         } else {
           updateProject(previous.programId, {
             continuousHoursByCategory: null,
+            continuousPmHours: 0,
+            continuousDesignHours: 0,
+            continuousConstructionHours: 0,
           });
         }
       }
@@ -1216,6 +1219,9 @@ const ProjectsPrograms = ({
       if (previous.programId != null) {
         updateProject(previous.programId, {
           continuousHoursByCategory: null,
+          continuousPmHours: 0,
+          continuousDesignHours: 0,
+          continuousConstructionHours: 0,
         });
       }
 
