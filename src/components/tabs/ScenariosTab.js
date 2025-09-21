@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   PlusCircle,
   Copy,
@@ -347,6 +347,22 @@ const ScenariosTab = ({
       : [
           "Scenario aligns with baseline staffing capacity. No major conflicts detected.",
         ];
+
+  const timelineTickFormatter = useCallback(
+    (value = 0) => {
+      if (!(earliestStart instanceof Date) || Number.isNaN(earliestStart.getTime())) {
+        return `Month ${Math.round(value) + 1}`;
+      }
+
+      const tickDate = new Date(earliestStart);
+      tickDate.setMonth(tickDate.getMonth() + Math.round(value));
+      return tickDate.toLocaleDateString("en-US", {
+        month: "short",
+        year: "numeric",
+      });
+    },
+    [earliestStart]
+  );
 
   const gapSummary = activeAnalysis?.gapSummary || {
     totalGap: 0,
@@ -940,18 +956,45 @@ const ScenariosTab = ({
 
         <div className="border border-gray-200 rounded-lg p-4 mt-6">
           <h4 className="font-semibold text-gray-900 mb-2">Baseline vs scenario timelines</h4>
-          <div className="h-72">
+          <div className="h-[26rem]">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
                 data={ganttData}
                 layout="vertical"
-                margin={{ top: 20, right: 20, left: 40, bottom: 20 }}
+                margin={{ top: 24, right: 32, left: 80, bottom: 56 }}
               >
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" domain={[0, "dataMax + 6"]} tick={{ fontSize: 11 }} />
-                <YAxis dataKey="name" type="category" width={180} tick={{ fontSize: 12 }} />
-                <Tooltip />
-                <Legend />
+                <XAxis
+                  type="number"
+                  domain={[0, "dataMax + 6"]}
+                  allowDecimals={false}
+                  tick={{ fontSize: 14, fill: "#374151" }}
+                  tickFormatter={timelineTickFormatter}
+                  label={{
+                    value: "Months from earliest project start",
+                    position: "bottom",
+                    offset: 24,
+                    fontSize: 14,
+                    fill: "#374151",
+                  }}
+                />
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  width={220}
+                  tick={{ fontSize: 14, fill: "#111827" }}
+                />
+                <Tooltip
+                  labelFormatter={timelineTickFormatter}
+                  formatter={(value, name, props) => {
+                    if (props?.dataKey === "baselineOffset" || props?.dataKey === "scenarioOffset") {
+                      return null;
+                    }
+                    const formattedValue = `${Number(value).toFixed(0)} mo`;
+                    return [formattedValue, name];
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: 14 }} />
                 <Bar
                   dataKey="baselineOffset"
                   stackId="baseline"
