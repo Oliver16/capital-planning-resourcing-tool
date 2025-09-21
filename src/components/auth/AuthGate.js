@@ -19,15 +19,6 @@ const AuthGate = ({ children }) => {
     hasSuperuserAccess,
   } = useAuth();
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
-
-  const organizationLabel =
-    activeOrganization?.name || 'Select an organization';
-  const roleDescription = activeMembership?.isSuperuser
-    ? 'Superuser access'
-    : canEditActiveOrg
-    ? 'Editor access'
-    : 'Viewer access';
-
   if (authLoading) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center">
@@ -49,77 +40,49 @@ const AuthGate = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
-      <header className="bg-slate-100">
-        <div className="mx-auto w-full max-w-7xl px-6 py-4">
-          <div className="bg-white rounded-lg shadow-sm px-4 py-4">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div className="flex items-center gap-3">
-                <img
-                  src={`${process.env.PUBLIC_URL}/logo.png`}
-                  alt="Vector logo"
-                  className="h-12 w-auto"
-                />
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">Vector</p>
-                  <p className="text-xs uppercase tracking-wide text-gray-500">
-                    Capital &amp; Resource Planning
-                  </p>
-                </div>
-              </div>
-              <div className="text-center xl:flex-1">
-                <h1 className="text-lg font-semibold text-gray-900">
-                  {organizationLabel}
-                </h1>
-              </div>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end sm:flex-wrap text-sm">
-                <div className="flex flex-col min-w-[200px]">
-                  <label
-                    htmlFor="app-organization-selector"
-                    className="text-xs font-semibold uppercase text-gray-400 tracking-wide"
-                  >
-                    Organization
-                  </label>
-                  <select
-                    id="app-organization-selector"
-                    className="mt-1 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-70"
-                    value={activeOrganizationId ?? ''}
-                    onChange={(event) => setActiveOrganizationId(event.target.value)}
-                    disabled={!memberships.length}
-                  >
-                    {memberships.length ? (
-                      memberships.map((membership) => (
-                        <option
-                          key={membership.id}
-                          value={membership.organizationId ?? ''}
-                        >
-                          {membership.organization?.name || 'Untitled Organization'}
-                        </option>
-                      ))
-                    ) : (
-                      <option value="">No organizations available</option>
-                    )}
-                  </select>
-                </div>
-                <div className="text-left sm:text-right">
-                  <p className="text-sm font-medium text-gray-900">
-                    {user?.email || 'Signed in'}
-                  </p>
-                  <p className="text-xs text-gray-500">{roleDescription}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={signOut}
-                  className="inline-flex items-center justify-center rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 shadow-sm transition-colors hover:bg-gray-50"
-                >
-                  Sign out
-                </button>
-              </div>
+      <header className="bg-white border-b border-slate-200 shadow-sm">
+        <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4 gap-6">
+          <div>
+            <h1 className="text-lg font-semibold text-slate-900">Vector</h1>
+            <p className="text-xs text-slate-500 uppercase tracking-wide">Capital Planning</p>
+          </div>
+          <div className="ml-auto flex items-center gap-6">
+            <div className="flex min-w-[220px] flex-col text-left">
+              <label
+                htmlFor="organization-selector"
+                className="text-xs font-semibold uppercase text-slate-400 tracking-wide"
+              >
+                Organization
+              </label>
+              <select
+                id="organization-selector"
+                className="mt-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                value={activeOrganizationId ?? ''}
+                onChange={(event) => setActiveOrganizationId(event.target.value)}
+              >
+                {memberships.map((membership) => (
+                  <option key={membership.id} value={membership.organizationId}>
+                    {membership.organization?.name || 'Untitled Organization'}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col text-right">
+              <p className="text-sm font-medium text-slate-700">{user?.email}</p>
+              <p className="text-xs text-slate-400">
+                {activeMembership?.isSuperuser
+                  ? 'Superuser access'
+                  : canEditActiveOrg
+                    ? 'Editor access'
+                    : 'Viewer access'}
+              </p>
             </div>
             {hasSuperuserAccess && (
               <button
                 type="button"
                 onClick={() => setIsAdminPanelOpen(true)}
-                className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 shadow-sm hover:bg-blue-100"
+                className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 shadow-sm transition hover:bg-blue-100"
+
               >
                 Admin
               </button>

@@ -320,7 +320,7 @@ begin
 
   return query
   select
-    m.id,
+    m.id as membership_id,
     m.organization_id,
     m.user_id,
     u.email,
@@ -427,9 +427,9 @@ begin
 
   return query
   select
-    r.id,
+    r.id as request_id,
     r.organization_id,
-    o.name,
+    o.name as organization_name,
     r.user_id,
     u.email,
     coalesce(u.raw_user_meta_data->>'full_name', '') as full_name,
