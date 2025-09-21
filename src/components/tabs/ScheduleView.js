@@ -52,6 +52,30 @@ const findScrollParent = (element) => {
   }
 
   return null;
+
+  const isValidDate = (value) =>
+  value instanceof Date && !Number.isNaN(value.getTime());
+
+const getTimelineStartTime = (project) => {
+  if (!project) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const timestamps = [];
+
+  if (isValidDate(project.designStart)) {
+    timestamps.push(project.designStart.getTime());
+  }
+
+  if (isValidDate(project.constructionStart)) {
+    timestamps.push(project.constructionStart.getTime());
+  }
+
+  if (timestamps.length === 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  return Math.min(...timestamps);
 };
 
 const ScheduleLegend = ({ scheduleHorizon, className = "" }) => (
@@ -231,13 +255,42 @@ const ScheduleView = ({
     }
 
     const allowed = new Set(activeTypeKeys);
-    return (projectTimelines || []).filter((project) => {
+    const originalOrder = new Map();
+
+    (projectTimelines || []).forEach((project, index) => {
+      if (project) {
+        originalOrder.set(project, index);
+      }
+    });
+
+    const filtered = (projectTimelines || []).filter((project) => {
       if (!project) return false;
       const key =
         project.projectTypeId === null || project.projectTypeId === undefined
           ? "unassigned"
           : String(project.projectTypeId);
       return allowed.has(key);
+    });
+
+    return filtered.sort((a, b) => {
+      const aTime = getTimelineStartTime(a);
+      const bTime = getTimelineStartTime(b);
+
+      if (aTime === bTime) {
+        const aName = a?.name ?? "";
+        const bName = b?.name ?? "";
+        const nameComparison = aName.localeCompare(bName);
+
+        if (nameComparison !== 0) {
+          return nameComparison;
+        }
+
+        const aIndex = originalOrder.get(a) ?? 0;
+        const bIndex = originalOrder.get(b) ?? 0;
+        return aIndex - bIndex;
+      }
+
+      return aTime - bTime;
     });
   }, [projectTimelines, activeTypeKeys]);
 
@@ -706,6 +759,12 @@ const ScheduleView = ({
             schedule and resource charts.
           </div>
         )}
+
+        <div className="sticky top-4 z-30 mt-6">
+          <div className="rounded-lg border border-gray-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur">
+            <ScheduleLegend scheduleHorizon={scheduleHorizon} />
+          </div>
+        </div>
 
         <div className="mt-6">
           <div

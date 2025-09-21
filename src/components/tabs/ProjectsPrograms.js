@@ -283,6 +283,21 @@ const ProjectCard = ({
     updateProject(project.id, field, Number.isNaN(parsed) ? 0 : parsed);
   };
 
+  const handleFloatChange = (field) => (event) => {
+    if (isReadOnly) {
+      return;
+    }
+
+    const { value } = event.target;
+    if (value === "") {
+      updateProject(project.id, field, null);
+      return;
+    }
+
+    const parsed = parseFloat(value);
+    updateProject(project.id, field, Number.isNaN(parsed) ? 0 : parsed);
+  };
+
   const handleSelectOption = (field, options = []) => (event) => {
     if (isReadOnly) {
       return;
@@ -457,6 +472,30 @@ const ProjectCard = ({
             min="0"
             value={project.totalBudget || ""}
             onChange={handleNumberChange("totalBudget")}
+            className={projectInputClass}
+            disabled={isReadOnly}
+          />
+        </Field>
+
+        <Field label="Design budget (%)">
+          <input
+            type="number"
+            min="0"
+            max="100"
+            value={project.designBudgetPercent ?? ""}
+            onChange={handleFloatChange("designBudgetPercent")}
+            className={projectInputClass}
+            disabled={isReadOnly}
+          />
+        </Field>
+
+        <Field label="Construction budget (%)">
+          <input
+            type="number"
+            min="0"
+            max="100"
+            value={project.constructionBudgetPercent ?? ""}
+            onChange={handleFloatChange("constructionBudgetPercent")}
             className={projectInputClass}
             disabled={isReadOnly}
           />
@@ -1118,7 +1157,7 @@ const ProjectsPrograms = ({
       const nextState = { ...previous };
       projectGroups.forEach((group) => {
         if (nextState[group.key] === undefined) {
-          nextState[group.key] = true;
+          nextState[group.key] = false;
         }
       });
       return nextState;
@@ -1199,6 +1238,9 @@ const ProjectsPrograms = ({
         } else {
           updateProject(previous.programId, {
             continuousHoursByCategory: null,
+            continuousPmHours: 0,
+            continuousDesignHours: 0,
+            continuousConstructionHours: 0,
           });
         }
       }
@@ -1216,6 +1258,9 @@ const ProjectsPrograms = ({
       if (previous.programId != null) {
         updateProject(previous.programId, {
           continuousHoursByCategory: null,
+          continuousPmHours: 0,
+          continuousDesignHours: 0,
+          continuousConstructionHours: 0,
         });
       }
 
