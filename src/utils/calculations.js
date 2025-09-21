@@ -182,6 +182,10 @@ const generateForecastFromDate = (
   const forecast = [];
   const safeTimeHorizon = Math.max(1, Math.min(timeHorizon || 36, 120)); // Limit to reasonable range
 
+  const hasExplicitAvailability =
+    staffAvailabilityByCategory &&
+    Object.keys(staffAvailabilityByCategory).length > 0;
+
   for (let i = 0; i < safeTimeHorizon; i++) {
     const currentDate = new Date(startDate);
     currentDate.setMonth(currentDate.getMonth() + i);
@@ -209,10 +213,14 @@ const generateForecastFromDate = (
           (category.pmCapacity || 0) +
           (category.designCapacity || 0) +
           (category.constructionCapacity || 0);
-        const totalHours =
-          availability && typeof availability.total === "number"
-            ? availability.total
-            : fallbackTotal;
+
+        let totalHours = 0;
+
+        if (availability && typeof availability.total === "number") {
+          totalHours = availability.total;
+        } else if (!hasExplicitAvailability) {
+          totalHours = fallbackTotal;
+        }
 
         monthData[`${category.name}_actual`] =
           (totalHours || 0) / HOURS_PER_FTE_MONTH;
@@ -475,6 +483,9 @@ export const generateScenarioForecastDetails = (
   const startDate = getScenarioStartDate(projectTimelines);
   const forecast = [];
   const monthDetails = {};
+  const hasExplicitAvailability =
+    staffAvailabilityByCategory &&
+    Object.keys(staffAvailabilityByCategory).length > 0;
 
   for (let index = 0; index < safeTimeHorizon; index += 1) {
     const currentDate = new Date(startDate);
@@ -507,10 +518,15 @@ export const generateScenarioForecastDetails = (
         (category.pmCapacity || 0) +
         (category.designCapacity || 0) +
         (category.constructionCapacity || 0);
-      const totalHours =
-        availability && typeof availability.total === "number"
-          ? availability.total
-          : fallbackTotal;
+
+      let totalHours = 0;
+
+      if (availability && typeof availability.total === "number") {
+        totalHours = availability.total;
+      } else if (!hasExplicitAvailability) {
+        totalHours = fallbackTotal;
+      }
+
       const availableFte = (totalHours || 0) / HOURS_PER_FTE_MONTH;
 
       categoryAvailability[category.id] = availableFte;
