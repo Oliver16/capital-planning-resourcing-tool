@@ -241,6 +241,7 @@ const StaffAllocations = ({
   staffAllocations,
   updateStaffAllocation,
   fundingSources = [],
+  isReadOnly = false,
 }) => {
   const deliveryGuidance = {
     "self-perform": {
