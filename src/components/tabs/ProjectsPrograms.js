@@ -1199,6 +1199,9 @@ const ProjectsPrograms = ({
         } else {
           updateProject(previous.programId, {
             continuousHoursByCategory: null,
+            continuousPmHours: 0,
+            continuousDesignHours: 0,
+            continuousConstructionHours: 0,
           });
         }
       }
@@ -1216,6 +1219,9 @@ const ProjectsPrograms = ({
       if (previous.programId != null) {
         updateProject(previous.programId, {
           continuousHoursByCategory: null,
+          continuousPmHours: 0,
+          continuousDesignHours: 0,
+          continuousConstructionHours: 0,
         });
       }
 
