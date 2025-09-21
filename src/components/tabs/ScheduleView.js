@@ -27,6 +27,55 @@ const DESIGN_COLOR = "#3b82f6";
 const CONSTRUCTION_COLOR = "#f59e0b";
 const DEFAULT_TYPE_COLOR = "#6b7280";
 
+const findScrollParent = (element) => {
+  if (typeof window === "undefined" || !element) {
+    return null;
+  }
+
+  let current = element.parentElement;
+
+  while (current) {
+    const style = window.getComputedStyle(current);
+
+    if (!style) {
+      break;
+    }
+
+    const overflowY = style.getPropertyValue("overflow-y");
+    const overflow = style.getPropertyValue("overflow");
+
+    if (["auto", "scroll"].includes(overflowY) || ["auto", "scroll"].includes(overflow)) {
+      return current;
+    }
+
+    current = current.parentElement;
+  }
+
+  return null;
+};
+
+const ScheduleLegend = ({ scheduleHorizon, className = "" }) => (
+  <div className={`flex flex-wrap items-center gap-4 text-xs text-gray-600 ${className}`}>
+    <div className="flex items-center gap-2">
+      <span
+        className="inline-block h-3 w-3 rounded-full"
+        style={{ backgroundColor: DESIGN_COLOR }}
+      ></span>
+      Design Schedule
+    </div>
+    <div className="flex items-center gap-2">
+      <span
+        className="inline-block h-3 w-3 rounded-full"
+        style={{ backgroundColor: CONSTRUCTION_COLOR }}
+      ></span>
+      Construction Schedule
+    </div>
+    <div className="text-xs text-gray-500">
+      Year dividers help visualize the {scheduleHorizon / 12}-year planning window.
+    </div>
+  </div>
+);
+
 const formatDate = (date) => {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
     return "TBD";
@@ -111,6 +160,10 @@ const ScheduleView = ({
   const [selectedTypeMap, setSelectedTypeMap] = useState({});
   const [isTypeFilterOpen, setIsTypeFilterOpen] = useState(false);
   const typeFilterRef = useRef(null);
+  const legendContainerRef = useRef(null);
+  const stickyOffsetRef = useRef(16);
+  const [legendStickyTop, setLegendStickyTop] = useState(16);
+  const [isLegendSticky, setIsLegendSticky] = useState(false);
 
   useEffect(() => {
     setSelectedTypeMap((previous) => {
@@ -446,6 +499,69 @@ const ScheduleView = ({
     };
   }, [totalMonths]);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || !legendContainerRef.current) {
+      return undefined;
+    }
+
+    const scrollParent = findScrollParent(legendContainerRef.current);
+    const scrollTarget = scrollParent || window;
+
+    const computeStickyOffset = () => {
+      let nextOffset = 16;
+
+      if (scrollParent) {
+        const containerRect = scrollParent.getBoundingClientRect();
+        nextOffset = Math.max(16, Math.round(containerRect.top + 16));
+      }
+
+      stickyOffsetRef.current = nextOffset;
+
+      setLegendStickyTop((previous) => (Math.abs(previous - nextOffset) > 0.5 ? nextOffset : previous));
+    };
+
+    const evaluateStickyState = () => {
+      const legendElement = legendContainerRef.current;
+
+      if (!legendElement) {
+        return;
+      }
+
+      const rect = legendElement.getBoundingClientRect();
+      const threshold = stickyOffsetRef.current + 0.5;
+      const shouldBeSticky = rect.top <= threshold;
+
+      setIsLegendSticky((previous) => (previous !== shouldBeSticky ? shouldBeSticky : previous));
+    };
+
+    const handleResize = () => {
+      computeStickyOffset();
+      evaluateStickyState();
+    };
+
+    computeStickyOffset();
+    evaluateStickyState();
+
+    scrollTarget.addEventListener("scroll", evaluateStickyState, { passive: true });
+    window.addEventListener("resize", handleResize);
+
+    let resizeObserver;
+
+    if (scrollParent && "ResizeObserver" in window) {
+      resizeObserver = new ResizeObserver(handleResize);
+      resizeObserver.observe(scrollParent);
+    }
+
+    return () => {
+      scrollTarget.removeEventListener("scroll", evaluateStickyState);
+      window.removeEventListener("resize", handleResize);
+
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+    };
+  }, []);
+
   return (
     <div className="space-y-6">
       <div className="bg-white p-6 rounded-lg shadow-sm">
@@ -592,6 +708,25 @@ const ScheduleView = ({
         )}
 
         <div className="mt-6">
+          <div
+            ref={legendContainerRef}
+            style={{
+              position: "sticky",
+              top: legendStickyTop,
+              zIndex: 30,
+            }}
+          >
+            <div
+              className={`rounded-lg border border-gray-200 bg-white/90 px-4 py-3 backdrop-blur transition-shadow ${
+                isLegendSticky ? "shadow-md" : "shadow-sm"
+              }`}
+            >
+              <ScheduleLegend scheduleHorizon={scheduleHorizon} />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6">
           <div className="relative h-10 mb-8">
             <div className="absolute inset-x-0 top-4 border-t border-gray-300" />
             {yearMarkers.map((marker, index) => (
@@ -687,25 +822,6 @@ const ScheduleView = ({
             )}
           </div>
 
-          <div className="mt-6 flex flex-wrap gap-4 text-xs text-gray-600">
-            <div className="flex items-center gap-2">
-              <span
-                className="inline-block h-3 w-3 rounded-full"
-                style={{ backgroundColor: DESIGN_COLOR }}
-              ></span>
-              Design Schedule
-            </div>
-            <div className="flex items-center gap-2">
-              <span
-                className="inline-block h-3 w-3 rounded-full"
-                style={{ backgroundColor: CONSTRUCTION_COLOR }}
-              ></span>
-              Construction Schedule
-            </div>
-            <div className="text-xs text-gray-500">
-              Year dividers help visualize the {scheduleHorizon / 12}-year planning window.
-            </div>
-          </div>
         </div>
       </div>
 
