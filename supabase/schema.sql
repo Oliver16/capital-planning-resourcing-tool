@@ -223,7 +223,7 @@ as $$
     select 1
     from public.memberships m
     where m.user_id = auth.uid()
-      and m.role = 'superuser'
+      and m.role::text = 'superuser'
   );
 $$;
 
@@ -262,7 +262,10 @@ as $$
       from public.memberships m
       where m.organization_id = org_id
         and m.user_id = auth.uid()
-        and (m.can_edit = true or m.role = 'superuser')
+        and (
+          m.can_edit = true
+          or m.role::text = 'superuser'
+        )
     );
 $$;
 
