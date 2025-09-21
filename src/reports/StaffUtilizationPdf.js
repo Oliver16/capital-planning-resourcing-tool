@@ -88,6 +88,38 @@ const styles = StyleSheet.create({
   tableRowAlt: {
     backgroundColor: "#f9fafb",
   },
+  projectTable: {
+    marginBottom: 10,
+  },
+  projectHeaderRow: {
+    backgroundColor: "#f3f4f6",
+  },
+  projectHeaderTitle: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#0f172a",
+  },
+  projectHeaderMetricLabel: {
+    fontSize: 8,
+    color: "#6b7280",
+  },
+  projectHeaderMetricValue: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: "#1f2937",
+    marginTop: 2,
+  },
+  projectStaffHeaderRow: {
+    backgroundColor: "#f9fafb",
+  },
+  nestedTableSpacing: {
+    marginBottom: 8,
+  },
+  unfilledProjectTitle: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#0f172a",
+  },
   note: {
     fontSize: 9,
     color: "#4b5563",
@@ -171,15 +203,337 @@ const StaffUtilizationPdf = ({ report }) => {
 
   const summaryCards = buildSummaryCards(meta);
 
-  const assignmentColumns = [
-    { key: "staff", label: "Staff", flex: 1.6 },
-    { key: "project", label: "Project", flex: 1.6 },
-    { key: "pm", label: "PM", flex: 0.8 },
-    { key: "design", label: "Design", flex: 0.8 },
-    { key: "construction", label: "Construction", flex: 0.9 },
-    { key: "total", label: "Total", flex: 0.8 },
-    { key: "manual", label: "Manual", flex: 0.8 },
-    { key: "status", label: "Status", flex: 0.9 },
+  const projectPhaseColumns = [
+    { key: "pmHours", label: "PM", flex: 0.8 },
+    { key: "designHours", label: "Design", flex: 0.8 },
+    { key: "constructionHours", label: "Construction", flex: 0.9 },
+    { key: "totalHours", label: "Total", flex: 0.9 },
+  ];
+
+  const staffDetailColumns = [
+    {
+      key: "staff",
+      label: "Staff",
+      flex: 2,
+      getValue: (assignment) => assignment.staffName || "Unassigned",
+    },
+    {
+      key: "utilization",
+      label: "Utilization",
+      flex: 0.9,
+      getValue: (assignment) =>
+        formatPercent(assignment.utilizationPercent || 0),
+      projectMetricLabel: "Coverage",
+      getProjectMetricValue: (project) =>
+        formatPercent(project.coverage || 0),
+    },
+    {
+      key: "pmMonthly",
+      label: "PM (hrs/mo)",
+      flex: 0.95,
+      getValue: (assignment) =>
+        formatNumber(assignment.monthly?.pmHours ?? 0),
+      projectMetricLabel: "PM (hrs/mo)",
+      getProjectMetricValue: (project) =>
+        `${formatNumber(project.monthlyTotals.pmHours || 0)} hrs/mo`,
+    },
+    {
+      key: "pmTotal",
+      label: "PM (total hrs)",
+      flex: 0.95,
+      getValue: (assignment) =>
+        formatNumber(assignment.totals?.pmHours || 0),
+      projectMetricLabel: "PM (total)",
+      getProjectMetricValue: (project) =>
+        `${formatNumber(project.totals.pmHours || 0)} hrs`,
+    },
+    {
+      key: "designMonthly",
+      label: "Design (hrs/mo)",
+      flex: 0.95,
+      getValue: (assignment) =>
+        formatNumber(assignment.monthly?.designHours ?? 0),
+      projectMetricLabel: "Design (hrs/mo)",
+      getProjectMetricValue: (project) =>
+        `${formatNumber(project.monthlyTotals.designHours || 0)} hrs/mo`,
+    },
+    {
+      key: "designTotal",
+      label: "Design (total hrs)",
+      flex: 0.95,
+      getValue: (assignment) =>
+        formatNumber(assignment.totals?.designHours || 0),
+      projectMetricLabel: "Design (total)",
+      getProjectMetricValue: (project) =>
+        `${formatNumber(project.totals.designHours || 0)} hrs`,
+    },
+    {
+      key: "constructionMonthly",
+      label: "Construction (hrs/mo)",
+      flex: 1,
+      getValue: (assignment) =>
+        formatNumber(assignment.monthly?.constructionHours ?? 0),
+      projectMetricLabel: "Construction (hrs/mo)",
+      getProjectMetricValue: (project) =>
+        `${formatNumber(project.monthlyTotals.constructionHours || 0)} hrs/mo`,
+    },
+    {
+      key: "constructionTotal",
+      label: "Construction (total hrs)",
+      flex: 1,
+      getValue: (assignment) =>
+        formatNumber(assignment.totals?.constructionHours || 0),
+      projectMetricLabel: "Construction (total)",
+      getProjectMetricValue: (project) =>
+        `${formatNumber(project.totals.constructionHours || 0)} hrs`,
+    },
+    {
+      key: "totalMonthly",
+      label: "Total (hrs/mo)",
+      flex: 0.95,
+      getValue: (assignment) =>
+        formatNumber(
+          assignment.monthly?.totalHours ??
+            (assignment.monthly
+              ? Number(assignment.monthly.pmHours || 0) +
+                Number(assignment.monthly.designHours || 0) +
+                Number(assignment.monthly.constructionHours || 0)
+              : 0)
+        ),
+      projectMetricLabel: "Total (hrs/mo)",
+      getProjectMetricValue: (project) =>
+        `${formatNumber(project.monthlyTotals.totalHours || 0)} hrs/mo`,
+    },
+    {
+      key: "total",
+      label: "Total (hrs)",
+      flex: 0.95,
+      getValue: (assignment) =>
+        formatNumber(assignment.totals?.totalHours || 0),
+      projectMetricLabel: "Total (hrs)",
+      getProjectMetricValue: (project) =>
+        `${formatNumber(project.totals.totalHours || 0)} hrs`,
+    },
+    {
+      key: "manual",
+      label: "Manual (hrs)",
+      flex: 0.95,
+      getValue: (assignment) =>
+        formatNumber(assignment.manual?.totalHours || 0),
+      projectMetricLabel: "Manual (hrs)",
+      getProjectMetricValue: (project) =>
+        `${formatNumber(project.manualTotal || 0)} hrs`,
+    },
+    {
+      key: "status",
+      label: "Status",
+      flex: 1,
+      getValue: (assignment) => getStatusLabel(assignment),
+      projectMetricLabel: "Unfilled (hrs)",
+      getProjectMetricValue: (project) =>
+        `${formatNumber(project.unfilledTotal || 0)} hrs`,
+    },
+  ];
+
+  const staffDetailFlexTotal = staffDetailColumns.reduce(
+    (sum, column) => sum + column.flex,
+    0
+  );
+
+  const projectSummaryMap = new Map(
+    projectSummaries.map((summary) => [summary.projectId, summary])
+  );
+
+  const createEmptyTotals = () => ({
+    pmHours: 0,
+    designHours: 0,
+    constructionHours: 0,
+    totalHours: 0,
+  });
+
+  const projectEntriesMap = new Map();
+
+  projectSummaries.forEach((summary) => {
+    projectEntriesMap.set(summary.projectId, {
+      projectId: summary.projectId,
+      projectName: summary.projectName,
+      staff: [],
+      totals: {
+        pmHours: Number(summary.assigned?.pmHours || 0),
+        designHours: Number(summary.assigned?.designHours || 0),
+        constructionHours: Number(summary.assigned?.constructionHours || 0),
+        totalHours: Number(summary.assigned?.totalHours || 0),
+      },
+    });
+  });
+
+  assignments.forEach((assignment) => {
+    if (!projectEntriesMap.has(assignment.projectId)) {
+      projectEntriesMap.set(assignment.projectId, {
+        projectId: assignment.projectId,
+        projectName: assignment.projectName,
+        staff: [],
+        totals: createEmptyTotals(),
+      });
+    }
+    projectEntriesMap.get(assignment.projectId).staff.push(assignment);
+  });
+
+  const sumStaffHours = (staff, accessor) =>
+    staff.reduce((accumulator, entry) => {
+      const hours = accessor(entry) || {};
+      const pm = Number(hours.pmHours || 0);
+      const design = Number(hours.designHours || 0);
+      const construction = Number(hours.constructionHours || 0);
+      const total =
+        hours.totalHours != null
+          ? Number(hours.totalHours)
+          : pm + design + construction;
+
+      accumulator.pmHours += pm;
+      accumulator.designHours += design;
+      accumulator.constructionHours += construction;
+      accumulator.totalHours += total;
+      return accumulator;
+    }, createEmptyTotals());
+
+  const sumStaffTotals = (staff) =>
+    sumStaffHours(staff, (entry) => entry.totals);
+
+  const sumStaffMonthly = (staff) =>
+    sumStaffHours(staff, (entry) => entry.monthly);
+
+  const projectEntries = Array.from(projectEntriesMap.values())
+    .map((entry) => {
+      const summary = projectSummaryMap.get(entry.projectId);
+      const staffTotals = sumStaffTotals(entry.staff);
+      const staffMonthlyTotals = sumStaffMonthly(entry.staff);
+      const staffManualTotal = entry.staff.reduce(
+        (sum, assignment) => sum + Number(assignment.manual?.totalHours || 0),
+        0
+      );
+      const totals = summary
+        ? {
+            pmHours:
+              Number(summary.assigned?.pmHours || 0) || staffTotals.pmHours,
+            designHours:
+              Number(summary.assigned?.designHours || 0) ||
+              staffTotals.designHours,
+            constructionHours:
+              Number(summary.assigned?.constructionHours || 0) ||
+              staffTotals.constructionHours,
+            totalHours:
+              Number(summary.assigned?.totalHours || 0) ||
+              staffTotals.totalHours ||
+              Number(summary.assigned?.pmHours || 0) +
+                Number(summary.assigned?.designHours || 0) +
+                Number(summary.assigned?.constructionHours || 0),
+          }
+        : staffTotals;
+
+      const demandTotal = Number(summary?.demand?.totalHours || 0);
+      const assignedTotal = Number(totals.totalHours || 0);
+      const coverage = demandTotal
+        ? Math.min(1, assignedTotal / demandTotal) * 100
+        : assignedTotal > 0
+        ? 100
+        : 0;
+
+      const monthlyTotals = {
+        pmHours: Number(staffMonthlyTotals.pmHours || 0),
+        designHours: Number(staffMonthlyTotals.designHours || 0),
+        constructionHours: Number(
+          staffMonthlyTotals.constructionHours || 0
+        ),
+        totalHours: Number(staffMonthlyTotals.totalHours || 0),
+      };
+
+      const manualTotal = Number(
+        summary?.manual?.totalHours ?? staffManualTotal
+      );
+      const unfilledTotal = Number(summary?.unfilled?.totalHours || 0);
+
+      return {
+        ...entry,
+        totals: {
+          pmHours: Number(totals.pmHours || 0),
+          designHours: Number(totals.designHours || 0),
+          constructionHours: Number(totals.constructionHours || 0),
+          totalHours: Number(totals.totalHours || 0),
+        },
+        monthlyTotals,
+        coverage,
+        manualTotal,
+        unfilledTotal,
+      };
+    })
+    .sort((a, b) => a.projectName.localeCompare(b.projectName));
+
+  const phaseKeyMap = {
+    pm: "pmHours",
+    design: "designHours",
+    construction: "constructionHours",
+  };
+
+  const groupedUnfilledMap = new Map();
+  unfilledRows.forEach((row) => {
+    const projectId = row.projectId;
+    if (!projectId) {
+      return;
+    }
+
+    if (!groupedUnfilledMap.has(projectId)) {
+      groupedUnfilledMap.set(projectId, {
+        projectId,
+        projectName: row.projectName,
+        totals: createEmptyTotals(),
+        categories: new Map(),
+      });
+    }
+
+    const projectEntry = groupedUnfilledMap.get(projectId);
+    const categoryName = row.categoryName || "Uncategorized";
+
+    if (!projectEntry.categories.has(categoryName)) {
+      projectEntry.categories.set(categoryName, {
+        categoryName,
+        phases: createEmptyTotals(),
+        totalHours: 0,
+      });
+    }
+
+    const categoryEntry = projectEntry.categories.get(categoryName);
+    const hours = Number(row.hours || 0);
+    if (hours <= 0) {
+      return;
+    }
+
+    const phaseKey = phaseKeyMap[row.phase] || row.phase;
+    if (!categoryEntry.phases[phaseKey]) {
+      categoryEntry.phases[phaseKey] = 0;
+    }
+    categoryEntry.phases[phaseKey] += hours;
+    categoryEntry.totalHours += hours;
+
+    if (!projectEntry.totals[phaseKey]) {
+      projectEntry.totals[phaseKey] = 0;
+    }
+    projectEntry.totals[phaseKey] += hours;
+    projectEntry.totals.totalHours += hours;
+  });
+
+  const groupedUnfilled = Array.from(groupedUnfilledMap.values())
+    .map((entry) => ({
+      ...entry,
+      categories: Array.from(entry.categories.values()).sort((a, b) =>
+        a.categoryName.localeCompare(b.categoryName)
+      ),
+    }))
+    .sort((a, b) => a.projectName.localeCompare(b.projectName));
+
+  const unfilledColumns = [
+    { key: "category", label: "Category", flex: 1.8 },
+    ...projectPhaseColumns,
   ];
 
   return (
@@ -209,74 +563,132 @@ const StaffUtilizationPdf = ({ report }) => {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Assignments by Project & Staff</Text>
-          <View style={styles.table}>
-            <View style={[styles.tableRow, styles.tableHeader]}>
-              {assignmentColumns.map((column, columnIndex) => (
-                <View
-                  key={column.key}
-                  style={{
-                    ...styles.tableCell,
-                    flex: column.flex,
-                    borderRightWidth:
-                      columnIndex === assignmentColumns.length - 1 ? 0 : 1,
-                  }}
-                >
-                  <Text style={styles.tableHeaderText}>{column.label}</Text>
-                </View>
-              ))}
-            </View>
-            {assignments.length === 0 ? (
+          {projectEntries.length === 0 ? (
+            <View style={styles.table}>
               <View style={styles.tableRow}>
-                <View style={{ ...styles.tableCell, flex: 8, borderRightWidth: 0 }}>
+                <View
+                  style={{ ...styles.tableCell, flex: 1, borderRightWidth: 0 }}
+                >
                   <Text>No assignments available.</Text>
                 </View>
               </View>
-            ) : (
-              assignments.map((assignment, index) => {
-                const rowStyles = [styles.tableRow];
-                if (index % 2 === 1) {
-                  rowStyles.push(styles.tableRowAlt);
-                }
-
-                const manualTotal = Number(assignment.manual?.totalHours || 0);
-                return (
-                  <View key={`${assignment.projectId}-${assignment.staffId}`} style={rowStyles}>
-                    <View style={{ ...styles.tableCell, flex: assignmentColumns[0].flex }}>
-                      <Text>{assignment.staffName}</Text>
-                    </View>
-                    <View style={{ ...styles.tableCell, flex: assignmentColumns[1].flex }}>
-                      <Text>{assignment.projectName}</Text>
-                    </View>
-                    <View style={{ ...styles.tableCell, flex: assignmentColumns[2].flex }}>
-                      <Text>{formatNumber(assignment.totals?.pmHours || 0)}</Text>
-                    </View>
-                    <View style={{ ...styles.tableCell, flex: assignmentColumns[3].flex }}>
-                      <Text>{formatNumber(assignment.totals?.designHours || 0)}</Text>
-                    </View>
-                    <View style={{ ...styles.tableCell, flex: assignmentColumns[4].flex }}>
-                      <Text>{formatNumber(assignment.totals?.constructionHours || 0)}</Text>
-                    </View>
-                    <View style={{ ...styles.tableCell, flex: assignmentColumns[5].flex }}>
-                      <Text>{formatNumber(assignment.totals?.totalHours || 0)}</Text>
-                    </View>
-                    <View style={{ ...styles.tableCell, flex: assignmentColumns[6].flex }}>
-                      <Text>{formatNumber(manualTotal)}</Text>
-                    </View>
-                    <View
-                      style={{
+            </View>
+          ) : (
+            projectEntries.map((project) => {
+              return (
+                <View
+                  key={project.projectId}
+                  style={[styles.table, styles.projectTable]}
+                >
+                  <View style={[styles.tableRow, styles.projectHeaderRow]}>
+                    {staffDetailColumns.map((column, index) => {
+                      const cellStyle = {
                         ...styles.tableCell,
-                        flex: assignmentColumns[7].flex,
-                        borderRightWidth: 0,
-                      }}
-                    >
-                      <Text>{getStatusLabel(assignment)}</Text>
-                    </View>
+                        flex: column.flex,
+                        borderRightWidth:
+                          index === staffDetailColumns.length - 1 ? 0 : 1,
+                      };
+
+                      if (column.key === "staff") {
+                        return (
+                          <View key={column.key} style={cellStyle}>
+                            <Text style={styles.projectHeaderTitle}>
+                              {project.projectName}
+                            </Text>
+                          </View>
+                        );
+                      }
+
+                      const metricLabel = column.projectMetricLabel || column.label;
+                      const metricValue = column.getProjectMetricValue
+                        ? column.getProjectMetricValue(project)
+                        : "";
+
+                      return (
+                        <View key={column.key} style={cellStyle}>
+                          <Text style={styles.projectHeaderMetricLabel}>
+                            {metricLabel}
+                          </Text>
+                          {metricValue ? (
+                            <Text style={styles.projectHeaderMetricValue}>
+                              {metricValue}
+                            </Text>
+                          ) : null}
+                        </View>
+                      );
+                    })}
                   </View>
-                );
-              })
-            )}
-          </View>
+                  <View style={[styles.tableRow, styles.projectStaffHeaderRow]}>
+                    {staffDetailColumns.map((column, index) => (
+                      <View
+                        key={column.key}
+                        style={{
+                          ...styles.tableCell,
+                          flex: column.flex,
+                          borderRightWidth:
+                            index === staffDetailColumns.length - 1 ? 0 : 1,
+                        }}
+                      >
+                        <Text style={styles.tableHeaderText}>{column.label}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  {project.staff.length === 0 ? (
+                    <View style={styles.tableRow}>
+                      <View
+                        style={{
+                          ...styles.tableCell,
+                          flex: staffDetailFlexTotal,
+                          borderRightWidth: 0,
+                        }}
+                      >
+                        <Text>No staff assigned.</Text>
+                      </View>
+                    </View>
+                  ) : (
+                    project.staff.map((assignment, index) => {
+                      const rowStyles = [styles.tableRow];
+                      if (index % 2 === 1) {
+                        rowStyles.push(styles.tableRowAlt);
+                      }
+
+                      return (
+                        <View
+                          key={`${assignment.projectId}-${assignment.staffId}`}
+                          style={rowStyles}
+                        >
+                          {staffDetailColumns.map((column, columnIndex) => {
+                            const value = column.getValue
+                              ? column.getValue(assignment)
+                              : "";
+
+                            return (
+                              <View
+                                key={`${column.key}-${assignment.staffId}`}
+                                style={{
+                                  ...styles.tableCell,
+                                  flex: column.flex,
+                                  borderRightWidth:
+                                    columnIndex ===
+                                    staffDetailColumns.length - 1
+                                      ? 0
+                                      : 1,
+                                }}
+                              >
+                                <Text>{value}</Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      );
+                    })
+                  )}
+                </View>
+              );
+            })
+          )}
           <Text style={styles.note}>
+            Phase columns show both average monthly hours and total hours across each project.
             Manual column represents hours explicitly assigned by managers; remaining coverage is sourced from the optimization engine.
           </Text>
         </View>
@@ -400,50 +812,100 @@ const StaffUtilizationPdf = ({ report }) => {
           </View>
         </View>
 
-        {unfilledRows.length > 0 && (
+        {groupedUnfilled.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Unfilled Demand</Text>
-            <View style={styles.table}>
-              <View style={[styles.tableRow, styles.tableHeader]}>
-                {["Project", "Category", "Phase", "Hours"].map((label, index, array) => (
+            {groupedUnfilled.map((project) => (
+              <View
+                key={project.projectId}
+                style={[styles.table, styles.projectTable]}
+              >
+                <View style={[styles.tableRow, styles.projectHeaderRow]}>
                   <View
-                    key={label}
                     style={{
                       ...styles.tableCell,
-                      flex: index === 0 ? 1.6 : 1,
-                      borderRightWidth: index === array.length - 1 ? 0 : 1,
+                      flex: unfilledColumns[0].flex,
                     }}
                   >
-                    <Text style={styles.tableHeaderText}>{label}</Text>
+                    <Text style={styles.unfilledProjectTitle}>
+                      {project.projectName}
+                    </Text>
+                  </View>
+                  {projectPhaseColumns.map((column, index) => (
+                    <View
+                      key={column.key}
+                      style={{
+                        ...styles.tableCell,
+                        flex: unfilledColumns[index + 1].flex,
+                        borderRightWidth:
+                          index === projectPhaseColumns.length - 1 ? 0 : 1,
+                      }}
+                    >
+                      <Text style={styles.projectHeaderMetricLabel}>
+                        {column.label}
+                      </Text>
+                      <Text style={styles.projectHeaderMetricValue}>
+                        {formatNumber(project.totals[column.key] || 0)} hrs
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+                <View style={[styles.tableRow, styles.projectStaffHeaderRow]}>
+                  {unfilledColumns.map((column, index) => (
+                    <View
+                      key={column.key}
+                      style={{
+                        ...styles.tableCell,
+                        flex: column.flex,
+                        borderRightWidth:
+                          index === unfilledColumns.length - 1 ? 0 : 1,
+                      }}
+                    >
+                      <Text style={styles.tableHeaderText}>{column.label}</Text>
+                    </View>
+                  ))}
+                </View>
+                {project.categories.map((category, index) => (
+                  <View
+                    key={`${project.projectId}-${category.categoryName}`}
+                    style={[
+                      styles.tableRow,
+                      index % 2 === 1 && styles.tableRowAlt,
+                    ]}
+                  >
+                    <View
+                      style={{
+                        ...styles.tableCell,
+                        flex: unfilledColumns[0].flex,
+                      }}
+                    >
+                      <Text>{category.categoryName}</Text>
+                    </View>
+                    {projectPhaseColumns.map((column, phaseIndex) => (
+                      <View
+                        key={`${category.categoryName}-${column.key}`}
+                        style={{
+                          ...styles.tableCell,
+                          flex: unfilledColumns[phaseIndex + 1].flex,
+                          borderRightWidth:
+                            phaseIndex === projectPhaseColumns.length - 1
+                              ? 0
+                              : 1,
+                        }}
+                      >
+                        <Text>
+                          {formatNumber(
+                            column.key === "totalHours"
+                              ? category.totalHours
+                              : category.phases?.[column.key] || 0
+                          )}
+                        </Text>
+                      </View>
+                    ))}
                   </View>
                 ))}
               </View>
-              {unfilledRows.map((row, index) => (
-                <View
-                  key={`${row.projectId}-${row.categoryName}-${row.phase}-${index}`}
-                  style={[styles.tableRow, index % 2 === 1 && styles.tableRowAlt]}
-                >
-                  <View style={{ ...styles.tableCell, flex: 1.6 }}>
-                    <Text>{row.projectName}</Text>
-                  </View>
-                  <View style={{ ...styles.tableCell, flex: 1 }}>
-                    <Text>{row.categoryName}</Text>
-                  </View>
-                  <View style={{ ...styles.tableCell, flex: 1 }}>
-                    <Text>{row.phase}</Text>
-                  </View>
-                  <View
-                    style={{
-                      ...styles.tableCell,
-                      flex: 1,
-                      borderRightWidth: 0,
-                    }}
-                  >
-                    <Text>{formatNumber(row.hours)}</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
+            ))}
           </View>
         )}
       </Page>
