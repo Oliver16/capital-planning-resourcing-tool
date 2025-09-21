@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
+import { normalizeProjectBudgetBreakdown } from '../utils/projectBudgets';
 
 const toCamelCaseKey = (key) =>
   key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
@@ -81,37 +82,49 @@ const projectFromRow = (row) => {
     camel.continuousHoursByCategory,
     {}
   );
-  return camel;
+  return normalizeProjectBudgetBreakdown(camel);
 };
 
-const projectToRow = (project, organizationId) => ({
-  organization_id: organizationId,
-  name: project.name || '',
-  type: project.type || 'project',
-  project_type_id: normalizeNullable(project.projectTypeId),
-  funding_source_id: normalizeNullable(project.fundingSourceId),
-  total_budget: normalizeNullable(project.totalBudget),
-  design_budget: normalizeNullable(project.designBudget),
-  construction_budget: normalizeNullable(project.constructionBudget),
-  design_duration: normalizeNullable(project.designDuration),
-  construction_duration: normalizeNullable(project.constructionDuration),
-  design_start_date: project.designStartDate || null,
-  construction_start_date: project.constructionStartDate || null,
-  annual_budget: normalizeNullable(project.annualBudget),
-  design_budget_percent: normalizeNullable(project.designBudgetPercent),
-  construction_budget_percent: normalizeNullable(project.constructionBudgetPercent),
-  continuous_pm_hours: normalizeNullable(project.continuousPmHours),
-  continuous_design_hours: normalizeNullable(project.continuousDesignHours),
-  continuous_construction_hours: normalizeNullable(project.continuousConstructionHours),
-  continuous_hours_by_category: serializeContinuousConfig(
-    project.continuousHoursByCategory
-  ),
-  program_start_date: project.programStartDate || null,
-  program_end_date: project.programEndDate || null,
-  priority: project.priority || 'Medium',
-  description: project.description || '',
-  delivery_type: project.deliveryType || 'self-perform',
-});
+const projectToRow = (project, organizationId) => {
+  const normalizedProject = normalizeProjectBudgetBreakdown(project);
+
+  return {
+    organization_id: organizationId,
+    name: normalizedProject.name || '',
+    type: normalizedProject.type || 'project',
+    project_type_id: normalizeNullable(normalizedProject.projectTypeId),
+    funding_source_id: normalizeNullable(normalizedProject.fundingSourceId),
+    total_budget: normalizeNullable(normalizedProject.totalBudget),
+    design_budget: normalizeNullable(normalizedProject.designBudget),
+    construction_budget: normalizeNullable(normalizedProject.constructionBudget),
+    design_duration: normalizeNullable(normalizedProject.designDuration),
+    construction_duration: normalizeNullable(normalizedProject.constructionDuration),
+    design_start_date: normalizedProject.designStartDate || null,
+    construction_start_date: normalizedProject.constructionStartDate || null,
+    annual_budget: normalizeNullable(normalizedProject.annualBudget),
+    design_budget_percent: normalizeNullable(
+      normalizedProject.designBudgetPercent
+    ),
+    construction_budget_percent: normalizeNullable(
+      normalizedProject.constructionBudgetPercent
+    ),
+    continuous_pm_hours: normalizeNullable(normalizedProject.continuousPmHours),
+    continuous_design_hours: normalizeNullable(
+      normalizedProject.continuousDesignHours
+    ),
+    continuous_construction_hours: normalizeNullable(
+      normalizedProject.continuousConstructionHours
+    ),
+    continuous_hours_by_category: serializeContinuousConfig(
+      normalizedProject.continuousHoursByCategory
+    ),
+    program_start_date: normalizedProject.programStartDate || null,
+    program_end_date: normalizedProject.programEndDate || null,
+    priority: normalizedProject.priority || 'Medium',
+    description: normalizedProject.description || '',
+    delivery_type: normalizedProject.deliveryType || 'self-perform',
+  };
+};
 
 const staffCategoryFromRow = (row) => camelizeRecord(row);
 
@@ -288,65 +301,71 @@ export const useDatabase = (defaultData = {}) => {
 
     await ensureEntries('projects', () =>
       (defaultData.projects || []).map((project) => {
+        const normalizedProject = normalizeProjectBudgetBreakdown(project);
+
         const projectTypeName = (defaultData.projectTypes || []).find(
-          (type) => String(type.id) === String(project.projectTypeId)
+          (type) => String(type.id) === String(normalizedProject.projectTypeId)
         )?.name;
         const fundingSourceName = (defaultData.fundingSources || []).find(
-          (source) => String(source.id) === String(project.fundingSourceId)
+          (source) => String(source.id) === String(normalizedProject.fundingSourceId)
         )?.name;
 
         const remappedContinuous = {};
         if (
-          project.type === 'program' &&
-          project.continuousHoursByCategory &&
-          typeof project.continuousHoursByCategory === 'object'
+          normalizedProject.type === 'program' &&
+          normalizedProject.continuousHoursByCategory &&
+          typeof normalizedProject.continuousHoursByCategory === 'object'
         ) {
-          Object.entries(project.continuousHoursByCategory).forEach(([key, value]) => {
-            const categoryName = (defaultData.staffCategories || []).find(
-              (category) => String(category.id) === String(key)
-            )?.name;
-            const categoryId = categoryName
-              ? categoryIdByName.get(categoryName)
-              : null;
+          Object.entries(normalizedProject.continuousHoursByCategory).forEach(
+            ([key, value]) => {
+              const categoryName = (defaultData.staffCategories || []).find(
+                (category) => String(category.id) === String(key)
+              )?.name;
+              const categoryId = categoryName
+                ? categoryIdByName.get(categoryName)
+                : null;
 
-            if (categoryId && value && typeof value === 'object') {
-              remappedContinuous[categoryId] = value;
+              if (categoryId && value && typeof value === 'object') {
+                remappedContinuous[categoryId] = value;
+              }
             }
-          });
+          );
         }
 
         return {
           organization_id: organizationId,
-          name: project.name,
-          type: project.type || 'project',
+          name: normalizedProject.name,
+          type: normalizedProject.type || 'project',
           project_type_id: projectTypeName
             ? projectTypeIdByName.get(projectTypeName) || null
             : null,
           funding_source_id: fundingSourceName
             ? fundingSourceIdByName.get(fundingSourceName) || null
             : null,
-          total_budget: project.totalBudget ?? null,
-          design_budget: project.designBudget ?? null,
-          construction_budget: project.constructionBudget ?? null,
-          design_duration: project.designDuration ?? null,
-          construction_duration: project.constructionDuration ?? null,
-          design_start_date: project.designStartDate || null,
-          construction_start_date: project.constructionStartDate || null,
-          annual_budget: project.annualBudget ?? null,
-          design_budget_percent: project.designBudgetPercent ?? null,
-          construction_budget_percent: project.constructionBudgetPercent ?? null,
-          continuous_pm_hours: project.continuousPmHours ?? null,
-          continuous_design_hours: project.continuousDesignHours ?? null,
-          continuous_construction_hours: project.continuousConstructionHours ?? null,
+          total_budget: normalizedProject.totalBudget ?? null,
+          design_budget: normalizedProject.designBudget ?? null,
+          construction_budget: normalizedProject.constructionBudget ?? null,
+          design_duration: normalizedProject.designDuration ?? null,
+          construction_duration: normalizedProject.constructionDuration ?? null,
+          design_start_date: normalizedProject.designStartDate || null,
+          construction_start_date: normalizedProject.constructionStartDate || null,
+          annual_budget: normalizedProject.annualBudget ?? null,
+          design_budget_percent: normalizedProject.designBudgetPercent ?? null,
+          construction_budget_percent:
+            normalizedProject.constructionBudgetPercent ?? null,
+          continuous_pm_hours: normalizedProject.continuousPmHours ?? null,
+          continuous_design_hours: normalizedProject.continuousDesignHours ?? null,
+          continuous_construction_hours:
+            normalizedProject.continuousConstructionHours ?? null,
           continuous_hours_by_category:
             Object.keys(remappedContinuous).length > 0
               ? JSON.stringify(remappedContinuous)
               : null,
-          program_start_date: project.programStartDate || null,
-          program_end_date: project.programEndDate || null,
-          priority: project.priority || 'Medium',
-          description: project.description || '',
-          delivery_type: project.deliveryType || 'self-perform',
+          program_start_date: normalizedProject.programStartDate || null,
+          program_end_date: normalizedProject.programEndDate || null,
+          priority: normalizedProject.priority || 'Medium',
+          description: normalizedProject.description || '',
+          delivery_type: normalizedProject.deliveryType || 'self-perform',
         };
       })
     );
