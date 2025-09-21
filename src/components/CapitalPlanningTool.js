@@ -70,8 +70,24 @@ const getNumericValue = (value) => {
 };
 
 const CapitalPlanningTool = () => {
-  const { activeOrganization, canEditActiveOrg } = useAuth();
+  const {
+    activeOrganization,
+    activeOrganizationId,
+    activeMembership,
+    canEditActiveOrg,
+    memberships = [],
+    setActiveOrganizationId,
+    signOut,
+    user,
+  } = useAuth();
   const isReadOnly = !canEditActiveOrg;
+  const organizationLabel =
+    activeOrganization?.name || "Select an organization";
+  const roleDescription = activeMembership?.isSuperuser
+    ? "Superuser access"
+    : canEditActiveOrg
+    ? "Editor access"
+    : "Viewer access";
 
   // Database hook with fixed default data
   const defaultData = useMemo(
@@ -1203,25 +1219,75 @@ const CapitalPlanningTool = () => {
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6 relative">
+        <div className="bg-white rounded-lg shadow-sm px-4 py-4 mb-6 relative">
           {isSaving && (
-            <div className="absolute top-6 right-6 flex items-center gap-2 text-blue-600">
+            <div className="absolute top-4 right-4 flex items-center gap-2 text-blue-600">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
               <span className="text-sm">Saving...</span>
             </div>
           )}
-          <div className="flex flex-col items-center text-center">
-            <img
-              src={`${process.env.PUBLIC_URL}/logo.png`}
-              alt="Vector logo"
-              className="h-20 w-auto mb-3"
-            />
-            <p className="text-gray-600">CIP and Resource Planning</p>
-            {activeOrganization?.name && (
-              <p className="mt-1 text-sm text-gray-500">
-                {activeOrganization.name}
-              </p>
-            )}
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex items-center gap-3">
+              <img
+                src={`${process.env.PUBLIC_URL}/logo.png`}
+                alt="Vector logo"
+                className="h-12 w-auto"
+              />
+              <div>
+                <p className="text-sm font-semibold text-gray-900">Vector</p>
+                <p className="text-xs uppercase tracking-wide text-gray-500">
+                  Capital & Resource Planning
+                </p>
+              </div>
+            </div>
+            <div className="text-center xl:flex-1">
+              <h1 className="text-lg font-semibold text-gray-900">
+                {organizationLabel}
+              </h1>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end sm:flex-wrap text-sm">
+              <div className="flex flex-col min-w-[200px]">
+                <label
+                  htmlFor="app-organization-selector"
+                  className="text-xs font-semibold uppercase text-gray-400 tracking-wide"
+                >
+                  Organization
+                </label>
+                <select
+                  id="app-organization-selector"
+                  className="mt-1 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-70"
+                  value={activeOrganizationId ?? ""}
+                  onChange={(event) => setActiveOrganizationId(event.target.value)}
+                  disabled={!memberships.length}
+                >
+                  {memberships.length ? (
+                    memberships.map((membership) => (
+                      <option
+                        key={membership.id}
+                        value={membership.organizationId ?? ""}
+                      >
+                        {membership.organization?.name || "Untitled Organization"}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">No organizations available</option>
+                  )}
+                </select>
+              </div>
+              <div className="text-left sm:text-right">
+                <p className="text-sm font-medium text-gray-900">
+                  {user?.email || "Signed in"}
+                </p>
+                <p className="text-xs text-gray-500">{roleDescription}</p>
+              </div>
+              <button
+                type="button"
+                onClick={signOut}
+                className="inline-flex items-center justify-center rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 shadow-sm transition-colors hover:bg-gray-50"
+              >
+                Sign out
+              </button>
+            </div>
           </div>
         </div>
 
