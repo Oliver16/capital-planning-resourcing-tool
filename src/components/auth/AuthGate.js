@@ -11,6 +11,7 @@ const AuthGate = ({ children }) => {
     activeOrganizationId,
     setActiveOrganizationId,
     activeOrganization,
+    activeMembership,
     canEditActiveOrg,
     user,
     signOut,
@@ -67,7 +68,11 @@ const AuthGate = ({ children }) => {
             <div className="text-right">
               <p className="text-sm font-medium text-slate-700">{user?.email}</p>
               <p className="text-xs text-slate-400">
-                {canEditActiveOrg ? 'Editor access' : 'Viewer access'}
+                {activeMembership?.isSuperuser
+                  ? 'Superuser access'
+                  : canEditActiveOrg
+                    ? 'Editor access'
+                    : 'Viewer access'}
               </p>
             </div>
             <button
