@@ -313,7 +313,7 @@ const ProjectCard = ({
   };
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+    <div className="w-full rounded-xl border border-gray-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-100 p-4">
         <div className="flex min-w-[240px] flex-1 flex-col gap-2">
           <input
@@ -607,7 +607,7 @@ const ProgramCard = ({
   ];
 
   return (
-    <div className="rounded-xl border border-purple-200 bg-white shadow-sm">
+    <div className="w-full rounded-xl border border-purple-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-purple-100 p-4">
         <div className="flex min-w-[240px] flex-1 flex-col gap-2">
           <input
@@ -1399,7 +1399,7 @@ const ProjectsPrograms = ({
                           {projectCount} {projectCount === 1 ? "project" : "projects"}
                         </span>
                       </div>
-                      <div className="grid grid-cols-1 gap-8 sm:[grid-template-columns:repeat(auto-fit,minmax(22rem,1fr))]">
+                      <div className="grid grid-cols-1 gap-8">
                         {group.projects.map((project) => (
                             <ProjectCard
                               key={project.id}
@@ -1426,7 +1426,7 @@ const ProjectsPrograms = ({
                           {programCount} {programCount === 1 ? "program" : "programs"}
                         </span>
                       </div>
-                      <div className="grid grid-cols-1 gap-8 sm:[grid-template-columns:repeat(auto-fit,minmax(22rem,1fr))]">
+                      <div className="grid grid-cols-1 gap-8">
                         {group.programs.map((program) => (
                             <ProgramCard
                               key={program.id}
