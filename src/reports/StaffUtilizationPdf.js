@@ -536,6 +536,173 @@ const StaffUtilizationPdf = ({ report }) => {
     ...projectPhaseColumns,
   ];
 
+  const totalStaffFlex = staffDetailColumns.reduce(
+    (sum, column) => sum + column.flex,
+    0
+  );
+
+  const projectSummaryMap = new Map(
+    projectSummaries.map((summary) => [summary.projectId, summary])
+  );
+
+  const createEmptyTotals = () => ({
+    pmHours: 0,
+    designHours: 0,
+    constructionHours: 0,
+    totalHours: 0,
+  });
+
+  const projectEntriesMap = new Map();
+
+  projectSummaries.forEach((summary) => {
+    projectEntriesMap.set(summary.projectId, {
+      projectId: summary.projectId,
+      projectName: summary.projectName,
+      staff: [],
+      totals: {
+        pmHours: Number(summary.assigned?.pmHours || 0),
+        designHours: Number(summary.assigned?.designHours || 0),
+        constructionHours: Number(summary.assigned?.constructionHours || 0),
+        totalHours: Number(summary.assigned?.totalHours || 0),
+      },
+    });
+  });
+
+  assignments.forEach((assignment) => {
+    if (!projectEntriesMap.has(assignment.projectId)) {
+      projectEntriesMap.set(assignment.projectId, {
+        projectId: assignment.projectId,
+        projectName: assignment.projectName,
+        staff: [],
+        totals: createEmptyTotals(),
+      });
+    }
+    projectEntriesMap.get(assignment.projectId).staff.push(assignment);
+  });
+
+  const sumStaffTotals = (staff) =>
+    staff.reduce(
+      (acc, entry) => {
+        acc.pmHours += Number(entry.totals?.pmHours || 0);
+        acc.designHours += Number(entry.totals?.designHours || 0);
+        acc.constructionHours += Number(entry.totals?.constructionHours || 0);
+        acc.totalHours += Number(entry.totals?.totalHours || 0);
+        return acc;
+      },
+      createEmptyTotals()
+    );
+
+  const projectEntries = Array.from(projectEntriesMap.values())
+    .map((entry) => {
+      const summary = projectSummaryMap.get(entry.projectId);
+      const staffTotals = sumStaffTotals(entry.staff);
+      const totals = summary
+        ? {
+            pmHours:
+              Number(summary.assigned?.pmHours || 0) || staffTotals.pmHours,
+            designHours:
+              Number(summary.assigned?.designHours || 0) ||
+              staffTotals.designHours,
+            constructionHours:
+              Number(summary.assigned?.constructionHours || 0) ||
+              staffTotals.constructionHours,
+            totalHours:
+              Number(summary.assigned?.totalHours || 0) ||
+              staffTotals.totalHours ||
+              Number(summary.assigned?.pmHours || 0) +
+                Number(summary.assigned?.designHours || 0) +
+                Number(summary.assigned?.constructionHours || 0),
+          }
+        : staffTotals;
+
+      const demandTotal = Number(summary?.demand?.totalHours || 0);
+      const assignedTotal = Number(totals.totalHours || 0);
+      const coverage = demandTotal
+        ? Math.min(1, assignedTotal / demandTotal) * 100
+        : assignedTotal > 0
+        ? 100
+        : 0;
+
+      return {
+        ...entry,
+        totals: {
+          pmHours: Number(totals.pmHours || 0),
+          designHours: Number(totals.designHours || 0),
+          constructionHours: Number(totals.constructionHours || 0),
+          totalHours: Number(totals.totalHours || 0),
+        },
+        coverage,
+      };
+    })
+    .sort((a, b) => a.projectName.localeCompare(b.projectName));
+
+  const phaseKeyMap = {
+    pm: "pmHours",
+    design: "designHours",
+    construction: "constructionHours",
+  };
+
+  const groupedUnfilledMap = new Map();
+  unfilledRows.forEach((row) => {
+    const projectId = row.projectId;
+    if (!projectId) {
+      return;
+    }
+
+    if (!groupedUnfilledMap.has(projectId)) {
+      groupedUnfilledMap.set(projectId, {
+        projectId,
+        projectName: row.projectName,
+        totals: createEmptyTotals(),
+        categories: new Map(),
+      });
+    }
+
+    const projectEntry = groupedUnfilledMap.get(projectId);
+    const categoryName = row.categoryName || "Uncategorized";
+
+    if (!projectEntry.categories.has(categoryName)) {
+      projectEntry.categories.set(categoryName, {
+        categoryName,
+        phases: createEmptyTotals(),
+        totalHours: 0,
+      });
+    }
+
+    const categoryEntry = projectEntry.categories.get(categoryName);
+    const hours = Number(row.hours || 0);
+    if (hours <= 0) {
+      return;
+    }
+
+    const phaseKey = phaseKeyMap[row.phase] || row.phase;
+    if (!categoryEntry.phases[phaseKey]) {
+      categoryEntry.phases[phaseKey] = 0;
+    }
+    categoryEntry.phases[phaseKey] += hours;
+    categoryEntry.totalHours += hours;
+
+    if (!projectEntry.totals[phaseKey]) {
+      projectEntry.totals[phaseKey] = 0;
+    }
+    projectEntry.totals[phaseKey] += hours;
+    projectEntry.totals.totalHours += hours;
+  });
+
+  const groupedUnfilled = Array.from(groupedUnfilledMap.values())
+    .map((entry) => ({
+      ...entry,
+      categories: Array.from(entry.categories.values()).sort((a, b) =>
+        a.categoryName.localeCompare(b.categoryName)
+      ),
+    }))
+    .sort((a, b) => a.projectName.localeCompare(b.projectName));
+
+  const unfilledColumns = [
+    { key: "category", label: "Category", flex: 1.8 },
+    ...projectPhaseColumns,
+  ];
+
   return (
     <Document>
       <Page size="A4" style={styles.page}>

@@ -2,7 +2,6 @@ import React from "react";
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 
 const COLUMN_DEFINITIONS = [
-  { key: "id", label: "Project ID", flex: 0.8 },
   { key: "name", label: "Project / Program", flex: 1.8 },
   { key: "type", label: "Type", flex: 0.6 },
   { key: "projectType", label: "Project Type", flex: 1.1 },
@@ -82,6 +81,25 @@ const styles = StyleSheet.create({
   tableRowAlt: {
     backgroundColor: "#f9fafb",
   },
+  categoryHeaderRow: {
+    backgroundColor: "#e5e7eb",
+  },
+  categoryHeaderCell: {
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+  },
+  categoryHeaderText: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: "#111827",
+  },
+  summaryRow: {
+    backgroundColor: "#f3f4f6",
+  },
+  summaryCell: {
+    fontWeight: 600,
+  },
   cell: {
     paddingVertical: 5,
     paddingHorizontal: 6,
@@ -122,6 +140,112 @@ const getCellStyle = (column) => ({
   flexBasis: 0,
 });
 
+const parseDateValue = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.getTime();
+};
+
+const getRowStartTimestamp = (row = {}) => {
+  const designStart = parseDateValue(row.designStart);
+  const constructionStart = parseDateValue(row.constructionStart);
+
+  if (designStart != null && constructionStart != null) {
+    return Math.min(designStart, constructionStart);
+  }
+
+  if (designStart != null) {
+    return designStart;
+  }
+
+  if (constructionStart != null) {
+    return constructionStart;
+  }
+
+  return Number.POSITIVE_INFINITY;
+};
+
+const parseCurrencyValue = (value) => {
+  if (value === null || value === undefined || value === "") {
+    return 0;
+  }
+
+  const numeric = Number(String(value).replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(numeric) ? numeric : 0;
+};
+
+const formatCurrencyTotal = (value) => {
+  if (!Number.isFinite(value)) {
+    return "";
+  }
+
+  if (value === 0) {
+    return "$0";
+  }
+
+  const absolute = Math.abs(value);
+  const formatted = absolute.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  return `${value < 0 ? "-$" : "$"}${formatted}`;
+};
+
+const groupRowsByCategory = (rows = []) => {
+  const groups = new Map();
+
+  rows.forEach((row) => {
+    const category = row.projectType || "Uncategorized";
+    if (!groups.has(category)) {
+      groups.set(category, []);
+    }
+    groups.get(category).push(row);
+  });
+
+  const sortedGroups = Array.from(groups.entries()).sort(([a], [b]) =>
+    String(a || "").localeCompare(String(b || ""))
+  );
+
+  return sortedGroups.map(([category, groupRows]) => {
+    const sortedRows = [...groupRows].sort((a, b) => {
+      const startA = getRowStartTimestamp(a);
+      const startB = getRowStartTimestamp(b);
+
+      if (startA !== startB) {
+        if (startA === Number.POSITIVE_INFINITY) {
+          return 1;
+        }
+        if (startB === Number.POSITIVE_INFINITY) {
+          return -1;
+        }
+        return startA - startB;
+      }
+
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    });
+
+    const totalBudgetValue = sortedRows.reduce(
+      (sum, row) => sum + parseCurrencyValue(row.totalBudget),
+      0
+    );
+    const annualBudgetValue = sortedRows.reduce(
+      (sum, row) => sum + parseCurrencyValue(row.annualBudget),
+      0
+    );
+
+    return {
+      category,
+      rows: sortedRows,
+      totals: {
+        totalBudgetValue,
+        annualBudgetValue,
+        totalBudgetLabel: formatCurrencyTotal(totalBudgetValue),
+        annualBudgetLabel: formatCurrencyTotal(annualBudgetValue),
+      },
+    };
+  });
+};
+
 const renderMetaValue = (label, value) => (
   <View key={label} style={styles.metaItem}>
     <Text style={styles.metaLabel}>{label}</Text>
@@ -133,6 +257,8 @@ const CipReportPdf = ({ rows = [], meta = {}, generatedOn = new Date() }) => {
   const generatedLabel = formatDateLabel(generatedOn);
   const totalProjects = meta.projectCount || 0;
   const totalPrograms = meta.programCount || 0;
+  const groupedRows = React.useMemo(() => groupRowsByCategory(rows), [rows]);
+  let zebraIndex = 0;
 
   return (
     <Document>
@@ -167,23 +293,75 @@ const CipReportPdf = ({ rows = [], meta = {}, generatedOn = new Date() }) => {
             ))}
           </View>
 
-          {rows.length > 0 ? (
-            rows.map((row, index) => (
-              <View
-                key={`${row.id || row.name || "row"}-${index}`}
-                style={[
-                  styles.tableRow,
-                  index % 2 === 1 ? styles.tableRowAlt : null,
-                ]}
-              >
-                {COLUMN_DEFINITIONS.map((column) => (
-                  <View key={column.key} style={{ ...getCellStyle(column), ...styles.cell }}>
-                    <Text>
-                      {row[column.key] != null ? String(row[column.key]) : ""}
+          {groupedRows.length > 0 ? (
+            groupedRows.map((group) => (
+              <React.Fragment key={group.category || "uncategorized"}>
+                <View style={[styles.tableRow, styles.categoryHeaderRow]}>
+                  <View style={styles.categoryHeaderCell}>
+                    <Text style={styles.categoryHeaderText}>
+                      {group.category || "Uncategorized"}
                     </Text>
                   </View>
-                ))}
-              </View>
+                </View>
+                {group.rows.map((row, rowIndex) => {
+                  const rowKey =
+                    row.id != null
+                      ? `row-${row.id}`
+                      : `${group.category || "uncategorized"}-${rowIndex}`;
+                  const isAltRow = zebraIndex % 2 === 1;
+                  zebraIndex += 1;
+
+                  return (
+                    <View
+                      key={rowKey}
+                      style={[
+                        styles.tableRow,
+                        isAltRow ? styles.tableRowAlt : null,
+                      ]}
+                    >
+                      {COLUMN_DEFINITIONS.map((column) => (
+                        <View
+                          key={column.key}
+                          style={{ ...getCellStyle(column), ...styles.cell }}
+                        >
+                          <Text>
+                            {row[column.key] != null ? String(row[column.key]) : ""}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  );
+                })}
+                <View
+                  key={`${group.category || "uncategorized"}-summary`}
+                  style={[styles.tableRow, styles.summaryRow]}
+                >
+                  {COLUMN_DEFINITIONS.map((column) => {
+                    let value = "";
+
+                    if (column.key === "name") {
+                      value = `${group.category || "Uncategorized"} Total`;
+                    } else if (column.key === "totalBudget") {
+                      value = group.totals.totalBudgetLabel;
+                    } else if (column.key === "annualBudget") {
+                      value = group.totals.annualBudgetLabel;
+                    }
+
+                    return (
+                      <View
+                        key={column.key}
+                        style={{
+                          ...getCellStyle(column),
+                          ...styles.cell,
+                          ...styles.summaryCell,
+                        }}
+                      >
+                        <Text>{value}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </React.Fragment>
             ))
           ) : (
             <View style={styles.tableRow}>
