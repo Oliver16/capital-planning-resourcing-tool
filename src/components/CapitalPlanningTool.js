@@ -28,6 +28,7 @@ import PeopleTab from "./tabs/PeopleTab";
 import ScenariosTab from "./tabs/ScenariosTab";
 import ReportsTab from "./tabs/ReportsTab";
 import StaffAssignmentsTab from "./tabs/StaffAssignmentsTab";
+import FinancialModelingTab from "./tabs/FinancialModelingTab";
 import { isProjectOrProgram } from "../utils/projectTypes.js";
 
 // Import data and utilities
@@ -49,6 +50,12 @@ import { useDatabase } from "../hooks/useDatabase";
 import { useAuth } from "../context/AuthContext";
 import { buildStaffAssignmentPlan } from "../utils/staffAssignments";
 import { normalizeProjectBudgetBreakdown } from "../utils/projectBudgets";
+import {
+  generateDefaultOperatingBudget,
+  ensureBudgetYears,
+  generateDefaultFundingAssumptions,
+  createDefaultFundingAssumption,
+} from "../utils/financialModeling";
 
 const MAX_MONTHLY_FTE_HOURS = 2080 / 12;
 const CAPACITY_FIELDS = [
@@ -159,6 +166,19 @@ const CapitalPlanningTool = () => {
   );
   const [staffAllocations, setStaffAllocations] = useState({});
   const [staffMembers, setStaffMembers] = useState(defaultStaffMembers);
+  const currentYear = useMemo(() => new Date().getFullYear(), []);
+  const [financialConfig, setFinancialConfig] = useState(() => ({
+    startYear: currentYear,
+    projectionYears: 10,
+    startingCashBalance: 2500000,
+    targetCoverageRatio: 1.5,
+  }));
+  const [operatingBudget, setOperatingBudget] = useState(() =>
+    generateDefaultOperatingBudget(currentYear, 5)
+  );
+  const [fundingSourceAssumptions, setFundingSourceAssumptions] = useState(() =>
+    generateDefaultFundingAssumptions(defaultFundingSources)
+  );
   const [staffAssignmentOverrides, setStaffAssignmentOverrides] = useState({});
   const [activeTab, setActiveTab] = useState("overview");
   const [activeDropdown, setActiveDropdown] = useState(null);
@@ -276,6 +296,50 @@ const CapitalPlanningTool = () => {
     getStaffMembers,
     getStaffAssignments,
   ]);
+
+  useEffect(() => {
+    setOperatingBudget((previous) =>
+      ensureBudgetYears(
+        previous,
+        financialConfig.startYear,
+        financialConfig.projectionYears
+      )
+    );
+  }, [financialConfig.startYear, financialConfig.projectionYears]);
+
+  useEffect(() => {
+    setFundingSourceAssumptions((previous) => {
+      const existingMap = new Map();
+
+      (previous || []).forEach((assumption) => {
+        if (!assumption) {
+          return;
+        }
+        const key =
+          assumption.fundingSourceId === null ||
+          assumption.fundingSourceId === undefined
+            ? "unassigned"
+            : String(assumption.fundingSourceId);
+        existingMap.set(key, assumption);
+      });
+
+      return fundingSources.map((source) => {
+        const key =
+          source.id === null || source.id === undefined
+            ? "unassigned"
+            : String(source.id);
+        const existing = existingMap.get(key);
+        if (existing) {
+          return {
+            ...existing,
+            fundingSourceId: source.id,
+            sourceName: source.name,
+          };
+        }
+        return createDefaultFundingAssumption(source);
+      });
+    });
+  }, [fundingSources]);
 
   useEffect(() => {
     if (!activeDropdown) {
@@ -467,6 +531,87 @@ const CapitalPlanningTool = () => {
       ),
     [resourceForecast, staffCategories, staffAvailabilityByCategory]
   );
+
+  const updateFinancialConfiguration = (updates) => {
+    setFinancialConfig((previous) => ({
+      ...previous,
+      ...updates,
+    }));
+  };
+
+  const updateOperatingBudgetValue = (year, field, value) => {
+    setOperatingBudget((previous) =>
+      previous.map((row) => {
+        if (!row || row.year !== year) {
+          return row;
+        }
+
+        let nextValue = value;
+        if (field === "rateIncreasePercent") {
+          nextValue = Number(value) || 0;
+        } else {
+          nextValue = getNumericValue(value);
+        }
+
+        return {
+          ...row,
+          [field]: nextValue,
+        };
+      })
+    );
+  };
+
+  const extendProjectionYears = () => {
+    setFinancialConfig((previous) => ({
+      ...previous,
+      projectionYears: (previous.projectionYears || 0) + 1,
+    }));
+  };
+
+  const updateFundingSourceAssumption = (fundingSourceId, field, value) => {
+    setFundingSourceAssumptions((previous) =>
+      previous.map((assumption) => {
+        if (!assumption) {
+          return assumption;
+        }
+
+        const matches =
+          assumption.fundingSourceId === fundingSourceId ||
+          String(assumption.fundingSourceId) === String(fundingSourceId);
+
+        if (!matches) {
+          return assumption;
+        }
+
+        if (field === "financingType") {
+          return {
+            ...assumption,
+            financingType: value,
+          };
+        }
+
+        if (field === "interestRate") {
+          return {
+            ...assumption,
+            interestRate: getNumericValue(value),
+          };
+        }
+
+        if (field === "termYears") {
+          const numeric = Math.max(0, Math.round(getNumericValue(value)));
+          return {
+            ...assumption,
+            termYears: numeric,
+          };
+        }
+
+        return {
+          ...assumption,
+          [field]: value,
+        };
+      })
+    );
+  };
 
   // Project management functions
   const addProject = async (type = "project") => {
@@ -1340,6 +1485,11 @@ const CapitalPlanningTool = () => {
                   label: "Resource Forecast",
                   icon: AlertTriangle,
                 },
+                {
+                  id: "finance",
+                  label: "Financial Modeling",
+                  icon: DollarSign,
+                },
                 { id: "reports", label: "Reports", icon: FileSpreadsheet },
                 { id: "settings", label: "Settings", icon: Settings },
               ].map((tab) => {
@@ -1552,6 +1702,22 @@ const CapitalPlanningTool = () => {
               staffingGaps={staffingGaps}
               timeHorizon={timeHorizon}
               setTimeHorizon={setTimeHorizon}
+            />
+          )}
+
+          {activeTab === "finance" && (
+            <FinancialModelingTab
+              projects={projects}
+              projectTimelines={projectTimelines}
+              fundingSources={fundingSources}
+              operatingBudget={operatingBudget}
+              onUpdateOperatingBudget={updateOperatingBudgetValue}
+              onExtendProjection={extendProjectionYears}
+              financialConfig={financialConfig}
+              onUpdateFinancialConfig={updateFinancialConfiguration}
+              fundingSourceAssumptions={fundingSourceAssumptions}
+              onUpdateFundingSourceAssumption={updateFundingSourceAssumption}
+              isReadOnly={isReadOnly}
             />
           )}
 
