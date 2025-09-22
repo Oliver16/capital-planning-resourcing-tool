@@ -161,6 +161,40 @@ const formatPercent = (value, digits = 1) => {
   return `${numeric.toFixed(digits)}%`;
 };
 
+const getAxisPrecision = (maxValue, divisions) => {
+  const safeMax = Math.max(0, Number(maxValue) || 0);
+  const safeDivisions = Math.max(1, divisions);
+
+  if (safeMax <= 0) {
+    return 0;
+  }
+
+  const step = safeMax / safeDivisions;
+
+  if (!Number.isFinite(step) || step <= 0) {
+    return 0;
+  }
+
+  if (step >= 1) {
+    return 0;
+  }
+
+  const magnitude = Math.ceil(-Math.log10(step));
+  const precision = Math.min(4, Math.max(0, magnitude + 1));
+
+  return precision;
+};
+
+const formatAxisValue = (value, maxValue, divisions) => {
+  const numeric = Number(value) || 0;
+  const precision = getAxisPrecision(maxValue, divisions);
+
+  return numeric.toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: precision,
+  });
+};
+
 const DEFAULT_QUARTER_SPAN = 12;
 
 const formatDateLabel = (value) => {
@@ -392,7 +426,7 @@ const SummaryChart = ({ data = [] }) => {
                 fill="#6b7280"
                 textAnchor="end"
               >
-                {formatNumber(value, 0)}
+                {formatAxisValue(value, maxValue, yTicks)}
               </SvgText>
             </React.Fragment>
           );
@@ -471,6 +505,7 @@ const CategoryChart = ({ name, data = [] }) => {
 
   const xLabelCount = Math.min(4, data.length);
   const xInterval = Math.max(1, Math.floor(data.length / xLabelCount));
+  const yDivisions = 3;
 
   const buildLinePoints = (key) =>
     data
@@ -558,8 +593,8 @@ const CategoryChart = ({ name, data = [] }) => {
         />
 
         {/* Horizontal grid */}
-        {Array.from({ length: 4 }).map((_, index) => {
-          const value = (maxValue / 3) * index;
+        {Array.from({ length: yDivisions + 1 }).map((_, index) => {
+          const value = (maxValue / yDivisions) * index;
           const y = getYPosition(value, maxValue, chartHeight, paddingTop);
           return (
             <React.Fragment key={`cat-y-${index}`}>
@@ -578,7 +613,7 @@ const CategoryChart = ({ name, data = [] }) => {
                 fill="#6b7280"
                 textAnchor="end"
               >
-                {formatNumber(value, 0)}
+                {formatAxisValue(value, maxValue, yDivisions)}
               </SvgText>
             </React.Fragment>
           );
