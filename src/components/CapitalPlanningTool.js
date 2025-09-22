@@ -163,7 +163,7 @@ const CapitalPlanningTool = () => {
   const [activeTab, setActiveTab] = useState("overview");
   const [activeDropdown, setActiveDropdown] = useState(null);
   const dropdownRefs = useRef({});
-  const [timeHorizon, setTimeHorizon] = useState(36);
+  const [timeHorizon, setTimeHorizon] = useState(60);
   const [scheduleHorizon, setScheduleHorizon] = useState(36);
   const [isSaving, setIsSaving] = useState(false);
   const [categoryCapacityWarnings, setCategoryCapacityWarnings] = useState({});
