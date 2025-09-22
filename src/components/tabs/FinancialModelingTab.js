@@ -225,6 +225,103 @@ const FinancialModelingTab = ({
 
   const targetCoverage = financialConfig?.targetCoverageRatio || 0;
 
+  const budgetLineItems = [
+    { key: "operatingRevenue", label: "Operating Revenue", min: 0 },
+    { key: "rateIncreasePercent", label: "Rate Increase %", step: 0.1 },
+    { key: "nonOperatingRevenue", label: "Non-Operating Revenue" },
+    { key: "omExpenses", label: "O&M Expenses" },
+    { key: "salaries", label: "Salaries" },
+    { key: "adminExpenses", label: "Admin" },
+    { key: "existingDebtService", label: "Existing Debt Service", min: 0 },
+  ];
+
+  const forecastLineItems = [
+    {
+      key: "operatingRevenue",
+      label: "Operating Revenue",
+      renderCell: (row) => formatCurrency(row.adjustedOperatingRevenue),
+    },
+    {
+      key: "operatingExpenses",
+      label: "Operating Expenses",
+      renderCell: (row) => formatCurrency(row.totalOperatingExpenses),
+    },
+    {
+      key: "nonOperatingRevenue",
+      label: "Non-Operating Revenue",
+      renderCell: (row) => formatCurrency(row.nonOperatingRevenue),
+    },
+    {
+      key: "netBeforeDebt",
+      label: "Net Before Debt",
+      renderCell: (row) => formatCurrency(row.netRevenueBeforeDebt),
+    },
+    {
+      key: "debtService",
+      label: "Total Debt Service",
+      renderCell: (row) => (
+        <div className="flex flex-col items-end text-slate-900">
+          <span>{formatCurrency(row.totalDebtService)}</span>
+          {row.newDebtService > 0 ? (
+            <span className="text-xs text-slate-500">
+              New: {formatCurrency(row.newDebtService)}
+            </span>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      key: "coverage",
+      label: "Debt Service Coverage",
+      renderCell: (row) => {
+        if (row.coverageRatio === null) {
+          return <span className="text-slate-400">—</span>;
+        }
+        const coverageClass =
+          row.coverageRatio < targetCoverage ? "text-red-600" : "text-slate-900";
+        return (
+          <span className={`font-medium ${coverageClass}`}>
+            {formatCoverageRatio(row.coverageRatio, 2)}
+          </span>
+        );
+      },
+    },
+    {
+      key: "cipSpend",
+      label: "CIP Spend",
+      renderCell: (row) => formatCurrency(row.cipSpend),
+    },
+    {
+      key: "cashFundedCapex",
+      label: "Cash-Funded CIP",
+      renderCell: (row) => formatCurrency(row.cashFundedCapex),
+    },
+    {
+      key: "endingCash",
+      label: "Ending Cash Balance",
+      renderCell: (row) => (
+        <span className="font-medium text-slate-900">
+          {formatCurrency(row.endingCashBalance)}
+        </span>
+      ),
+    },
+    {
+      key: "rateIncreaseNeed",
+      label: "Rate Increase Need",
+      renderCell: (row) => {
+        const rateNeeded = row.additionalRateIncreaseNeeded || 0;
+        if (rateNeeded > 0) {
+          return (
+            <span className="text-amber-600">
+              {formatPercent(rateNeeded, { decimals: 1 })}
+            </span>
+          );
+        }
+        return <span className="text-slate-500">Met</span>;
+      },
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200 p-6 shadow-sm">
@@ -365,87 +462,43 @@ const FinancialModelingTab = ({
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
               <tr>
-                <th className="px-3 py-2 text-left font-medium text-slate-600">Year</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-600">Operating Revenue</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-600">Rate Increase %</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-600">Non-Operating Revenue</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-600">O&amp;M Expenses</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-600">Salaries</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-600">Admin</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-600">Existing Debt Service</th>
+                <th className="px-3 py-2 text-left font-medium text-slate-600">Line Item</th>
+                {operatingBudget.map((row) => (
+                  <th
+                    key={row.year}
+                    className="px-3 py-2 text-right font-medium text-slate-600"
+                  >
+                    FY {row.year}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {operatingBudget.map((row) => (
-                <tr key={row.year} className="odd:bg-white even:bg-slate-50/40">
-                  <td className="whitespace-nowrap px-3 py-2 font-medium text-slate-800">
-                    FY {row.year}
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="number"
-                      value={row.operatingRevenue}
-                      onChange={handleBudgetChange(row.year, "operatingRevenue")}
-                      className={`${numberInputClasses} ${isReadOnly ? readOnlyClasses : ""}`}
-                      disabled={isReadOnly}
-                      min={0}
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={row.rateIncreasePercent || 0}
-                      onChange={handleBudgetChange(row.year, "rateIncreasePercent")}
-                      className={`${numberInputClasses} ${isReadOnly ? readOnlyClasses : ""}`}
-                      disabled={isReadOnly}
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="number"
-                      value={row.nonOperatingRevenue}
-                      onChange={handleBudgetChange(row.year, "nonOperatingRevenue")}
-                      className={`${numberInputClasses} ${isReadOnly ? readOnlyClasses : ""}`}
-                      disabled={isReadOnly}
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="number"
-                      value={row.omExpenses}
-                      onChange={handleBudgetChange(row.year, "omExpenses")}
-                      className={`${numberInputClasses} ${isReadOnly ? readOnlyClasses : ""}`}
-                      disabled={isReadOnly}
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="number"
-                      value={row.salaries}
-                      onChange={handleBudgetChange(row.year, "salaries")}
-                      className={`${numberInputClasses} ${isReadOnly ? readOnlyClasses : ""}`}
-                      disabled={isReadOnly}
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="number"
-                      value={row.adminExpenses}
-                      onChange={handleBudgetChange(row.year, "adminExpenses")}
-                      className={`${numberInputClasses} ${isReadOnly ? readOnlyClasses : ""}`}
-                      disabled={isReadOnly}
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="number"
-                      value={row.existingDebtService}
-                      onChange={handleBudgetChange(row.year, "existingDebtService")}
-                      className={`${numberInputClasses} ${isReadOnly ? readOnlyClasses : ""}`}
-                      disabled={isReadOnly}
-                    />
-                  </td>
+              {budgetLineItems.map((item) => (
+                <tr key={item.key} className="odd:bg-white even:bg-slate-50/40">
+                  <td className="px-3 py-2 font-medium text-slate-700">{item.label}</td>
+                  {operatingBudget.map((row) => {
+                    const rawValue = row?.[item.key];
+                    const displayValue =
+                      rawValue === undefined || rawValue === null || rawValue === ""
+                        ? 0
+                        : rawValue;
+                    return (
+                      <td key={`${item.key}-${row.year}`} className="px-3 py-2">
+                        <input
+                          type="number"
+                          step={item.step ?? undefined}
+                          value={displayValue}
+                          onChange={handleBudgetChange(row.year, item.key)}
+                          className={`${numberInputClasses} text-right ${
+                            isReadOnly ? readOnlyClasses : ""
+                          }`}
+                          disabled={isReadOnly}
+                          min={item.min ?? undefined}
+                        />
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
@@ -532,63 +585,31 @@ const FinancialModelingTab = ({
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
               <tr>
-                <th className="px-3 py-2 text-left font-medium text-slate-600">Year</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-600">Operating Revenue</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-600">Operating Expenses</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-600">Non-Operating Revenue</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-600">Net Before Debt</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-600">Debt Service</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-600">Coverage</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-600">CIP Spend</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-600">Cash-Funded CIP</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-600">Ending Cash</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-600">Rate Increase Need</th>
+                <th className="px-3 py-2 text-left font-medium text-slate-600">Line Item</th>
+                {forecast.map((row) => (
+                  <th
+                    key={row.year}
+                    className="px-3 py-2 text-right font-medium text-slate-600"
+                  >
+                    FY {row.year}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {forecast.map((row) => {
-                const coverageClass =
-                  row.coverageRatio !== null && row.coverageRatio < targetCoverage
-                    ? "text-red-600"
-                    : "text-slate-900";
-                const rateNeeded = row.additionalRateIncreaseNeeded || 0;
-                return (
-                  <tr key={row.year} className="odd:bg-white even:bg-slate-50/40">
-                    <td className="whitespace-nowrap px-3 py-2 font-medium text-slate-800">
-                      FY {row.year}
+              {forecastLineItems.map((item) => (
+                <tr key={item.key} className="odd:bg-white even:bg-slate-50/40">
+                  <td className="px-3 py-2 font-medium text-slate-700">{item.label}</td>
+                  {forecast.map((row) => (
+                    <td
+                      key={`${item.key}-${row.year}`}
+                      className="px-3 py-2 text-right align-top"
+                    >
+                      {item.renderCell(row)}
                     </td>
-                    <td className="px-3 py-2">{formatCurrency(row.adjustedOperatingRevenue)}</td>
-                    <td className="px-3 py-2">{formatCurrency(row.totalOperatingExpenses)}</td>
-                    <td className="px-3 py-2">{formatCurrency(row.nonOperatingRevenue)}</td>
-                    <td className="px-3 py-2">{formatCurrency(row.netRevenueBeforeDebt)}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex flex-col text-slate-900">
-                        <span>{formatCurrency(row.totalDebtService)}</span>
-                        {row.newDebtService > 0 ? (
-                          <span className="text-xs text-slate-500">
-                            New: {formatCurrency(row.newDebtService)}
-                          </span>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className={`px-3 py-2 font-medium ${coverageClass}`}>
-                      {row.coverageRatio !== null
-                        ? formatCoverageRatio(row.coverageRatio, 2)
-                        : "—"}
-                    </td>
-                    <td className="px-3 py-2">{formatCurrency(row.cipSpend)}</td>
-                    <td className="px-3 py-2">{formatCurrency(row.cashFundedCapex)}</td>
-                    <td className="px-3 py-2 font-medium text-slate-900">
-                      {formatCurrency(row.endingCashBalance)}
-                    </td>
-                    <td className="px-3 py-2">
-                      {rateNeeded > 0
-                        ? formatPercent(rateNeeded, { decimals: 1 })
-                        : "Met"}
-                    </td>
-                  </tr>
-                );
-              })}
+                  ))}
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
