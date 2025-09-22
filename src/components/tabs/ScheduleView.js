@@ -440,9 +440,13 @@ const ScheduleView = ({
     for (let i = 0; i <= totalYears; i += 1) {
       const markerDate = new Date(scheduleStart);
       markerDate.setMonth(markerDate.getMonth() + i * 12);
+      const offsetPercent = Math.min(100, (i * 12 * 100) / totalMonths);
+
       markers.push({
         label: markerDate.getFullYear(),
-        offsetPercent: Math.min(100, (i * 12 * 100) / totalMonths),
+        offsetPercent,
+        isFirst: i === 0,
+        isLast: i === totalYears,
       });
     }
 
@@ -765,7 +769,7 @@ const ScheduleView = ({
           >
             <div className="sticky top-0 z-30 space-y-3">
               <div
-                className={`pointer-events-auto rounded-lg border border-gray-200 bg-white/90 px-4 py-3 backdrop-blur transition-shadow ${
+                className={`pointer-events-auto rounded-lg border border-gray-200 bg-white px-4 py-3 transition-shadow ${
                   isLegendPinned ? "shadow-md" : "shadow-sm"
                 }`}
               >
@@ -773,7 +777,7 @@ const ScheduleView = ({
               </div>
               <div ref={timelineOverlayRef} className="pointer-events-none">
                 <div
-                  className={`relative h-12 rounded-lg border border-gray-200 bg-white/90 px-0 py-2 backdrop-blur transition-shadow ${
+                  className={`relative h-12 rounded-lg border border-gray-200 bg-white px-0 py-2 transition-shadow ${
                     isLegendPinned ? "shadow-md" : "shadow-sm"
                   }`}
                 >
@@ -785,8 +789,16 @@ const ScheduleView = ({
                         style={{ left: `${marker.offsetPercent}%` }}
                       />
                       <div
-                        className="absolute top-[1.9rem] -translate-x-1/2 text-xs text-gray-500"
-                        style={{ left: `${marker.offsetPercent}%` }}
+                        className="absolute top-[1.9rem] whitespace-nowrap text-xs text-gray-500"
+                        style={{
+                          left: `${marker.offsetPercent}%`,
+                          transform: marker.isFirst
+                            ? "translateX(0%)"
+                            : marker.isLast
+                            ? "translateX(-100%)"
+                            : "translateX(-50%)",
+                          textAlign: marker.isFirst ? "left" : marker.isLast ? "right" : "center",
+                        }}
                       >
                         {marker.label}
                       </div>
