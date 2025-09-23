@@ -4,7 +4,7 @@ import {
   formatPercent,
   formatCoverageRatio,
 } from "../../../utils/financialModeling";
-import { ShieldCheck, CircleDollarSign, PiggyBank, LineChart } from "lucide-react";
+import { ShieldCheck, CircleDollarSign, PiggyBank, LineChart, Clock } from "lucide-react";
 
 const SummaryCard = ({ title, value, description, icon: Icon, highlight = false }) => (
   <div
@@ -22,6 +22,14 @@ const SummaryCard = ({ title, value, description, icon: Icon, highlight = false 
     </div>
   </div>
 );
+
+const formatDaysCash = (value) => {
+  if (value === null || value === undefined) {
+    return "—";
+  }
+  const rounded = Math.round(value);
+  return `${Number.isFinite(rounded) ? rounded.toLocaleString() : "0"} days`;
+};
 
 const ProFormaView = ({ forecastResult, financialConfig }) => {
   const { forecast = [], totals = {} } = forecastResult || {};
@@ -69,6 +77,14 @@ const ProFormaView = ({ forecastResult, financialConfig }) => {
           totals.maxAdditionalRateIncrease > 0 ||
           (Number.isFinite(totals.minCoverageRatio) &&
             totals.minCoverageRatio < financialConfig.targetCoverageRatio),
+      },
+      {
+        title: "Min Days Cash on Hand",
+        value: formatDaysCash(totals.minDaysCashOnHand),
+        description: "Liquidity cushion calculated from ending cash versus operating expenses.",
+        icon: Clock,
+        highlight:
+          Number.isFinite(totals.minDaysCashOnHand) && totals.minDaysCashOnHand < 180,
       },
     ],
     [totals, financialConfig.targetCoverageRatio]
@@ -190,6 +206,13 @@ const ProFormaView = ({ forecastResult, financialConfig }) => {
         highlight: true,
       },
       {
+        key: "daysCashOnHand",
+        label: "Days Cash on Hand",
+        getValue: (row) => row.daysCashOnHand,
+        formatter: (value) => formatDaysCash(value),
+        minThreshold: 180,
+      },
+      {
         key: "coverageRatio",
         label: "Debt Service Coverage",
         getValue: (row) => row.coverageRatio,
@@ -289,6 +312,13 @@ const ProFormaView = ({ forecastResult, financialConfig }) => {
                         Number(rawValue) > 0
                       ) {
                         cellClass = "px-4 py-3 text-right font-medium text-amber-600";
+                      } else if (
+                        row.minThreshold !== undefined &&
+                        row.minThreshold !== null &&
+                        Number.isFinite(rawValue) &&
+                        rawValue < row.minThreshold
+                      ) {
+                        cellClass = "px-4 py-3 text-right font-semibold text-red-600";
                       }
 
                       return (

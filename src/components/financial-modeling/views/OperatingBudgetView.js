@@ -11,6 +11,10 @@ const OperatingBudgetView = ({
   financialConfig,
   onUpdateFinancialConfig,
   onUpdateOperatingBudget,
+  budgetEscalations = {},
+  onUpdateBudgetEscalation,
+  onApplyBudgetEscalations,
+  activeUtilityLabel,
   isReadOnly,
 }) => {
   const handleConfigChange = (field) => (event) => {
@@ -50,6 +54,21 @@ const OperatingBudgetView = ({
     onUpdateOperatingBudget(year, field, event.target.value);
   };
 
+  const handleEscalationChange = (field) => (event) => {
+    if (isReadOnly) {
+      return;
+    }
+    const numeric = Number(event.target.value);
+    onUpdateBudgetEscalation?.(field, Number.isFinite(numeric) ? numeric : 0);
+  };
+
+  const handleApplyEscalations = () => {
+    if (isReadOnly) {
+      return;
+    }
+    onApplyBudgetEscalations?.();
+  };
+
   const budgetLineItems = [
     { key: "operatingRevenue", label: "Operating Revenue", description: "Base rate revenue before adjustments." },
     { key: "rateIncreasePercent", label: "Planned Rate Increase", description: "Enter approved or proposed rate action for the fiscal year.", isPercent: true, step: 0.1 },
@@ -58,6 +77,39 @@ const OperatingBudgetView = ({
     { key: "salaries", label: "Salaries & Wages", description: "Personnel costs tied to utility operations." },
     { key: "adminExpenses", label: "Administration", description: "General & administrative overhead allocations." },
     { key: "existingDebtService", label: "Existing Debt Service", description: "Legacy principal and interest scheduled prior to new CIP financing." },
+  ];
+
+  const escalationLineItems = [
+    {
+      key: "operatingRevenue",
+      label: "Operating Revenue Growth",
+      description: "Annual rate adjustments or customer growth applied to base revenue.",
+    },
+    {
+      key: "nonOperatingRevenue",
+      label: "Non-Operating Revenue Growth",
+      description: "Expected change in investment income, tap fees, or other sources.",
+    },
+    {
+      key: "omExpenses",
+      label: "O&M Inflation",
+      description: "Escalation for chemicals, power, and routine maintenance costs.",
+    },
+    {
+      key: "salaries",
+      label: "Salaries & Wages Inflation",
+      description: "Labor cost growth assumptions, including benefits.",
+    },
+    {
+      key: "adminExpenses",
+      label: "Administration Inflation",
+      description: "Overhead and shared services cost growth assumptions.",
+    },
+    {
+      key: "existingDebtService",
+      label: "Existing Debt Service Change",
+      description: "Scheduled changes in legacy debt obligations (typically 0%).",
+    },
   ];
 
   return (
@@ -69,6 +121,11 @@ const OperatingBudgetView = ({
             Anchor the financial model with your fiscal year horizon, cash reserves, and policy targets.
             These settings drive the pro forma and debt service coverage analysis.
           </p>
+          {activeUtilityLabel ? (
+            <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-blue-600">
+              Configuring: {activeUtilityLabel}
+            </p>
+          ) : null}
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <label className="text-sm font-medium text-slate-700">
@@ -197,6 +254,45 @@ const OperatingBudgetView = ({
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="text-lg font-semibold text-slate-900">Budget Escalation Assumptions</h3>
+        <p className="mt-1 text-sm text-slate-600">
+          Enter annual escalation rates for each budget category. Applying the assumptions will compound growth from the
+          current fiscal year through the projection horizon.
+        </p>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {escalationLineItems.map((line) => (
+            <label key={line.key} className="flex flex-col rounded-md border border-slate-200 bg-slate-50/60 p-4 shadow-sm">
+              <span className="text-sm font-semibold text-slate-800">{line.label}</span>
+              <span className="mt-1 text-xs text-slate-500">{line.description}</span>
+              <div className="mt-3 inline-flex items-center gap-2">
+                <input
+                  type="number"
+                  step={0.1}
+                  value={budgetEscalations[line.key] ?? 0}
+                  onChange={handleEscalationChange(line.key)}
+                  className={`${numberInputClasses} w-24 text-right ${isReadOnly ? readOnlyClasses : ""}`}
+                  disabled={isReadOnly}
+                />
+                <span className="text-sm font-medium text-slate-600">% / year</span>
+              </div>
+            </label>
+          ))}
+        </div>
+
+        <div className="mt-4 flex justify-end">
+          <button
+            type="button"
+            onClick={handleApplyEscalations}
+            className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isReadOnly}
+          >
+            Apply Escalations to Projection
+          </button>
         </div>
       </div>
     </div>

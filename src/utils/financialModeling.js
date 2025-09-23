@@ -579,6 +579,7 @@ export const calculateFinancialForecast = ({
   const forecast = [];
   let runningCash = startingCash;
   let minCoverage = Number.POSITIVE_INFINITY;
+  let minDaysCashOnHand = Number.POSITIVE_INFINITY;
   let maxAdditionalRateIncrease = 0;
 
   years.forEach((year) => {
@@ -623,6 +624,15 @@ export const calculateFinancialForecast = ({
     const cashCapex = sanitizeNumber(cashUsesByYear[year], 0);
     runningCash += operatingCashFlow - cashCapex;
 
+    const daysCashOnHand =
+      totalOperatingExpenses > 0
+        ? (runningCash / totalOperatingExpenses) * 365
+        : null;
+
+    if (daysCashOnHand !== null && daysCashOnHand < minDaysCashOnHand) {
+      minDaysCashOnHand = daysCashOnHand;
+    }
+
     forecast.push({
       year,
       baseOperatingRevenue,
@@ -642,11 +652,16 @@ export const calculateFinancialForecast = ({
       cashFundedCapex: cashCapex,
       cipSpend: sanitizeNumber(spendPlan[year]?.totalSpend, 0),
       endingCashBalance: runningCash,
+      daysCashOnHand,
     });
   });
 
   if (!Number.isFinite(minCoverage)) {
     minCoverage = null;
+  }
+
+  if (!Number.isFinite(minDaysCashOnHand)) {
+    minDaysCashOnHand = null;
   }
 
   const totalCapitalSpend = Object.values(spendPlan).reduce(
@@ -675,6 +690,7 @@ export const calculateFinancialForecast = ({
       minCoverageRatio: minCoverage,
       endingCashBalance: forecast[forecast.length - 1]?.endingCashBalance ?? startingCash,
       maxAdditionalRateIncrease,
+      minDaysCashOnHand,
     },
   };
 };

@@ -84,18 +84,54 @@ const FinancialModelingModule = ({
   fundingSourceAssumptions,
   onUpdateFundingSourceAssumption,
   isReadOnly,
+  activeUtility,
+  onChangeUtility,
+  utilityOptions = [],
+  projectTypeUtilities = {},
+  onUpdateProjectTypeUtility,
+  budgetEscalations = {},
+  onUpdateBudgetEscalation,
+  onApplyBudgetEscalations,
 }) => {
   const [activeView, setActiveView] = useState("cip");
+
+  const activeUtilityOption = useMemo(
+    () => utilityOptions.find((option) => option.value === activeUtility),
+    [utilityOptions, activeUtility]
+  );
+
+  const filteredProjectTimelines = useMemo(() => {
+    if (!Array.isArray(projectTimelines)) {
+      return [];
+    }
+
+    return projectTimelines.filter((project) => {
+      const typeKey =
+        project?.projectTypeId === undefined || project?.projectTypeId === null
+          ? null
+          : String(project.projectTypeId);
+      if (!typeKey) {
+        return false;
+      }
+      const assignedUtility = projectTypeUtilities[typeKey];
+      return assignedUtility === activeUtility;
+    });
+  }, [projectTimelines, projectTypeUtilities, activeUtility]);
 
   const forecastResult = useMemo(
     () =>
       calculateFinancialForecast({
-        projectTimelines,
+        projectTimelines: filteredProjectTimelines,
         operatingBudget,
         financialConfig,
         fundingSourceAssumptions,
       }),
-    [projectTimelines, operatingBudget, financialConfig, fundingSourceAssumptions]
+    [
+      filteredProjectTimelines,
+      operatingBudget,
+      financialConfig,
+      fundingSourceAssumptions,
+    ]
   );
 
   const alignedBudget = useMemo(
@@ -104,9 +140,40 @@ const FinancialModelingModule = ({
   );
 
   const projectSpendBreakdown = useMemo(
-    () => buildProjectSpendBreakdown(projectTimelines),
-    [projectTimelines]
+    () => buildProjectSpendBreakdown(filteredProjectTimelines),
+    [filteredProjectTimelines]
   );
+
+  const projectTypeSummaries = useMemo(() => {
+    const projectCounts = new Map();
+
+    (projectTimelines || []).forEach((project) => {
+      const typeKey =
+        project?.projectTypeId === undefined || project?.projectTypeId === null
+          ? null
+          : String(project.projectTypeId);
+      if (!typeKey) {
+        return;
+      }
+      projectCounts.set(typeKey, (projectCounts.get(typeKey) || 0) + 1);
+    });
+
+    return (projectTypes || [])
+      .map((type) => {
+        if (type?.id === undefined || type?.id === null) {
+          return null;
+        }
+
+        const key = String(type.id);
+        return {
+          id: type.id,
+          name: type.name,
+          projectCount: projectCounts.get(key) || 0,
+          assignedUtility: projectTypeUtilities[key] || null,
+        };
+      })
+      .filter(Boolean);
+  }, [projectTimelines, projectTypes, projectTypeUtilities]);
 
   const years = useMemo(() => {
     const start = Number(financialConfig.startYear) || new Date().getFullYear();
@@ -136,10 +203,28 @@ const FinancialModelingModule = ({
               refine debt assumptions.
             </p>
           </div>
-          <div className="rounded-md border border-blue-200 bg-white px-4 py-2 text-sm text-blue-700">
-            Projection Window: FY {financialConfig.startYear} – FY
-            {" "}
-            {financialConfig.startYear + financialConfig.projectionYears - 1}
+          <div className="flex flex-col gap-3 md:items-end">
+            <div className="text-right">
+              <label className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                Utility Portfolio
+              </label>
+              <select
+                value={activeUtility}
+                onChange={(event) => onChangeUtility?.(event.target.value)}
+                className="mt-1 w-52 rounded-md border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              >
+                {utilityOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="rounded-md border border-blue-200 bg-white px-4 py-2 text-sm text-blue-700">
+              Projection Window: FY {financialConfig.startYear} – FY
+              {" "}
+              {financialConfig.startYear + financialConfig.projectionYears - 1}
+            </div>
           </div>
         </div>
       </div>
@@ -181,6 +266,11 @@ const FinancialModelingModule = ({
           years={years}
           fundingSourceMap={fundingLabelMap}
           projectTypeMap={projectTypeMap}
+          utilityOptions={utilityOptions}
+          projectTypeSummaries={projectTypeSummaries}
+          onUpdateProjectTypeUtility={onUpdateProjectTypeUtility}
+          activeUtilityLabel={activeUtilityOption?.label}
+          isReadOnly={isReadOnly}
         />
       ) : null}
 
@@ -191,6 +281,10 @@ const FinancialModelingModule = ({
           financialConfig={financialConfig}
           onUpdateFinancialConfig={onUpdateFinancialConfig}
           onUpdateOperatingBudget={onUpdateOperatingBudget}
+          budgetEscalations={budgetEscalations}
+          onUpdateBudgetEscalation={onUpdateBudgetEscalation}
+          onApplyBudgetEscalations={onApplyBudgetEscalations}
+          activeUtilityLabel={activeUtilityOption?.label}
           isReadOnly={isReadOnly}
         />
       ) : null}

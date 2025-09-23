@@ -110,6 +110,36 @@ const normalizeStorageId = (value) => {
   return null;
 };
 
+const UTILITY_OPTIONS = [
+  { value: "water", label: "Water Utility" },
+  { value: "sewer", label: "Sewer Utility" },
+  { value: "power", label: "Electric Utility" },
+  { value: "gas", label: "Gas Utility" },
+  { value: "stormwater", label: "Stormwater Utility" },
+];
+
+const createDefaultBudgetEscalations = () => ({
+  operatingRevenue: 0,
+  nonOperatingRevenue: 0,
+  omExpenses: 0,
+  salaries: 0,
+  adminExpenses: 0,
+  existingDebtService: 0,
+});
+
+const createDefaultFinancialConfig = (startYear) => ({
+  startYear,
+  projectionYears: 10,
+  startingCashBalance: 2500000,
+  targetCoverageRatio: 1.5,
+});
+
+const createDefaultUtilityProfile = (startYear) => ({
+  financialConfig: createDefaultFinancialConfig(startYear),
+  operatingBudget: generateDefaultOperatingBudget(startYear, 10),
+  budgetEscalations: createDefaultBudgetEscalations(),
+});
+
 const CapitalPlanningTool = () => {
   const { canEditActiveOrg } = useAuth();
   const isReadOnly = !canEditActiveOrg;
@@ -168,15 +198,17 @@ const CapitalPlanningTool = () => {
   const [staffAllocations, setStaffAllocations] = useState({});
   const [staffMembers, setStaffMembers] = useState(defaultStaffMembers);
   const currentYear = useMemo(() => new Date().getFullYear(), []);
-  const [financialConfig, setFinancialConfig] = useState(() => ({
-    startYear: currentYear,
-    projectionYears: 10,
-    startingCashBalance: 2500000,
-    targetCoverageRatio: 1.5,
-  }));
-  const [operatingBudget, setOperatingBudget] = useState(() =>
-    generateDefaultOperatingBudget(currentYear, 5)
+  const [utilityProfiles, setUtilityProfiles] = useState(() => {
+    const profiles = {};
+    UTILITY_OPTIONS.forEach((option) => {
+      profiles[option.value] = createDefaultUtilityProfile(currentYear);
+    });
+    return profiles;
+  });
+  const [activeUtility, setActiveUtility] = useState(
+    UTILITY_OPTIONS[0]?.value || "water"
   );
+  const [projectTypeUtilities, setProjectTypeUtilities] = useState({});
   const [fundingSourceAssumptions, setFundingSourceAssumptions] = useState(() =>
     generateDefaultFundingAssumptions(defaultFundingSources)
   );
@@ -200,6 +232,40 @@ const CapitalPlanningTool = () => {
     },
   ]);
   const [activeScenarioId, setActiveScenarioId] = useState("baseline");
+
+  useEffect(() => {
+    if (!Array.isArray(projectTypes)) {
+      return;
+    }
+
+    setProjectTypeUtilities((previous) => {
+      const nextAssignments = { ...previous };
+      let changed = false;
+
+      projectTypes.forEach((type) => {
+        const key = toIdKey(type?.id);
+        if (!key) {
+          return;
+        }
+        if (nextAssignments[key] === undefined) {
+          nextAssignments[key] = UTILITY_OPTIONS[0]?.value || null;
+          changed = true;
+        }
+      });
+
+      Object.keys(nextAssignments).forEach((key) => {
+        const stillExists = projectTypes.some(
+          (type) => String(type?.id) === key
+        );
+        if (!stillExists) {
+          delete nextAssignments[key];
+          changed = true;
+        }
+      });
+
+      return changed ? nextAssignments : previous;
+    });
+  }, [projectTypes]);
 
   // Load data from database only once when initialized
   useEffect(() => {
@@ -298,16 +364,6 @@ const CapitalPlanningTool = () => {
     getStaffMembers,
     getStaffAssignments,
   ]);
-
-  useEffect(() => {
-    setOperatingBudget((previous) =>
-      ensureBudgetYears(
-        previous,
-        financialConfig.startYear,
-        financialConfig.projectionYears
-      )
-    );
-  }, [financialConfig.startYear, financialConfig.projectionYears]);
 
   useEffect(() => {
     setFundingSourceAssumptions((previous) => {
@@ -504,6 +560,12 @@ const CapitalPlanningTool = () => {
     [projects]
   );
 
+  const activeUtilityProfile = useMemo(
+    () =>
+      utilityProfiles[activeUtility] || createDefaultUtilityProfile(currentYear),
+    [utilityProfiles, activeUtility, currentYear]
+  );
+
   // Generate monthly resource forecast
   const resourceForecast = useMemo(
     () =>
@@ -557,16 +619,46 @@ const CapitalPlanningTool = () => {
     }
   };
 
-  const updateFinancialConfiguration = (updates) => {
-    setFinancialConfig((previous) => ({
-      ...previous,
-      ...updates,
-    }));
+  const updateFinancialConfiguration = (utilityKey, updates) => {
+    const targetUtility = utilityKey || activeUtility;
+
+    setUtilityProfiles((previous) => {
+      const existing =
+        previous[targetUtility] || createDefaultUtilityProfile(currentYear);
+      const nextConfig = {
+        ...existing.financialConfig,
+        ...updates,
+      };
+      const nextBudget = ensureBudgetYears(
+        existing.operatingBudget,
+        nextConfig.startYear,
+        nextConfig.projectionYears
+      );
+
+      return {
+        ...previous,
+        [targetUtility]: {
+          ...existing,
+          financialConfig: nextConfig,
+          operatingBudget: nextBudget,
+        },
+      };
+    });
   };
 
-  const updateOperatingBudgetValue = (year, field, value) => {
-    setOperatingBudget((previous) =>
-      previous.map((row) => {
+  const updateOperatingBudgetValue = (utilityKey, year, field, value) => {
+    const targetUtility = utilityKey || activeUtility;
+
+    setUtilityProfiles((previous) => {
+      const existing =
+        previous[targetUtility] || createDefaultUtilityProfile(currentYear);
+      const normalizedBudget = ensureBudgetYears(
+        existing.operatingBudget,
+        existing.financialConfig.startYear,
+        existing.financialConfig.projectionYears
+      );
+
+      const updatedBudget = normalizedBudget.map((row) => {
         if (!row || row.year !== year) {
           return row;
         }
@@ -582,8 +674,118 @@ const CapitalPlanningTool = () => {
           ...row,
           [field]: nextValue,
         };
-      })
-    );
+      });
+
+      return {
+        ...previous,
+        [targetUtility]: {
+          ...existing,
+          operatingBudget: updatedBudget,
+        },
+      };
+    });
+  };
+
+  const updateBudgetEscalation = (utilityKey, field, value) => {
+    const targetUtility = utilityKey || activeUtility;
+
+    setUtilityProfiles((previous) => {
+      const existing =
+        previous[targetUtility] || createDefaultUtilityProfile(currentYear);
+      const numericValue = Number(value);
+
+      return {
+        ...previous,
+        [targetUtility]: {
+          ...existing,
+          budgetEscalations: {
+            ...existing.budgetEscalations,
+            [field]: Number.isFinite(numericValue) ? numericValue : 0,
+          },
+        },
+      };
+    });
+  };
+
+  const applyBudgetEscalations = (utilityKey) => {
+    const targetUtility = utilityKey || activeUtility;
+
+    setUtilityProfiles((previous) => {
+      const existing =
+        previous[targetUtility] || createDefaultUtilityProfile(currentYear);
+      const { financialConfig, budgetEscalations } = existing;
+
+      const normalizedBudget = ensureBudgetYears(
+        existing.operatingBudget,
+        financialConfig.startYear,
+        financialConfig.projectionYears
+      );
+
+      const escalateFields = [
+        "operatingRevenue",
+        "nonOperatingRevenue",
+        "omExpenses",
+        "salaries",
+        "adminExpenses",
+        "existingDebtService",
+      ];
+
+      const escalatedBudget = [];
+      const sortedBudget = [...normalizedBudget].sort((a, b) => a.year - b.year);
+
+      sortedBudget.forEach((row, index) => {
+        if (index === 0) {
+          const baseRow = { ...row };
+          escalateFields.forEach((field) => {
+            baseRow[field] = getNumericValue(baseRow[field]);
+          });
+          baseRow.rateIncreasePercent = Number(row.rateIncreasePercent) || 0;
+          escalatedBudget.push(baseRow);
+          return;
+        }
+
+        const previousRow = escalatedBudget[index - 1];
+        const nextRow = { ...row };
+        escalateFields.forEach((field) => {
+          const rate = Number(budgetEscalations?.[field]) || 0;
+          const priorValue = getNumericValue(previousRow[field]);
+          nextRow[field] = priorValue * (1 + rate / 100);
+        });
+        nextRow.rateIncreasePercent = Number(row.rateIncreasePercent) || 0;
+        escalatedBudget.push(nextRow);
+      });
+
+      return {
+        ...previous,
+        [targetUtility]: {
+          ...existing,
+          operatingBudget: escalatedBudget,
+        },
+      };
+    });
+  };
+
+  const handleUpdateProjectTypeUtility = (typeId, utilityValue) => {
+    const key = toIdKey(typeId);
+    if (!key) {
+      return;
+    }
+
+    const normalizedUtility =
+      utilityValue && UTILITY_OPTIONS.some((option) => option.value === utilityValue)
+        ? utilityValue
+        : null;
+
+    setProjectTypeUtilities((previous) => {
+      if (previous[key] === normalizedUtility) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        [key]: normalizedUtility,
+      };
+    });
   };
 
   const updateFundingSourceAssumption = (fundingSourceId, field, value) => {
@@ -1786,12 +1988,26 @@ const CapitalPlanningTool = () => {
             projectTimelines={projectTimelines}
             projectTypes={projectTypes}
             fundingSources={fundingSources}
-            operatingBudget={operatingBudget}
-            onUpdateOperatingBudget={updateOperatingBudgetValue}
-            financialConfig={financialConfig}
-            onUpdateFinancialConfig={updateFinancialConfiguration}
+            operatingBudget={activeUtilityProfile.operatingBudget}
+            onUpdateOperatingBudget={(year, field, value) =>
+              updateOperatingBudgetValue(activeUtility, year, field, value)
+            }
+            financialConfig={activeUtilityProfile.financialConfig}
+            onUpdateFinancialConfig={(updates) =>
+              updateFinancialConfiguration(activeUtility, updates)
+            }
+            budgetEscalations={activeUtilityProfile.budgetEscalations}
+            onUpdateBudgetEscalation={(field, value) =>
+              updateBudgetEscalation(activeUtility, field, value)
+            }
+            onApplyBudgetEscalations={() => applyBudgetEscalations(activeUtility)}
             fundingSourceAssumptions={fundingSourceAssumptions}
             onUpdateFundingSourceAssumption={updateFundingSourceAssumption}
+            activeUtility={activeUtility}
+            onChangeUtility={(utility) => setActiveUtility(utility)}
+            utilityOptions={UTILITY_OPTIONS}
+            projectTypeUtilities={projectTypeUtilities}
+            onUpdateProjectTypeUtility={handleUpdateProjectTypeUtility}
             isReadOnly={isReadOnly}
           />
         )}
