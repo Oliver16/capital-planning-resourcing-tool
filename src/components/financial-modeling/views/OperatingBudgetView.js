@@ -13,7 +13,6 @@ const OperatingBudgetView = ({
   onUpdateOperatingBudget,
   budgetEscalations = {},
   onUpdateBudgetEscalation,
-  onApplyBudgetEscalations,
   activeUtilityLabel,
   isReadOnly,
 }) => {
@@ -62,55 +61,70 @@ const OperatingBudgetView = ({
     onUpdateBudgetEscalation?.(field, Number.isFinite(numeric) ? numeric : 0);
   };
 
-  const handleApplyEscalations = () => {
-    if (isReadOnly) {
-      return;
-    }
-    onApplyBudgetEscalations?.();
-  };
-
   const budgetLineItems = [
-    { key: "operatingRevenue", label: "Operating Revenue", description: "Base rate revenue before adjustments." },
-    { key: "rateIncreasePercent", label: "Planned Rate Increase", description: "Enter approved or proposed rate action for the fiscal year.", isPercent: true, step: 0.1 },
-    { key: "nonOperatingRevenue", label: "Non-Operating Revenue", description: "Investment income, connection fees, and other sources." },
-    { key: "omExpenses", label: "Operations & Maintenance", description: "Chemical, power, and routine maintenance costs." },
-    { key: "salaries", label: "Salaries & Wages", description: "Personnel costs tied to utility operations." },
-    { key: "adminExpenses", label: "Administration", description: "General & administrative overhead allocations." },
-    { key: "existingDebtService", label: "Existing Debt Service", description: "Legacy principal and interest scheduled prior to new CIP financing." },
-  ];
-
-  const escalationLineItems = [
     {
       key: "operatingRevenue",
-      label: "Operating Revenue Growth",
-      description: "Annual rate adjustments or customer growth applied to base revenue.",
+      label: "Operating Revenue",
+      description: "Base rate revenue before adjustments.",
+      supportsEscalation: true,
+    },
+    {
+      key: "rateIncreasePercent",
+      label: "Planned Rate Increase",
+      description: "Enter approved or proposed rate action for the fiscal year.",
+      isPercent: true,
+      step: 0.1,
+      supportsEscalation: false,
     },
     {
       key: "nonOperatingRevenue",
-      label: "Non-Operating Revenue Growth",
-      description: "Expected change in investment income, tap fees, or other sources.",
+      label: "Non-Operating Revenue",
+      description: "Investment income, connection fees, and other sources.",
+      supportsEscalation: true,
     },
     {
       key: "omExpenses",
-      label: "O&M Inflation",
-      description: "Escalation for chemicals, power, and routine maintenance costs.",
+      label: "Operations & Maintenance",
+      description: "Chemical, power, and routine maintenance costs.",
+      supportsEscalation: true,
     },
     {
       key: "salaries",
-      label: "Salaries & Wages Inflation",
-      description: "Labor cost growth assumptions, including benefits.",
+      label: "Salaries & Wages",
+      description: "Personnel costs tied to utility operations.",
+      supportsEscalation: true,
     },
     {
       key: "adminExpenses",
-      label: "Administration Inflation",
-      description: "Overhead and shared services cost growth assumptions.",
+      label: "Administration",
+      description: "General & administrative overhead allocations.",
+      supportsEscalation: true,
     },
     {
       key: "existingDebtService",
-      label: "Existing Debt Service Change",
-      description: "Scheduled changes in legacy debt obligations (typically 0%).",
+      label: "Existing Debt Service",
+      description: "Legacy principal and interest scheduled prior to new CIP financing.",
+      supportsEscalation: true,
     },
   ];
+
+  const baseYear = years?.[0];
+  const outYears = years.slice(1);
+  const baseYearNumber = Number(baseYear);
+  const hasBaseYear = Number.isFinite(baseYearNumber);
+  const baseYearLabel = hasBaseYear ? `FY ${baseYearNumber}` : "Current FY";
+
+  const budgetByYear = React.useMemo(() => {
+    const map = new Map();
+    (alignedBudget || []).forEach((row) => {
+      if (row && Number.isFinite(row.year)) {
+        map.set(Number(row.year), row);
+      }
+    });
+    return map;
+  }, [alignedBudget]);
+
+  const baseYearRow = hasBaseYear ? budgetByYear.get(baseYearNumber) || {} : {};
 
   return (
     <div className="space-y-6">
@@ -204,7 +218,9 @@ const OperatingBudgetView = ({
               <tr>
                 <th className="px-4 py-3 text-left font-semibold text-slate-600">Line Item</th>
                 <th className="px-4 py-3 text-left font-semibold text-slate-600">Notes</th>
-                {years.map((year) => (
+                <th className="px-4 py-3 text-right font-semibold text-slate-600">{baseYearLabel}</th>
+                <th className="px-4 py-3 text-right font-semibold text-slate-600">Escalation</th>
+                {outYears.map((year) => (
                   <th key={year} className="px-4 py-3 text-right font-semibold text-slate-600">
                     FY {year}
                   </th>
@@ -212,87 +228,95 @@ const OperatingBudgetView = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {budgetLineItems.map((line) => (
-                <tr key={line.key}>
-                  <th scope="row" className="px-4 py-3 text-left font-medium text-slate-900">
-                    {line.label}
-                  </th>
-                  <td className="px-4 py-3 text-slate-500">{line.description}</td>
-                  {years.map((year) => {
-                    const budgetRow = alignedBudget.find((row) => row.year === year) || {};
-                    const value = budgetRow[line.key] ?? 0;
+              {budgetLineItems.map((line) => {
+                const supportsEscalation = line.supportsEscalation !== false;
+                const baseValue = baseYearRow[line.key] ?? 0;
+                const escalationValue = budgetEscalations?.[line.key] ?? 0;
+                const formatDisplay = (value) =>
+                  line.isPercent
+                    ? formatPercent(value, { decimals: 1 })
+                    : formatCurrency(value);
 
-                    if (isReadOnly) {
-                      if (line.isPercent) {
+                return (
+                  <tr key={line.key}>
+                    <th scope="row" className="px-4 py-3 text-left font-medium text-slate-900">
+                      {line.label}
+                    </th>
+                    <td className="px-4 py-3 text-slate-500">{line.description}</td>
+                    <td className="px-4 py-3">
+                      {hasBaseYear ? (
+                        isReadOnly ? (
+                          <span className="block text-right text-slate-700">
+                            {formatDisplay(baseValue)}
+                          </span>
+                        ) : (
+                          <input
+                            type="number"
+                            step={line.step ?? (line.isPercent ? 0.01 : 1000)}
+                            value={line.isPercent ? baseValue : baseValue || 0}
+                            onChange={handleBudgetChange(baseYearNumber, line.key)}
+                            className={`${numberInputClasses} text-right ${isReadOnly ? readOnlyClasses : ""}`}
+                            disabled={isReadOnly || !hasBaseYear}
+                          />
+                        )
+                      ) : (
+                        <span className="block text-right text-slate-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {supportsEscalation ? (
+                        isReadOnly ? (
+                          <span className="block text-right text-slate-700">
+                            {formatPercent(escalationValue, { decimals: 1 })}
+                          </span>
+                        ) : (
+                          <div className="flex items-center justify-end gap-2">
+                            <input
+                              type="number"
+                              step={0.1}
+                              value={escalationValue}
+                              onChange={handleEscalationChange(line.key)}
+                              className={`${numberInputClasses} w-24 text-right ${isReadOnly ? readOnlyClasses : ""}`}
+                              disabled={isReadOnly}
+                            />
+                            <span className="text-xs font-medium text-slate-500">% / yr</span>
+                          </div>
+                        )
+                      ) : (
+                        <span className="block text-center text-slate-400">—</span>
+                      )}
+                    </td>
+                    {outYears.map((year) => {
+                      const numericYear = Number(year);
+                      const row = budgetByYear.get(numericYear) || {};
+                      const value = row[line.key] ?? 0;
+
+                      if (!supportsEscalation && !isReadOnly) {
                         return (
-                          <td key={year} className="px-4 py-3 text-right text-slate-700">
-                            {formatPercent(value, { decimals: 1 })}
+                          <td key={year} className="px-4 py-3">
+                            <input
+                              type="number"
+                              step={line.step ?? (line.isPercent ? 0.01 : 1000)}
+                              value={line.isPercent ? value : value || 0}
+                              onChange={handleBudgetChange(numericYear, line.key)}
+                              className={`${numberInputClasses} text-right ${isReadOnly ? readOnlyClasses : ""}`}
+                              disabled={isReadOnly}
+                            />
                           </td>
                         );
                       }
+
                       return (
                         <td key={year} className="px-4 py-3 text-right text-slate-700">
-                          {formatCurrency(value)}
+                          {formatDisplay(value)}
                         </td>
                       );
-                    }
-
-                    return (
-                      <td key={year} className="px-4 py-3">
-                        <input
-                          type="number"
-                          step={line.step ?? (line.isPercent ? 0.01 : 1000)}
-                          value={line.isPercent ? value : value || 0}
-                          onChange={handleBudgetChange(year, line.key)}
-                          className={`${numberInputClasses} text-right ${isReadOnly ? readOnlyClasses : ""}`}
-                          disabled={isReadOnly}
-                        />
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
+                    })}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 className="text-lg font-semibold text-slate-900">Budget Escalation Assumptions</h3>
-        <p className="mt-1 text-sm text-slate-600">
-          Enter annual escalation rates for each budget category. Applying the assumptions will compound growth from the
-          current fiscal year through the projection horizon.
-        </p>
-
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {escalationLineItems.map((line) => (
-            <label key={line.key} className="flex flex-col rounded-md border border-slate-200 bg-slate-50/60 p-4 shadow-sm">
-              <span className="text-sm font-semibold text-slate-800">{line.label}</span>
-              <span className="mt-1 text-xs text-slate-500">{line.description}</span>
-              <div className="mt-3 inline-flex items-center gap-2">
-                <input
-                  type="number"
-                  step={0.1}
-                  value={budgetEscalations[line.key] ?? 0}
-                  onChange={handleEscalationChange(line.key)}
-                  className={`${numberInputClasses} w-24 text-right ${isReadOnly ? readOnlyClasses : ""}`}
-                  disabled={isReadOnly}
-                />
-                <span className="text-sm font-medium text-slate-600">% / year</span>
-              </div>
-            </label>
-          ))}
-        </div>
-
-        <div className="mt-4 flex justify-end">
-          <button
-            type="button"
-            onClick={handleApplyEscalations}
-            className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={isReadOnly}
-          >
-            Apply Escalations to Projection
-          </button>
         </div>
       </div>
     </div>

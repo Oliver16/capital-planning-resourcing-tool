@@ -127,6 +127,51 @@ const createDefaultBudgetEscalations = () => ({
   existingDebtService: 0,
 });
 
+const ESCALATION_FIELDS = [
+  "operatingRevenue",
+  "nonOperatingRevenue",
+  "omExpenses",
+  "salaries",
+  "adminExpenses",
+  "existingDebtService",
+];
+
+const recalculateOperatingBudget = (budgetRows = [], budgetEscalations = {}) => {
+  if (!Array.isArray(budgetRows) || budgetRows.length === 0) {
+    return [];
+  }
+
+  const sortedRows = [...budgetRows].sort(
+    (a, b) => (Number(a?.year) || 0) - (Number(b?.year) || 0)
+  );
+  const recalculated = [];
+
+  sortedRows.forEach((row, index) => {
+    const normalizedRow = {
+      ...row,
+      year: Number(row?.year) || 0,
+      rateIncreasePercent: getNumericValue(row?.rateIncreasePercent),
+    };
+
+    if (index === 0) {
+      ESCALATION_FIELDS.forEach((field) => {
+        normalizedRow[field] = getNumericValue(row?.[field]);
+      });
+    } else {
+      const previousRow = recalculated[index - 1];
+      ESCALATION_FIELDS.forEach((field) => {
+        const rate = Number(budgetEscalations?.[field]) || 0;
+        const priorValue = getNumericValue(previousRow?.[field]);
+        normalizedRow[field] = priorValue * (1 + rate / 100);
+      });
+    }
+
+    recalculated.push(normalizedRow);
+  });
+
+  return recalculated;
+};
+
 const createDefaultFinancialConfig = (startYear) => ({
   startYear,
   projectionYears: 10,
@@ -385,13 +430,17 @@ const CapitalPlanningTool = () => {
                   : { ...existingProfile.budgetEscalations };
                 const budgetRows = utilityBudgetMap?.get(key) || existingProfile.operatingBudget;
 
+                const alignedBudget = ensureBudgetYears(
+                  budgetRows,
+                  mergedConfig.startYear,
+                  mergedConfig.projectionYears
+                );
                 nextProfiles[key] = {
                   financialConfig: mergedConfig,
                   budgetEscalations: mergedEscalations,
-                  operatingBudget: ensureBudgetYears(
-                    budgetRows,
-                    mergedConfig.startYear,
-                    mergedConfig.projectionYears
+                  operatingBudget: recalculateOperatingBudget(
+                    alignedBudget,
+                    mergedEscalations
                   ),
                 };
               });
@@ -746,10 +795,15 @@ const CapitalPlanningTool = () => {
       nextConfig.projectionYears
     );
 
+    const recalculatedBudget = recalculateOperatingBudget(
+      nextBudget,
+      existingProfile.budgetEscalations
+    );
+
     const updatedProfile = {
       ...existingProfile,
       financialConfig: nextConfig,
-      operatingBudget: nextBudget,
+      operatingBudget: recalculatedBudget,
     };
 
     setUtilityProfiles((previous) => ({
@@ -763,10 +817,10 @@ const CapitalPlanningTool = () => {
           financialConfig: nextConfig,
           budgetEscalations: updatedProfile.budgetEscalations,
         }),
-        upsertUtilityOperatingBudgetRows(targetUtility, nextBudget),
+        upsertUtilityOperatingBudgetRows(targetUtility, recalculatedBudget),
         deleteUtilityOperatingBudgetsNotIn(
           targetUtility,
-          nextBudget.map((row) => row.year)
+          recalculatedBudget.map((row) => row.year)
         ),
       ]);
     } catch (error) {
@@ -807,9 +861,14 @@ const CapitalPlanningTool = () => {
       };
     });
 
+    const recalculatedBudget = recalculateOperatingBudget(
+      updatedBudget,
+      existingProfile.budgetEscalations
+    );
+
     const updatedProfile = {
       ...existingProfile,
-      operatingBudget: updatedBudget,
+      operatingBudget: recalculatedBudget,
     };
 
     setUtilityProfiles((previous) => ({
@@ -817,13 +876,14 @@ const CapitalPlanningTool = () => {
       [targetUtility]: updatedProfile,
     }));
 
-    const updatedRow = updatedBudget.find((row) => row.year === year);
-    if (updatedRow) {
-      try {
-        await upsertUtilityOperatingBudgetRows(targetUtility, [updatedRow]);
-      } catch (error) {
-        console.error("Failed to update operating budget row:", error);
-      }
+    try {
+      await upsertUtilityOperatingBudgetRows(targetUtility, recalculatedBudget);
+      await deleteUtilityOperatingBudgetsNotIn(
+        targetUtility,
+        recalculatedBudget.map((row) => row.year)
+      );
+    } catch (error) {
+      console.error("Failed to update operating budget row:", error);
     }
   };
 
@@ -842,9 +902,21 @@ const CapitalPlanningTool = () => {
       [field]: Number.isFinite(numericValue) ? numericValue : 0,
     };
 
+    const normalizedBudget = ensureBudgetYears(
+      existingProfile.operatingBudget,
+      existingProfile.financialConfig.startYear,
+      existingProfile.financialConfig.projectionYears
+    );
+
+    const recalculatedBudget = recalculateOperatingBudget(
+      normalizedBudget,
+      updatedEscalations
+    );
+
     const updatedProfile = {
       ...existingProfile,
       budgetEscalations: updatedEscalations,
+      operatingBudget: recalculatedBudget,
     };
 
     setUtilityProfiles((previous) => ({
@@ -853,84 +925,19 @@ const CapitalPlanningTool = () => {
     }));
 
     try {
-      await saveUtilityProfile(targetUtility, {
-        financialConfig: updatedProfile.financialConfig,
-        budgetEscalations: updatedEscalations,
-      });
+      await Promise.all([
+        saveUtilityProfile(targetUtility, {
+          financialConfig: updatedProfile.financialConfig,
+          budgetEscalations: updatedEscalations,
+        }),
+        upsertUtilityOperatingBudgetRows(targetUtility, recalculatedBudget),
+        deleteUtilityOperatingBudgetsNotIn(
+          targetUtility,
+          recalculatedBudget.map((row) => row.year)
+        ),
+      ]);
     } catch (error) {
       console.error("Failed to update budget escalation:", error);
-    }
-  };
-
-  const applyBudgetEscalations = async (utilityKey) => {
-    if (isReadOnly) {
-      return;
-    }
-
-    const targetUtility = utilityKey || activeUtility;
-
-    const existingProfile =
-      utilityProfiles[targetUtility] || createDefaultUtilityProfile(currentYear);
-    const { financialConfig, budgetEscalations } = existingProfile;
-
-    const normalizedBudget = ensureBudgetYears(
-      existingProfile.operatingBudget,
-      financialConfig.startYear,
-      financialConfig.projectionYears
-    );
-
-    const escalateFields = [
-      "operatingRevenue",
-      "nonOperatingRevenue",
-      "omExpenses",
-      "salaries",
-      "adminExpenses",
-      "existingDebtService",
-    ];
-
-    const escalatedBudget = [];
-    const sortedBudget = [...normalizedBudget].sort((a, b) => a.year - b.year);
-
-    sortedBudget.forEach((row, index) => {
-      if (index === 0) {
-        const baseRow = { ...row };
-        escalateFields.forEach((field) => {
-          baseRow[field] = getNumericValue(baseRow[field]);
-        });
-        baseRow.rateIncreasePercent = Number(row.rateIncreasePercent) || 0;
-        escalatedBudget.push(baseRow);
-        return;
-      }
-
-      const previousRow = escalatedBudget[index - 1];
-      const nextRow = { ...row };
-      escalateFields.forEach((field) => {
-        const rate = Number(budgetEscalations?.[field]) || 0;
-        const priorValue = getNumericValue(previousRow[field]);
-        nextRow[field] = priorValue * (1 + rate / 100);
-      });
-      nextRow.rateIncreasePercent = Number(row.rateIncreasePercent) || 0;
-      escalatedBudget.push(nextRow);
-    });
-
-    const updatedProfile = {
-      ...existingProfile,
-      operatingBudget: escalatedBudget,
-    };
-
-    setUtilityProfiles((previous) => ({
-      ...previous,
-      [targetUtility]: updatedProfile,
-    }));
-
-    try {
-      await upsertUtilityOperatingBudgetRows(targetUtility, escalatedBudget);
-      await deleteUtilityOperatingBudgetsNotIn(
-        targetUtility,
-        escalatedBudget.map((row) => row.year)
-      );
-    } catch (error) {
-      console.error("Failed to apply budget escalations:", error);
     }
   };
 
@@ -2190,7 +2197,6 @@ const CapitalPlanningTool = () => {
             onUpdateBudgetEscalation={(field, value) =>
               updateBudgetEscalation(activeUtility, field, value)
             }
-            onApplyBudgetEscalations={() => applyBudgetEscalations(activeUtility)}
             fundingSourceAssumptions={fundingSourceAssumptions}
             onUpdateFundingSourceAssumption={updateFundingSourceAssumption}
             activeUtility={activeUtility}
