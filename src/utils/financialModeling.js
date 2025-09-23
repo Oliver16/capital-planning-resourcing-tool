@@ -285,6 +285,165 @@ export const buildProjectSpendPlan = (projectTimelines = []) => {
   return spendPlan;
 };
 
+const normalizeDate = (value) => {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  return null;
+};
+
+const allocateProjectSpend = (entry, startDate, months, budget) => {
+  const amount = sanitizeNumber(budget, 0);
+  const duration = Math.max(1, sanitizePositiveInteger(months, 1));
+
+  if (!(amount > 0)) {
+    return;
+  }
+
+  const start = normalizeDate(startDate);
+  if (!start) {
+    return;
+  }
+
+  const monthlySpend = amount / duration;
+  const cursor = new Date(start.getTime());
+
+  for (let index = 0; index < duration; index += 1) {
+    const year = cursor.getFullYear();
+    if (Number.isFinite(year)) {
+      entry.spendByYear[year] = (entry.spendByYear[year] || 0) + monthlySpend;
+      entry.totalSpend += monthlySpend;
+    }
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+};
+
+export const buildProjectSpendBreakdown = (projectTimelines = []) => {
+  const breakdown = [];
+
+  (projectTimelines || []).forEach((project) => {
+    if (!project) {
+      return;
+    }
+
+    const entry = {
+      projectId: project.id ?? null,
+      name: project.name || "Unnamed Project",
+      type: project.type || "project",
+      projectTypeId: project.projectTypeId ?? null,
+      fundingSourceId: project.fundingSourceId ?? null,
+      deliveryType: project.deliveryType || null,
+      designStart: normalizeDate(project.designStart) || normalizeDate(project.designStartDate),
+      designEnd: normalizeDate(project.designEnd) || null,
+      constructionStart:
+        normalizeDate(project.constructionStart) ||
+        normalizeDate(project.constructionStartDate),
+      constructionEnd: normalizeDate(project.constructionEnd) || null,
+      programStart: normalizeDate(project.programStartDate) || null,
+      programEnd: normalizeDate(project.programEndDate) || null,
+      spendByYear: {},
+      totalSpend: 0,
+    };
+
+    if (entry.type === "program") {
+      const start = entry.programStart || entry.designStart;
+      const end = entry.programEnd || entry.designEnd;
+      const annualBudget = sanitizeNumber(project.annualBudget, 0);
+
+      if (start && end && annualBudget > 0) {
+        const monthlySpend = annualBudget / 12;
+        const cursor = new Date(start.getTime());
+
+        while (cursor <= end) {
+          const year = cursor.getFullYear();
+          if (Number.isFinite(year)) {
+            entry.spendByYear[year] =
+              (entry.spendByYear[year] || 0) + monthlySpend;
+            entry.totalSpend += monthlySpend;
+          }
+          cursor.setMonth(cursor.getMonth() + 1);
+        }
+      }
+
+      breakdown.push(entry);
+      return;
+    }
+
+    const designBudget = sanitizeNumber(
+      project.designBudget ??
+        (project.totalBudget && project.designBudgetPercent
+          ? (project.totalBudget * project.designBudgetPercent) / 100
+          : 0),
+      0
+    );
+    const constructionBudget = sanitizeNumber(
+      project.constructionBudget ??
+        (project.totalBudget && project.constructionBudgetPercent
+          ? (project.totalBudget * project.constructionBudgetPercent) / 100
+          : 0),
+      0
+    );
+
+    if (!entry.designEnd && entry.designStart && project.designDuration) {
+      const designEnd = new Date(entry.designStart.getTime());
+      designEnd.setMonth(
+        designEnd.getMonth() + Math.max(0, sanitizePositiveInteger(project.designDuration, 0))
+      );
+      entry.designEnd = designEnd;
+    }
+
+    if (
+      !entry.constructionEnd &&
+      entry.constructionStart &&
+      project.constructionDuration
+    ) {
+      const constructionEnd = new Date(entry.constructionStart.getTime());
+      constructionEnd.setMonth(
+        constructionEnd.getMonth() +
+          Math.max(0, sanitizePositiveInteger(project.constructionDuration, 0))
+      );
+      entry.constructionEnd = constructionEnd;
+    }
+
+    if (designBudget > 0) {
+      allocateProjectSpend(
+        entry,
+        project.designStart || project.designStartDate,
+        project.designDuration,
+        designBudget
+      );
+    }
+
+    if (constructionBudget > 0) {
+      allocateProjectSpend(
+        entry,
+        project.constructionStart || project.constructionStartDate,
+        project.constructionDuration,
+        constructionBudget
+      );
+    }
+
+    breakdown.push(entry);
+  });
+
+  return breakdown.sort((a, b) => {
+    const aTime = a.designStart ? a.designStart.getTime() : Number.POSITIVE_INFINITY;
+    const bTime = b.designStart ? b.designStart.getTime() : Number.POSITIVE_INFINITY;
+    if (aTime === bTime) {
+      return (a.name || "").localeCompare(b.name || "");
+    }
+    return aTime - bTime;
+  });
+};
+
 const buildFundingAssumptionMap = (assumptions = []) => {
   const map = new Map();
   (assumptions || []).forEach((assumption) => {
@@ -545,5 +704,13 @@ export const formatPercent = (value, options = {}) => {
     return "-";
   }
   return `${numeric.toFixed(options.decimals ?? 1)}%`;
+};
+
+export const formatCoverageRatio = (value, decimals = 2) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "—";
+  }
+  return `${numeric.toFixed(decimals)}x`;
 };
 

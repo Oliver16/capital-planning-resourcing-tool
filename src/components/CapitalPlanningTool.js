@@ -14,6 +14,7 @@ import {
   GitBranch,
   FileSpreadsheet,
   ChevronDown,
+  LayoutDashboard,
 } from "lucide-react";
 
 // Import components
@@ -28,7 +29,7 @@ import PeopleTab from "./tabs/PeopleTab";
 import ScenariosTab from "./tabs/ScenariosTab";
 import ReportsTab from "./tabs/ReportsTab";
 import StaffAssignmentsTab from "./tabs/StaffAssignmentsTab";
-import FinancialModelingTab from "./tabs/FinancialModelingTab";
+import FinancialModelingModule from "./financial-modeling/FinancialModelingModule";
 import { isProjectOrProgram } from "../utils/projectTypes.js";
 
 // Import data and utilities
@@ -181,6 +182,7 @@ const CapitalPlanningTool = () => {
   );
   const [staffAssignmentOverrides, setStaffAssignmentOverrides] = useState({});
   const [activeTab, setActiveTab] = useState("overview");
+  const [activeModule, setActiveModule] = useState("planning");
   const [activeDropdown, setActiveDropdown] = useState(null);
   const dropdownRefs = useRef({});
   const [timeHorizon, setTimeHorizon] = useState(36);
@@ -532,6 +534,29 @@ const CapitalPlanningTool = () => {
     [resourceForecast, staffCategories, staffAvailabilityByCategory]
   );
 
+  const moduleOptions = [
+    {
+      id: "planning",
+      label: "Capital Planning Workspace",
+      description: "Projects, people, scheduling, and reporting.",
+      icon: LayoutDashboard,
+    },
+    {
+      id: "financial",
+      label: "Financial Modeling Suite",
+      description: "CIP spend plans, pro forma, and debt coverage analysis.",
+      icon: DollarSign,
+    },
+  ];
+
+  const handleSelectModule = (moduleId) => {
+    setActiveDropdown(null);
+    setActiveModule(moduleId);
+    if (moduleId === "planning" && activeTab === "finance") {
+      setActiveTab("overview");
+    }
+  };
+
   const updateFinancialConfiguration = (updates) => {
     setFinancialConfig((previous) => ({
       ...previous,
@@ -559,13 +584,6 @@ const CapitalPlanningTool = () => {
         };
       })
     );
-  };
-
-  const extendProjectionYears = () => {
-    setFinancialConfig((previous) => ({
-      ...previous,
-      projectionYears: (previous.projectionYears || 0) + 1,
-    }));
   };
 
   const updateFundingSourceAssumption = (fundingSourceId, field, value) => {
@@ -1440,319 +1458,345 @@ const CapitalPlanningTool = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Navigation Tabs */}
-        <div className="bg-white rounded-lg shadow-sm mb-6 relative">
-          {isSaving && (
-            <div className="absolute top-4 right-4 flex items-center gap-2 text-blue-600">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-              <span className="text-sm">Saving...</span>
-            </div>
-          )}
-          <div className="border-b border-gray-200">
-            <nav className="flex space-x-8 px-6">
-              {[
-                { id: "overview", label: "Overview", icon: Calendar },
-                {
-                  id: "projects",
-                  label: "Projects & Programs",
-                  icon: FolderOpen,
-                },
-                {
-                  type: "dropdown",
-                  id: "people-menu",
-                  label: "People",
-                  icon: Users,
-                  items: [
-                    { id: "people", label: "Staff", icon: UserCircle },
-                    { id: "assignments", label: "Assignments", icon: Users },
-                    { id: "staff", label: "Categories", icon: Settings },
-                  ],
-                },
-                {
-                  id: "allocations",
-                  label: "Effort Projections",
-                  icon: Edit3,
-                },
-                { id: "scenarios", label: "Scenarios", icon: GitBranch },
-                {
-                  id: "schedule",
-                  label: "Schedule View",
-                  icon: CalendarClock,
-                },
-                {
-                  id: "forecast",
-                  label: "Resource Forecast",
-                  icon: AlertTriangle,
-                },
-                {
-                  id: "finance",
-                  label: "Financial Modeling",
-                  icon: DollarSign,
-                },
-                { id: "reports", label: "Reports", icon: FileSpreadsheet },
-                { id: "settings", label: "Settings", icon: Settings },
-              ].map((tab) => {
-                if (tab.type === "dropdown") {
-                  const Icon = tab.icon;
-                  const isActive = tab.items.some((item) => item.id === activeTab);
-                  return (
-                    <div
-                      key={tab.id}
-                      className="relative"
-                      ref={(element) => {
-                        if (element) {
-                          dropdownRefs.current[tab.id] = element;
-                        } else {
-                          delete dropdownRefs.current[tab.id];
-                        }
-                      }}
-                    >
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="grid gap-4 md:grid-cols-2">
+          {moduleOptions.map((module) => {
+            const Icon = module.icon;
+            const isActive = activeModule === module.id;
+            return (
+              <button
+                type="button"
+                key={module.id}
+                onClick={() => handleSelectModule(module.id)}
+                className={`flex h-full w-full items-start gap-3 rounded-lg border px-4 py-3 text-left shadow-sm transition ${
+                  isActive
+                    ? "border-blue-500 bg-blue-50 text-blue-700"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-blue-300"
+                }`}
+              >
+                <span
+                  className={`rounded-full border p-2 ${
+                    isActive
+                      ? "border-blue-400 bg-blue-100 text-blue-600"
+                      : "border-slate-200 bg-slate-100 text-slate-500"
+                  }`}
+                >
+                  <Icon size={20} />
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold">{module.label}</span>
+                  <span className="mt-1 block text-xs text-inherit">{module.description}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {activeModule === "planning" ? (
+          <>
+            <div className="bg-white rounded-lg shadow-sm relative">
+              {isSaving && (
+                <div className="absolute top-4 right-4 flex items-center gap-2 text-blue-600">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                  <span className="text-sm">Saving...</span>
+                </div>
+              )}
+              <div className="border-b border-gray-200">
+                <nav className="flex space-x-8 px-6">
+                  {[
+                    { id: "overview", label: "Overview", icon: Calendar },
+                    {
+                      id: "projects",
+                      label: "Projects & Programs",
+                      icon: FolderOpen,
+                    },
+                    {
+                      type: "dropdown",
+                      id: "people-menu",
+                      label: "People",
+                      icon: Users,
+                      items: [
+                        { id: "people", label: "Staff", icon: UserCircle },
+                        { id: "assignments", label: "Assignments", icon: Users },
+                        { id: "staff", label: "Categories", icon: Settings },
+                      ],
+                    },
+                    {
+                      id: "allocations",
+                      label: "Effort Projections",
+                      icon: Edit3,
+                    },
+                    { id: "scenarios", label: "Scenarios", icon: GitBranch },
+                    {
+                      id: "schedule",
+                      label: "Schedule View",
+                      icon: CalendarClock,
+                    },
+                    {
+                      id: "forecast",
+                      label: "Resource Forecast",
+                      icon: AlertTriangle,
+                    },
+                    { id: "reports", label: "Reports", icon: FileSpreadsheet },
+                    { id: "settings", label: "Settings", icon: Settings },
+                  ].map((tab) => {
+                    if (tab.type === "dropdown") {
+                      const Icon = tab.icon;
+                      const isActive = tab.items.some((item) => item.id === activeTab);
+                      return (
+                        <div
+                          key={tab.id}
+                          className="relative"
+                          ref={(element) => {
+                            if (element) {
+                              dropdownRefs.current[tab.id] = element;
+                            } else {
+                              delete dropdownRefs.current[tab.id];
+                            }
+                          }}
+                        >
+                          <button
+                            type="button"
+                            id={`${tab.id}-button`}
+                            onClick={() =>
+                              setActiveDropdown((current) =>
+                                current === tab.id ? null : tab.id
+                              )
+                            }
+                            className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                              isActive
+                                ? "border-blue-500 text-blue-600"
+                                : "border-transparent text-gray-500 hover:text-gray-700"
+                            }`}
+                            aria-haspopup="menu"
+                            aria-expanded={activeDropdown === tab.id}
+                          >
+                            <Icon size={16} />
+                            {tab.label}
+                            <ChevronDown size={14} />
+                          </button>
+                          {activeDropdown === tab.id && (
+                            <div
+                              className="absolute left-0 top-full mt-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-10"
+                              role="menu"
+                              aria-labelledby={`${tab.id}-button`}
+                            >
+                              {tab.items.map((item) => {
+                                const SubIcon = item.icon;
+                                const isSubActive = activeTab === item.id;
+                                return (
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    key={item.id}
+                                    onClick={() => {
+                                      setActiveTab(item.id);
+                                      setActiveDropdown(null);
+                                    }}
+                                    className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 ${
+                                      isSubActive
+                                        ? "bg-blue-50 text-blue-600"
+                                        : "text-gray-700 hover:bg-gray-50"
+                                    }`}
+                                  >
+                                    <SubIcon size={16} />
+                                    {item.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    const Icon = tab.icon;
+                    return (
                       <button
                         type="button"
-                        id={`${tab.id}-button`}
-                        onClick={() =>
-                          setActiveDropdown((current) =>
-                            current === tab.id ? null : tab.id
-                          )
-                        }
+                        key={tab.id}
+                        onClick={() => {
+                          setActiveDropdown(null);
+                          setActiveTab(tab.id);
+                        }}
                         className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
-                          isActive
+                          activeTab === tab.id
                             ? "border-blue-500 text-blue-600"
                             : "border-transparent text-gray-500 hover:text-gray-700"
                         }`}
-                        aria-haspopup="menu"
-                        aria-expanded={activeDropdown === tab.id}
                       >
                         <Icon size={16} />
                         {tab.label}
-                        <ChevronDown size={14} />
                       </button>
-                      {activeDropdown === tab.id && (
-                        <div
-                          className="absolute left-0 top-full mt-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-10"
-                          role="menu"
-                          aria-labelledby={`${tab.id}-button`}
-                        >
-                          {tab.items.map((item) => {
-                            const SubIcon = item.icon;
-                            const isSubActive = activeTab === item.id;
-                            return (
-                              <button
-                                type="button"
-                                role="menuitem"
-                                key={item.id}
-                                onClick={() => {
-                                  setActiveTab(item.id);
-                                  setActiveDropdown(null);
-                                }}
-                                className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 ${
-                                  isSubActive
-                                    ? "bg-blue-50 text-blue-600"
-                                    : "text-gray-700 hover:bg-gray-50"
-                                }`}
-                              >
-                                <SubIcon size={16} />
-                                {item.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
+                    );
+                  })}
+                </nav>
+              </div>
+            </div>
 
-                const Icon = tab.icon;
-                return (
-                  <button
-                    type="button"
-                    key={tab.id}
-                    onClick={() => {
-                      setActiveDropdown(null);
-                      setActiveTab(tab.id);
-                    }}
-                    className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
-                      activeTab === tab.id
-                        ? "border-blue-500 text-blue-600"
-                        : "border-transparent text-gray-500 hover:text-gray-700"
-                    }`}
-                  >
-                    <Icon size={16} />
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-        </div>
-
-        {/* Tab Content */}
-        <div className="space-y-6">
-          {activeTab === "overview" && (
-            <Overview
-              projects={projects}
-              projectTypes={projectTypes}
-              staffingGaps={staffingGaps}
-              projectTimelines={projectTimelines}
-            />
-          )}
-
-          {activeTab === "projects" && (
-            <ProjectsPrograms
-              projects={projects}
-              projectTypes={projectTypes}
-              fundingSources={fundingSources}
-              staffCategories={staffCategories}
-              addProject={addProject}
-              updateProject={updateProject}
-              deleteProject={deleteProject}
-              handleImport={handleImport}
-              isReadOnly={isReadOnly}
-            />
-          )}
-          {activeTab === "staff" && (
-            <StaffCategories
-              staffCategories={staffCategories}
-              addStaffCategory={addStaffCategory}
-              updateStaffCategory={updateStaffCategory}
-              deleteStaffCategory={deleteStaffCategory}
-              capacityWarnings={categoryCapacityWarnings}
-              maxMonthlyFteHours={MAX_MONTHLY_FTE_HOURS}
-              isReadOnly={isReadOnly}
-            />
-          )}
-
-          {activeTab === "people" && (
-            <PeopleTab
-              staffMembers={staffMembers}
-              staffCategories={staffCategories}
-              addStaffMember={addStaffMember}
-              updateStaffMember={updateStaffMember}
-              deleteStaffMember={deleteStaffMember}
-              staffAvailabilityByCategory={staffAvailabilityByCategory}
-              isReadOnly={isReadOnly}
-            />
-          )}
-
-          {activeTab === "assignments" && (
-            <StaffAssignmentsTab
-              projects={projects.filter((project) =>
-                isProjectOrProgram(project)
+            <div className="space-y-6">
+              {activeTab === "overview" && (
+                <Overview
+                  projects={projects}
+                  projectTypes={projectTypes}
+                  staffingGaps={staffingGaps}
+                  projectTimelines={projectTimelines}
+                />
               )}
-              staffMembers={staffMembers}
-              staffCategories={staffCategories}
-              staffAllocations={staffAllocations}
-              assignmentOverrides={staffAssignmentOverrides}
-              assignmentPlan={staffAssignmentPlan}
-              onUpdateAssignment={updateStaffAssignmentOverride}
-              onResetProjectAssignments={resetProjectAssignments}
-              staffAvailabilityByCategory={staffAvailabilityByCategory}
-              isReadOnly={isReadOnly}
-            />
-          )}
 
-          {activeTab === "allocations" && (
-            <StaffAllocations
-              projects={projects.filter((p) => p.type === "project")}
-              projectTypes={projectTypes}
-              staffCategories={staffCategories}
-              staffAllocations={staffAllocations}
-              updateStaffAllocation={updateStaffAllocation}
-              fundingSources={fundingSources}
-              isReadOnly={isReadOnly}
-            />
-          )}
+              {activeTab === "projects" && (
+                <ProjectsPrograms
+                  projects={projects}
+                  projectTypes={projectTypes}
+                  fundingSources={fundingSources}
+                  staffCategories={staffCategories}
+                  addProject={addProject}
+                  updateProject={updateProject}
+                  deleteProject={deleteProject}
+                  handleImport={handleImport}
+                  isReadOnly={isReadOnly}
+                />
+              )}
+              {activeTab === "staff" && (
+                <StaffCategories
+                  staffCategories={staffCategories}
+                  addStaffCategory={addStaffCategory}
+                  updateStaffCategory={updateStaffCategory}
+                  deleteStaffCategory={deleteStaffCategory}
+                  capacityWarnings={categoryCapacityWarnings}
+                  maxMonthlyFteHours={MAX_MONTHLY_FTE_HOURS}
+                  isReadOnly={isReadOnly}
+                />
+              )}
 
-          {activeTab === "scenarios" && (
-            <ScenariosTab
-              projects={projects}
-              projectTypes={projectTypes}
-              staffCategories={staffCategories}
-              staffAllocations={staffAllocations}
-              staffAvailabilityByCategory={staffAvailabilityByCategory}
-              scenarios={scenarios}
-              activeScenarioId={activeScenarioId}
-              onSelectScenario={setActiveScenarioId}
-              onCreateScenario={createScenario}
-              onDuplicateScenario={duplicateScenario}
-              onUpdateScenarioMeta={updateScenarioMeta}
-              onUpdateScenarioAdjustment={updateScenarioAdjustment}
-              onResetScenarioProject={resetScenarioProject}
-              timeHorizon={timeHorizon}
-              isReadOnly={isReadOnly}
-            />
-          )}
+              {activeTab === "people" && (
+                <PeopleTab
+                  staffMembers={staffMembers}
+                  staffCategories={staffCategories}
+                  addStaffMember={addStaffMember}
+                  updateStaffMember={updateStaffMember}
+                  deleteStaffMember={deleteStaffMember}
+                  staffAvailabilityByCategory={staffAvailabilityByCategory}
+                  isReadOnly={isReadOnly}
+                />
+              )}
 
-          {activeTab === "schedule" && (
-            <ScheduleView
-              projectTimelines={projectTimelines}
-              projectTypes={projectTypes}
-              staffCategories={staffCategories}
-              staffAllocations={staffAllocations}
-              staffAvailabilityByCategory={staffAvailabilityByCategory}
-              scheduleHorizon={scheduleHorizon}
-              setScheduleHorizon={setScheduleHorizon}
-            />
-          )}
-          {activeTab === "forecast" && (
-            <ResourceForecast
-              resourceForecast={resourceForecast}
-              staffCategories={staffCategories}
-              staffingGaps={staffingGaps}
-              timeHorizon={timeHorizon}
-              setTimeHorizon={setTimeHorizon}
-            />
-          )}
+              {activeTab === "assignments" && (
+                <StaffAssignmentsTab
+                  projects={projects.filter((project) =>
+                    isProjectOrProgram(project)
+                  )}
+                  staffMembers={staffMembers}
+                  staffCategories={staffCategories}
+                  staffAllocations={staffAllocations}
+                  assignmentOverrides={staffAssignmentOverrides}
+                  assignmentPlan={staffAssignmentPlan}
+                  onUpdateAssignment={updateStaffAssignmentOverride}
+                  onResetProjectAssignments={resetProjectAssignments}
+                  staffAvailabilityByCategory={staffAvailabilityByCategory}
+                  isReadOnly={isReadOnly}
+                />
+              )}
 
-          {activeTab === "finance" && (
-            <FinancialModelingTab
-              projects={projects}
-              projectTimelines={projectTimelines}
-              fundingSources={fundingSources}
-              operatingBudget={operatingBudget}
-              onUpdateOperatingBudget={updateOperatingBudgetValue}
-              onExtendProjection={extendProjectionYears}
-              financialConfig={financialConfig}
-              onUpdateFinancialConfig={updateFinancialConfiguration}
-              fundingSourceAssumptions={fundingSourceAssumptions}
-              onUpdateFundingSourceAssumption={updateFundingSourceAssumption}
-              isReadOnly={isReadOnly}
-            />
-          )}
+              {activeTab === "allocations" && (
+                <StaffAllocations
+                  projects={projects.filter((p) => p.type === "project")}
+                  projectTypes={projectTypes}
+                  staffCategories={staffCategories}
+                  staffAllocations={staffAllocations}
+                  updateStaffAllocation={updateStaffAllocation}
+                  fundingSources={fundingSources}
+                  isReadOnly={isReadOnly}
+                />
+              )}
 
-          {activeTab === "reports" && (
-            <ReportsTab
-              projects={projects}
-              projectTypes={projectTypes}
-              fundingSources={fundingSources}
-              projectTimelines={projectTimelines}
-              staffCategories={staffCategories}
-              staffAllocations={staffAllocations}
-              staffingGaps={staffingGaps}
-              resourceForecast={resourceForecast}
-              staffMembers={staffMembers}
-              staffAssignmentPlan={staffAssignmentPlan}
-            />
-          )}
+              {activeTab === "scenarios" && (
+                <ScenariosTab
+                  projects={projects}
+                  projectTypes={projectTypes}
+                  staffCategories={staffCategories}
+                  staffAllocations={staffAllocations}
+                  staffAvailabilityByCategory={staffAvailabilityByCategory}
+                  scenarios={scenarios}
+                  activeScenarioId={activeScenarioId}
+                  onSelectScenario={setActiveScenarioId}
+                  onCreateScenario={createScenario}
+                  onDuplicateScenario={duplicateScenario}
+                  onUpdateScenarioMeta={updateScenarioMeta}
+                  onUpdateScenarioAdjustment={updateScenarioAdjustment}
+                  onResetScenarioProject={resetScenarioProject}
+                  timeHorizon={timeHorizon}
+                  isReadOnly={isReadOnly}
+                />
+              )}
 
-          {activeTab === "settings" && (
-            <SettingsTab
-              projectTypes={projectTypes}
-              fundingSources={fundingSources}
-              addProjectType={addProjectType}
-              updateProjectType={updateProjectType}
-              deleteProjectType={deleteProjectType}
-              addFundingSource={addFundingSource}
-              updateFundingSource={updateFundingSource}
-              deleteFundingSource={deleteFundingSource}
-              isReadOnly={isReadOnly}
-            />
-          )}
-        </div>
+              {activeTab === "schedule" && (
+                <ScheduleView
+                  projectTimelines={projectTimelines}
+                  projectTypes={projectTypes}
+                  staffCategories={staffCategories}
+                  staffAllocations={staffAllocations}
+                  staffAvailabilityByCategory={staffAvailabilityByCategory}
+                  scheduleHorizon={scheduleHorizon}
+                  setScheduleHorizon={setScheduleHorizon}
+                />
+              )}
+              {activeTab === "forecast" && (
+                <ResourceForecast
+                  resourceForecast={resourceForecast}
+                  staffCategories={staffCategories}
+                  staffingGaps={staffingGaps}
+                  timeHorizon={timeHorizon}
+                  setTimeHorizon={setTimeHorizon}
+                />
+              )}
 
-        {/* Export/Import Controls */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mt-6">
+              {activeTab === "reports" && (
+                <ReportsTab
+                  projects={projects}
+                  projectTypes={projectTypes}
+                  fundingSources={fundingSources}
+                  projectTimelines={projectTimelines}
+                  staffCategories={staffCategories}
+                  staffAllocations={staffAllocations}
+                  staffingGaps={staffingGaps}
+                  resourceForecast={resourceForecast}
+                  staffMembers={staffMembers}
+                  staffAssignmentPlan={staffAssignmentPlan}
+                />
+              )}
+
+              {activeTab === "settings" && (
+                <SettingsTab
+                  projectTypes={projectTypes}
+                  fundingSources={fundingSources}
+                  addProjectType={addProjectType}
+                  updateProjectType={updateProjectType}
+                  deleteProjectType={deleteProjectType}
+                  addFundingSource={addFundingSource}
+                  updateFundingSource={updateFundingSource}
+                  deleteFundingSource={deleteFundingSource}
+                  isReadOnly={isReadOnly}
+                />
+              )}
+            </div>
+          </>
+        ) : (
+          <FinancialModelingModule
+            projectTimelines={projectTimelines}
+            projectTypes={projectTypes}
+            fundingSources={fundingSources}
+            operatingBudget={operatingBudget}
+            onUpdateOperatingBudget={updateOperatingBudgetValue}
+            financialConfig={financialConfig}
+            onUpdateFinancialConfig={updateFinancialConfiguration}
+            fundingSourceAssumptions={fundingSourceAssumptions}
+            onUpdateFundingSourceAssumption={updateFundingSourceAssumption}
+            isReadOnly={isReadOnly}
+          />
+        )}
+
+        <div className="bg-white rounded-lg shadow-sm p-6">
           <h3 className="text-lg font-semibold mb-4">Data Management</h3>
           <div className="flex flex-wrap gap-4 items-center">
             <button
