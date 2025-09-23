@@ -314,6 +314,11 @@ create trigger staff_allocations_set_updated_at
 before update on public.staff_allocations
 for each row execute function public.set_updated_at();
 
+drop trigger if exists project_effort_templates_set_updated_at on public.project_effort_templates;
+create trigger project_effort_templates_set_updated_at
+before update on public.project_effort_templates
+for each row execute function public.set_updated_at();
+
 drop trigger if exists staff_assignments_set_updated_at on public.staff_assignments;
 create trigger staff_assignments_set_updated_at
 before update on public.staff_assignments
@@ -652,6 +657,7 @@ alter table public.funding_sources enable row level security;
 alter table public.staff_categories enable row level security;
 alter table public.staff_members enable row level security;
 alter table public.projects enable row level security;
+alter table public.project_effort_templates enable row level security;
 alter table public.staff_allocations enable row level security;
 alter table public.staff_assignments enable row level security;
 
@@ -793,6 +799,17 @@ using (public.is_organization_member(organization_id));
 
 drop policy if exists "Editors manage projects" on public.projects;
 create policy "Editors manage projects" on public.projects
+for all
+using (public.can_edit_organization(organization_id))
+with check (public.can_edit_organization(organization_id));
+
+drop policy if exists "Members can view project effort templates" on public.project_effort_templates;
+create policy "Members can view project effort templates" on public.project_effort_templates
+for select
+using (public.is_organization_member(organization_id));
+
+drop policy if exists "Editors manage project effort templates" on public.project_effort_templates;
+create policy "Editors manage project effort templates" on public.project_effort_templates
 for all
 using (public.can_edit_organization(organization_id))
 with check (public.can_edit_organization(organization_id));
