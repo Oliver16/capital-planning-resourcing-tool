@@ -125,7 +125,7 @@ const ResourceForecast = ({
             <input
               type="number"
               value={timeHorizon}
-              onChange={(e) => setTimeHorizon(parseInt(e.target.value, 10) || 36)}
+              onChange={(e) => setTimeHorizon(parseInt(e.target.value, 10) || 60)}
               className="w-16 border border-gray-300 rounded px-2 py-1"
               min="12"
               max="60"
