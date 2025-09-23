@@ -73,6 +73,7 @@ export const defaultProjects = [
     projectTypeId: 1,
     fundingSourceId: 2,
     deliveryType: "self-perform",
+    sizeCategory: "Large",
     totalBudget: 2500000,
     designBudget: 250000,
     constructionBudget: 2250000,
@@ -92,6 +93,7 @@ export const defaultProjects = [
     projectTypeId: 2,
     fundingSourceId: 1,
     deliveryType: "self-perform",
+    sizeCategory: "Medium",
     totalBudget: 1800000,
     designBudget: 180000,
     constructionBudget: 1620000,
@@ -111,6 +113,7 @@ export const defaultProjects = [
     projectTypeId: 2,
     fundingSourceId: 1,
     deliveryType: "self-perform",
+    sizeCategory: "Program",
     annualBudget: 500000,
     designBudgetPercent: 15,
     constructionBudgetPercent: 85,
@@ -126,6 +129,23 @@ export const defaultProjects = [
     programEndDate: "2027-12-31",
     priority: "High",
     description: "Ongoing maintenance and small improvements",
+  },
+];
+
+export const defaultProjectEffortTemplates = [
+  {
+    id: 1,
+    name: "Small self-perform water project",
+    projectTypeId: 2,
+    sizeCategory: "Small",
+    deliveryType: "self-perform",
+    notes:
+      "Baseline staffing assumption for distribution projects handled internally.",
+    hoursByCategory: {
+      1: { pmHours: 80, designHours: 0, constructionHours: 40 },
+      2: { pmHours: 0, designHours: 120, constructionHours: 0 },
+      4: { pmHours: 0, designHours: 0, constructionHours: 160 },
+    },
   },
 ];
 
