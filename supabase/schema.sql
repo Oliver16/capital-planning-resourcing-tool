@@ -140,6 +140,7 @@ create table if not exists public.projects (
   program_end_date date,
   priority text default 'Medium',
   description text,
+  size_category text,
   delivery_type text default 'self-perform',
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
@@ -197,6 +198,20 @@ create table if not exists public.staff_allocations (
 create index if not exists staff_allocations_organization_id_idx on public.staff_allocations (organization_id);
 create index if not exists staff_allocations_project_id_idx on public.staff_allocations (project_id);
 create index if not exists staff_allocations_category_id_idx on public.staff_allocations (category_id);
+
+create table if not exists public.project_effort_templates (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations (id) on delete cascade,
+  name text not null,
+  project_type_id uuid references public.project_types (id) on delete set null,
+  size_category text,
+  delivery_type text,
+  notes text,
+  hours_by_category jsonb,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+create index if not exists project_effort_templates_org_idx on public.project_effort_templates (organization_id);
 
 create table if not exists public.staff_assignments (
   id uuid primary key default gen_random_uuid(),
@@ -297,6 +312,11 @@ for each row execute function public.set_updated_at();
 drop trigger if exists staff_allocations_set_updated_at on public.staff_allocations;
 create trigger staff_allocations_set_updated_at
 before update on public.staff_allocations
+for each row execute function public.set_updated_at();
+
+drop trigger if exists project_effort_templates_set_updated_at on public.project_effort_templates;
+create trigger project_effort_templates_set_updated_at
+before update on public.project_effort_templates
 for each row execute function public.set_updated_at();
 
 drop trigger if exists staff_assignments_set_updated_at on public.staff_assignments;
@@ -637,6 +657,7 @@ alter table public.funding_sources enable row level security;
 alter table public.staff_categories enable row level security;
 alter table public.staff_members enable row level security;
 alter table public.projects enable row level security;
+alter table public.project_effort_templates enable row level security;
 alter table public.staff_allocations enable row level security;
 alter table public.staff_assignments enable row level security;
 
@@ -778,6 +799,17 @@ using (public.is_organization_member(organization_id));
 
 drop policy if exists "Editors manage projects" on public.projects;
 create policy "Editors manage projects" on public.projects
+for all
+using (public.can_edit_organization(organization_id))
+with check (public.can_edit_organization(organization_id));
+
+drop policy if exists "Members can view project effort templates" on public.project_effort_templates;
+create policy "Members can view project effort templates" on public.project_effort_templates
+for select
+using (public.is_organization_member(organization_id));
+
+drop policy if exists "Editors manage project effort templates" on public.project_effort_templates;
+create policy "Editors manage project effort templates" on public.project_effort_templates
 for all
 using (public.can_edit_organization(organization_id))
 with check (public.can_edit_organization(organization_id));

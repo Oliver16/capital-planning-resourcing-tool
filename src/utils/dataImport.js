@@ -165,6 +165,7 @@ export const handleCSVImport = async (
           projectTypeId: 1, // Default, user can change
           fundingSourceId: 1, // Default, user can change
           deliveryType: normalizeDeliveryType(row["Delivery Type"]),
+          sizeCategory: row["Project Size"] || "",
           totalBudget,
           designBudget,
           constructionBudget,
@@ -248,6 +249,7 @@ export const downloadCSVTemplate = (staffCategories = []) => {
       "Priority",
       "Description",
       "Delivery Type",
+      "Project Size",
       "Annual Budget",
       "Design %",
       "Construction %",
@@ -281,6 +283,7 @@ export const downloadCSVTemplate = (staffCategories = []) => {
       "High",
       "Sample project description",
       "self-perform",
+      "Medium",
       "",
       "",
       "",
@@ -303,6 +306,7 @@ export const downloadCSVTemplate = (staffCategories = []) => {
       "Medium",
       "Ongoing distribution system improvements",
       "hybrid",
+      "Program",
       "750000",
       "15",
       "85",

@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { normalizeProjectBudgetBreakdown } from '../utils/projectBudgets';
+import {
+  normalizeEffortTemplate,
+  sanitizeTemplateHours,
+} from '../utils/projectEffortTemplates';
 
 const toCamelCaseKey = (key) =>
   key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
@@ -122,6 +126,7 @@ const projectToRow = (project, organizationId) => {
     program_end_date: normalizedProject.programEndDate || null,
     priority: normalizedProject.priority || 'Medium',
     description: normalizedProject.description || '',
+    size_category: normalizeNullable(normalizedProject.sizeCategory),
     delivery_type: normalizedProject.deliveryType || 'self-perform',
   };
 };
@@ -169,6 +174,28 @@ const staffAssignmentToRow = (assignment, organizationId) => ({
   design_hours: normalizeNullable(assignment.designHours) ?? 0,
   construction_hours: normalizeNullable(assignment.constructionHours) ?? 0,
 });
+
+const projectEffortTemplateFromRow = (row) => {
+  const camel = camelizeRecord(row);
+  camel.hoursByCategory = parseJsonField(camel.hoursByCategory, {});
+  return normalizeEffortTemplate(camel);
+};
+
+const projectEffortTemplateToRow = (template, organizationId) => {
+  const normalized = normalizeEffortTemplate(template);
+  const sanitizedHours = sanitizeTemplateHours(normalized.hoursByCategory);
+
+  return {
+    organization_id: organizationId,
+    name: normalized.name,
+    project_type_id: normalizeNullable(normalized.projectTypeId),
+    size_category: normalizeNullable(normalized.sizeCategory),
+    delivery_type: normalizeNullable(normalized.deliveryType),
+    notes: normalized.notes || '',
+    hours_by_category:
+      Object.keys(sanitizedHours).length > 0 ? sanitizedHours : null,
+  };
+};
 
 const buildErrorMessage = (error, fallback) =>
   error?.message || fallback || 'Unexpected database error.';
@@ -361,11 +388,58 @@ export const useDatabase = (defaultData = {}) => {
             Object.keys(remappedContinuous).length > 0
               ? JSON.stringify(remappedContinuous)
               : null,
+          size_category: normalizedProject.sizeCategory || null,
           program_start_date: normalizedProject.programStartDate || null,
           program_end_date: normalizedProject.programEndDate || null,
           priority: normalizedProject.priority || 'Medium',
           description: normalizedProject.description || '',
           delivery_type: normalizedProject.deliveryType || 'self-perform',
+        };
+      })
+    );
+
+    await ensureEntries('project_effort_templates', () =>
+      (defaultData.projectEffortTemplates || []).map((template) => {
+        const normalizedTemplate = normalizeEffortTemplate(template);
+
+        const projectTypeName = (defaultData.projectTypes || []).find(
+          (type) => String(type.id) === String(normalizedTemplate.projectTypeId)
+        )?.name;
+
+        const remappedHours = {};
+        Object.entries(normalizedTemplate.hoursByCategory || {}).forEach(
+          ([key, value]) => {
+            const categoryName = (defaultData.staffCategories || []).find(
+              (category) => String(category.id) === String(key)
+            )?.name;
+
+            const categoryId = categoryName
+              ? categoryIdByName.get(categoryName)
+              : null;
+
+            if (!categoryId || !value) {
+              return;
+            }
+
+            remappedHours[categoryId] = {
+              pmHours: value.pmHours || 0,
+              designHours: value.designHours || 0,
+              constructionHours: value.constructionHours || 0,
+            };
+          }
+        );
+
+        return {
+          organization_id: organizationId,
+          name: normalizedTemplate.name,
+          project_type_id: projectTypeName
+            ? projectTypeIdByName.get(projectTypeName) || null
+            : null,
+          size_category: normalizedTemplate.sizeCategory || null,
+          delivery_type: normalizedTemplate.deliveryType || null,
+          notes: normalizedTemplate.notes || null,
+          hours_by_category:
+            Object.keys(remappedHours).length > 0 ? remappedHours : null,
         };
       })
     );
@@ -779,6 +853,79 @@ export const useDatabase = (defaultData = {}) => {
     [organizationId, assertReady, assertCanEdit]
   );
 
+  const saveProjectEffortTemplate = useCallback(
+    async (template) => {
+      assertReady();
+      assertCanEdit();
+
+      const payload = projectEffortTemplateToRow(template, organizationId);
+      const { organization_id, ...updatePayload } = payload;
+
+      if (template.id) {
+        const { error: updateError } = await supabase
+          .from('project_effort_templates')
+          .update(updatePayload)
+          .eq('id', template.id)
+          .eq('organization_id', organizationId);
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        return template.id;
+      }
+
+      const { data, error: insertError } = await supabase
+        .from('project_effort_templates')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      return data?.id;
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
+  const getProjectEffortTemplates = useCallback(async () => {
+    assertReady();
+
+    const { data, error: fetchError } = await supabase
+      .from('project_effort_templates')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('updated_at', { ascending: false });
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    return (data || []).map(projectEffortTemplateFromRow);
+  }, [organizationId, assertReady]);
+
+  const deleteProjectEffortTemplate = useCallback(
+    async (id) => {
+      assertReady();
+      assertCanEdit();
+
+      const { error: deleteError } = await supabase
+        .from('project_effort_templates')
+        .delete()
+        .eq('id', id)
+        .eq('organization_id', organizationId);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      return true;
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
   const saveStaffAllocation = useCallback(
     async (allocation) => {
       assertReady();
@@ -952,6 +1099,7 @@ export const useDatabase = (defaultData = {}) => {
         staffMembers: await fetchTable('staff_members'),
         staffAllocations: await fetchTable('staff_allocations'),
         staffAssignments: await fetchTable('staff_assignments'),
+        projectEffortTemplates: await fetchTable('project_effort_templates'),
       },
     };
 
@@ -989,6 +1137,9 @@ export const useDatabase = (defaultData = {}) => {
       saveStaffMember,
       getStaffMembers,
       deleteStaffMember,
+      saveProjectEffortTemplate,
+      getProjectEffortTemplates,
+      deleteProjectEffortTemplate,
       saveStaffAssignment,
       getStaffAssignments,
       deleteStaffAssignment,
@@ -1017,6 +1168,9 @@ export const useDatabase = (defaultData = {}) => {
       saveStaffMember,
       getStaffMembers,
       deleteStaffMember,
+      saveProjectEffortTemplate,
+      getProjectEffortTemplates,
+      deleteProjectEffortTemplate,
       saveStaffAssignment,
       getStaffAssignments,
       deleteStaffAssignment,

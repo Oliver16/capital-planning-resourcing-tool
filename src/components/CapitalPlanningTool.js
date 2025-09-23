@@ -40,6 +40,7 @@ import {
   defaultProjects,
   defaultStaffMembers,
   defaultStaffAssignments,
+  defaultProjectEffortTemplates,
 } from "../data/defaultData";
 import {
   calculateTimelines,
@@ -51,6 +52,7 @@ import { useDatabase } from "../hooks/useDatabase";
 import { useAuth } from "../context/AuthContext";
 import { buildStaffAssignmentPlan } from "../utils/staffAssignments";
 import { normalizeProjectBudgetBreakdown } from "../utils/projectBudgets";
+import { normalizeEffortTemplate } from "../utils/projectEffortTemplates";
 import {
   generateDefaultOperatingBudget,
   ensureBudgetYears,
@@ -154,6 +156,9 @@ const CapitalPlanningTool = () => {
       staffAllocations: {},
       staffMembers: defaultStaffMembers,
       staffAssignments: defaultStaffAssignments,
+      projectEffortTemplates: defaultProjectEffortTemplates.map(
+        normalizeEffortTemplate
+      ),
     }),
     []
   );
@@ -180,6 +185,9 @@ const CapitalPlanningTool = () => {
     saveStaffMember,
     getStaffMembers,
     deleteStaffMember: dbDeleteStaffMember,
+    saveProjectEffortTemplate: dbSaveProjectEffortTemplate,
+    getProjectEffortTemplates,
+    deleteProjectEffortTemplate: dbDeleteProjectEffortTemplate,
     saveStaffAssignment,
     getStaffAssignments,
     deleteStaffAssignment: dbDeleteStaffAssignment,
@@ -194,6 +202,9 @@ const CapitalPlanningTool = () => {
   const [fundingSources, setFundingSources] = useState(defaultFundingSources);
   const [projects, setProjects] = useState(() =>
     defaultProjects.map(normalizeProjectBudgetBreakdown)
+  );
+  const [projectEffortTemplates, setProjectEffortTemplates] = useState(() =>
+    defaultProjectEffortTemplates.map(normalizeEffortTemplate)
   );
   const [staffAllocations, setStaffAllocations] = useState({});
   const [staffMembers, setStaffMembers] = useState(defaultStaffMembers);
@@ -277,6 +288,7 @@ const CapitalPlanningTool = () => {
             staffCategoriesData,
             projectTypesData,
             fundingSourcesData,
+            projectEffortTemplatesData,
             allocationsData,
             staffMembersData,
             staffAssignmentsData,
@@ -285,6 +297,7 @@ const CapitalPlanningTool = () => {
             getStaffCategories(),
             getProjectTypes(),
             getFundingSources(),
+            getProjectEffortTemplates(),
             getStaffAllocations(),
             getStaffMembers(),
             getStaffAssignments(),
@@ -309,6 +322,15 @@ const CapitalPlanningTool = () => {
           }
           if (fundingSourcesData && fundingSourcesData.length > 0) {
             setFundingSources(fundingSourcesData);
+          }
+
+          if (
+            projectEffortTemplatesData &&
+            projectEffortTemplatesData.length > 0
+          ) {
+            setProjectEffortTemplates(
+              projectEffortTemplatesData.map(normalizeEffortTemplate)
+            );
           }
 
           if (staffMembersData && staffMembersData.length > 0) {
@@ -360,6 +382,7 @@ const CapitalPlanningTool = () => {
     getStaffCategories,
     getProjectTypes,
     getFundingSources,
+    getProjectEffortTemplates,
     getStaffAllocations,
     getStaffMembers,
     getStaffAssignments,
@@ -846,6 +869,7 @@ const CapitalPlanningTool = () => {
             projectTypeId: projectTypes[0]?.id || 1,
             fundingSourceId: fundingSources[0]?.id || 1,
             deliveryType: "self-perform",
+            sizeCategory: "Medium",
             totalBudget: 1000000,
             designBudgetPercent: 15,
             constructionBudgetPercent: 85,
@@ -862,6 +886,7 @@ const CapitalPlanningTool = () => {
             projectTypeId: projectTypes[0]?.id || 1,
             fundingSourceId: fundingSources[0]?.id || 1,
             deliveryType: "self-perform",
+            sizeCategory: "Program",
             annualBudget: 500000,
             designBudgetPercent: 15,
             constructionBudgetPercent: 85,
@@ -989,6 +1014,162 @@ const CapitalPlanningTool = () => {
       });
     } catch (error) {
       console.error("Error saving staff allocation:", error);
+    }
+  };
+
+  const upsertProjectEffortTemplate = async (template) => {
+    if (isReadOnly) {
+      return null;
+    }
+
+    const normalizedTemplate = normalizeEffortTemplate(template);
+    const payload = {
+      ...normalizedTemplate,
+      id: template?.id ?? normalizedTemplate.id,
+    };
+
+    try {
+      const savedId = await dbSaveProjectEffortTemplate(payload);
+      const templateId = savedId || payload.id;
+
+      const templateWithId = {
+        ...normalizedTemplate,
+        id: templateId,
+      };
+
+      setProjectEffortTemplates((previous) => {
+        const existingIndex = previous.findIndex(
+          (entry) => entry.id && templateId && String(entry.id) === String(templateId)
+        );
+
+        if (existingIndex >= 0) {
+          const next = [...previous];
+          next[existingIndex] = templateWithId;
+          return next;
+        }
+
+        return [...previous, templateWithId];
+      });
+
+      return templateId;
+    } catch (error) {
+      console.error("Error saving project effort template:", error);
+      return null;
+    }
+  };
+
+  const removeProjectEffortTemplate = async (templateId) => {
+    if (isReadOnly) {
+      return;
+    }
+
+    if (!templateId) {
+      return;
+    }
+
+    try {
+      await dbDeleteProjectEffortTemplate(templateId);
+      setProjectEffortTemplates((previous) =>
+        previous.filter((template) => String(template.id) !== String(templateId))
+      );
+    } catch (error) {
+      console.error("Error deleting project effort template:", error);
+    }
+  };
+
+  const applyProjectEffortTemplate = async (template, targetProjectIds = []) => {
+    if (isReadOnly) {
+      return;
+    }
+
+    if (!template) {
+      return;
+    }
+
+    const storedTemplate = template.id
+      ? projectEffortTemplates.find(
+          (entry) => entry.id && String(entry.id) === String(template.id)
+        )
+      : null;
+
+    const normalizedTemplate = storedTemplate || normalizeEffortTemplate(template);
+    const sanitizedHours = normalizedTemplate.hoursByCategory || {};
+
+    const categoryMap = new Map(
+      staffCategories
+        .filter((category) => category && category.id !== undefined && category.id !== null)
+        .map((category) => [String(category.id), category.id])
+    );
+
+    const validProjectIds = Array.from(
+      new Set(
+        (targetProjectIds || []).filter(
+          (projectId) => projectId !== undefined && projectId !== null
+        )
+      )
+    );
+
+    if (!validProjectIds.length || !Object.keys(sanitizedHours).length) {
+      return;
+    }
+
+    setStaffAllocations((previous) => {
+      const next = { ...previous };
+
+      validProjectIds.forEach((projectId) => {
+        const projectKey = projectId;
+        const existingProjectAllocations = {
+          ...(next[projectKey] || {}),
+        };
+
+        Object.entries(sanitizedHours).forEach(([categoryKey, hours]) => {
+          const resolvedCategoryId = categoryMap.get(String(categoryKey));
+          if (!resolvedCategoryId) {
+            return;
+          }
+
+          existingProjectAllocations[resolvedCategoryId] = {
+            pmHours: Number(hours.pmHours) || 0,
+            designHours: Number(hours.designHours) || 0,
+            constructionHours: Number(hours.constructionHours) || 0,
+          };
+        });
+
+        next[projectKey] = existingProjectAllocations;
+      });
+
+      return next;
+    });
+
+    try {
+      const tasks = [];
+
+      validProjectIds.forEach((projectId) => {
+        Object.entries(sanitizedHours).forEach(([categoryKey, hours]) => {
+          const resolvedCategoryId = categoryMap.get(String(categoryKey));
+          if (!resolvedCategoryId) {
+            return;
+          }
+
+          const storageProjectId = normalizeStorageId(projectId) ?? projectId;
+          const storageCategoryId =
+            normalizeStorageId(resolvedCategoryId) ?? resolvedCategoryId;
+
+          tasks.push(
+            saveStaffAllocation({
+              projectId: storageProjectId,
+              categoryId: storageCategoryId,
+              pmHours: Number(hours.pmHours) || 0,
+              designHours: Number(hours.designHours) || 0,
+              constructionHours: Number(hours.constructionHours) || 0,
+            })
+          );
+        });
+      });
+
+      await Promise.all(tasks);
+    } catch (error) {
+      console.error("Error applying project effort template:", error);
     }
   };
 
@@ -1899,6 +2080,104 @@ const CapitalPlanningTool = () => {
                   isReadOnly={isReadOnly}
                 />
               )}
+              staffMembers={staffMembers}
+              staffCategories={staffCategories}
+              staffAllocations={staffAllocations}
+              assignmentOverrides={staffAssignmentOverrides}
+              assignmentPlan={staffAssignmentPlan}
+              onUpdateAssignment={updateStaffAssignmentOverride}
+              onResetProjectAssignments={resetProjectAssignments}
+              staffAvailabilityByCategory={staffAvailabilityByCategory}
+              isReadOnly={isReadOnly}
+            />
+          )}
+
+          {activeTab === "allocations" && (
+            <StaffAllocations
+              projects={projects.filter((p) => p.type === "project")}
+              projectTypes={projectTypes}
+              staffCategories={staffCategories}
+              staffAllocations={staffAllocations}
+              updateStaffAllocation={updateStaffAllocation}
+              projectEffortTemplates={projectEffortTemplates}
+              onSaveProjectEffortTemplate={upsertProjectEffortTemplate}
+              onDeleteProjectEffortTemplate={removeProjectEffortTemplate}
+              onApplyEffortTemplate={applyProjectEffortTemplate}
+              fundingSources={fundingSources}
+              isReadOnly={isReadOnly}
+            />
+          )}
+
+          {activeTab === "scenarios" && (
+            <ScenariosTab
+              projects={projects}
+              projectTypes={projectTypes}
+              staffCategories={staffCategories}
+              staffAllocations={staffAllocations}
+              staffAvailabilityByCategory={staffAvailabilityByCategory}
+              scenarios={scenarios}
+              activeScenarioId={activeScenarioId}
+              onSelectScenario={setActiveScenarioId}
+              onCreateScenario={createScenario}
+              onDuplicateScenario={duplicateScenario}
+              onUpdateScenarioMeta={updateScenarioMeta}
+              onUpdateScenarioAdjustment={updateScenarioAdjustment}
+              onResetScenarioProject={resetScenarioProject}
+              timeHorizon={timeHorizon}
+              isReadOnly={isReadOnly}
+            />
+          )}
+
+          {activeTab === "schedule" && (
+            <ScheduleView
+              projectTimelines={projectTimelines}
+              projectTypes={projectTypes}
+              staffCategories={staffCategories}
+              staffAllocations={staffAllocations}
+              staffAvailabilityByCategory={staffAvailabilityByCategory}
+              scheduleHorizon={scheduleHorizon}
+              setScheduleHorizon={setScheduleHorizon}
+            />
+          )}
+          {activeTab === "forecast" && (
+            <ResourceForecast
+              resourceForecast={resourceForecast}
+              staffCategories={staffCategories}
+              staffingGaps={staffingGaps}
+              timeHorizon={timeHorizon}
+              setTimeHorizon={setTimeHorizon}
+            />
+          )}
+
+          {activeTab === "reports" && (
+            <ReportsTab
+              projects={projects}
+              projectTypes={projectTypes}
+              fundingSources={fundingSources}
+              projectTimelines={projectTimelines}
+              staffCategories={staffCategories}
+              staffAllocations={staffAllocations}
+              staffingGaps={staffingGaps}
+              resourceForecast={resourceForecast}
+              staffMembers={staffMembers}
+              staffAssignmentPlan={staffAssignmentPlan}
+            />
+          )}
+
+          {activeTab === "settings" && (
+            <SettingsTab
+              projectTypes={projectTypes}
+              fundingSources={fundingSources}
+              addProjectType={addProjectType}
+              updateProjectType={updateProjectType}
+              deleteProjectType={deleteProjectType}
+              addFundingSource={addFundingSource}
+              updateFundingSource={updateFundingSource}
+              deleteFundingSource={deleteFundingSource}
+              isReadOnly={isReadOnly}
+            />
+          )}
+        </div>
 
               {activeTab === "allocations" && (
                 <StaffAllocations
