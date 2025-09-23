@@ -561,6 +561,9 @@ export const buildDebtServiceSchedule = (
     }
   };
 
+  const isWithinProjection = (year) =>
+    Number.isFinite(year) && year >= startYear && year < projectionEndYear;
+
   fundingDraws.forEach((record, fundingKey) => {
     const { assumption, draws } = record;
     const financingType = assumption?.financingType || "cash";
@@ -582,6 +585,13 @@ export const buildDebtServiceSchedule = (
     if (drawEntries.length === 0) {
       return;
     }
+
+    const issuedWithinHorizon = drawEntries.reduce((sum, entry) => {
+      if (isWithinProjection(entry.year)) {
+        return sum + entry.amount;
+      }
+      return sum;
+    }, 0);
 
     if (financingType === "srf") {
       const loanDetails = {
@@ -618,7 +628,8 @@ export const buildDebtServiceSchedule = (
         const averageOutstanding = openingBalance + drawAmount / 2;
         const interestPayment = interestRate > 0 ? averageOutstanding * interestRate : 0;
 
-        if (year >= startYear && year < projectionEndYear) {
+        if (isWithinProjection(year)) {
+
           pushPayment(year, interestPayment, interestPayment, 0);
           loanDetails.interestOnly.push({
             year,
@@ -651,7 +662,8 @@ export const buildDebtServiceSchedule = (
           const paymentAmount = interestPayment + principalPayment;
           remainingPrincipal = Math.max(0, remainingPrincipal - principalPayment);
 
-          if (paymentYear >= startYear && paymentYear < projectionEndYear) {
+          if (isWithinProjection(paymentYear)) {
+
             pushPayment(paymentYear, paymentAmount, interestPayment, principalPayment);
             loanDetails.amortization.push({
               year: paymentYear,
@@ -663,8 +675,10 @@ export const buildDebtServiceSchedule = (
           }
         }
 
-        debtIssuedBySource[fundingKey] =
-          (debtIssuedBySource[fundingKey] || 0) + totalPrincipal;
+        if (issuedWithinHorizon > 0) {
+          debtIssuedBySource[fundingKey] =
+            (debtIssuedBySource[fundingKey] || 0) + issuedWithinHorizon;
+        }
       }
 
       financingSchedules.push(loanDetails);
@@ -719,7 +733,8 @@ export const buildDebtServiceSchedule = (
           issueDetail.firstYearPrincipal = principalPayment;
         }
 
-        if (paymentYear >= startYear && paymentYear < projectionEndYear) {
+        if (isWithinProjection(paymentYear)) {
+
           pushPayment(paymentYear, paymentAmount, interestPayment, principalPayment);
           issueDetail.paymentsWithinHorizon.push({
             year: paymentYear,
@@ -733,8 +748,11 @@ export const buildDebtServiceSchedule = (
 
       bondDetails.issues.push(issueDetail);
       bondDetails.totalIssued += issueAmount;
-      debtIssuedBySource[fundingKey] =
-        (debtIssuedBySource[fundingKey] || 0) + issueAmount;
+      if (isWithinProjection(entry.year)) {
+        debtIssuedBySource[fundingKey] =
+          (debtIssuedBySource[fundingKey] || 0) + issueAmount;
+      }
+
     });
 
     if (bondDetails.totalIssued > 0) {
@@ -884,12 +902,12 @@ export const calculateFinancialForecast = ({
     minDaysCashOnHand = null;
   }
 
-  const totalCapitalSpend = Object.values(spendPlan).reduce(
-    (sum, entry) => sum + sanitizeNumber(entry?.totalSpend, 0),
+  const totalCapitalSpend = years.reduce(
+    (sum, year) => sum + sanitizeNumber(spendPlan?.[year]?.totalSpend, 0),
     0
   );
-  const totalCashCapex = Object.values(cashUsesByYear).reduce(
-    (sum, value) => sum + sanitizeNumber(value, 0),
+  const totalCashCapex = years.reduce(
+    (sum, year) => sum + sanitizeNumber(cashUsesByYear?.[year], 0),
     0
   );
   const totalDebtIssued = Object.values(debtIssuedBySource).reduce(

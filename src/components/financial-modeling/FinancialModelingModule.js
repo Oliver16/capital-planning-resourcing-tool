@@ -98,7 +98,6 @@ const FinancialModelingModule = ({
   onUpdateProjectTypeUtility,
   budgetEscalations = {},
   onUpdateBudgetEscalation,
-  onApplyBudgetEscalations,
 }) => {
   const [activeView, setActiveView] = useState("cip");
 
@@ -286,7 +285,6 @@ const FinancialModelingModule = ({
           onUpdateOperatingBudget={onUpdateOperatingBudget}
           budgetEscalations={budgetEscalations}
           onUpdateBudgetEscalation={onUpdateBudgetEscalation}
-          onApplyBudgetEscalations={onApplyBudgetEscalations}
           activeUtilityLabel={activeUtilityOption?.label}
           isReadOnly={isReadOnly}
         />

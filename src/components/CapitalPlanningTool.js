@@ -52,7 +52,6 @@ import { useDatabase } from "../hooks/useDatabase";
 import { useAuth } from "../context/AuthContext";
 import { buildStaffAssignmentPlan } from "../utils/staffAssignments";
 import { normalizeProjectBudgetBreakdown } from "../utils/projectBudgets";
-import { normalizeEffortTemplate } from "../utils/projectEffortTemplates";
 import {
   generateDefaultOperatingBudget,
   ensureBudgetYears,
@@ -129,6 +128,50 @@ const createDefaultBudgetEscalations = () => ({
   existingDebtService: 0,
 });
 
+const ESCALATION_FIELDS = [
+  "operatingRevenue",
+  "nonOperatingRevenue",
+  "omExpenses",
+  "salaries",
+  "adminExpenses",
+  "existingDebtService",
+];
+
+const recalculateOperatingBudget = (budgetRows = [], budgetEscalations = {}) => {
+  if (!Array.isArray(budgetRows) || budgetRows.length === 0) {
+    return [];
+  }
+
+  const sortedRows = [...budgetRows].sort(
+    (a, b) => (Number(a?.year) || 0) - (Number(b?.year) || 0)
+  );
+  const recalculated = [];
+
+  sortedRows.forEach((row, index) => {
+    const normalizedRow = {
+      ...row,
+      year: Number(row?.year) || 0,
+      rateIncreasePercent: getNumericValue(row?.rateIncreasePercent),
+    };
+
+    if (index === 0) {
+      ESCALATION_FIELDS.forEach((field) => {
+        normalizedRow[field] = getNumericValue(row?.[field]);
+      });
+    } else {
+      const previousRow = recalculated[index - 1];
+      ESCALATION_FIELDS.forEach((field) => {
+        const rate = Number(budgetEscalations?.[field]) || 0;
+        const priorValue = getNumericValue(previousRow?.[field]);
+        normalizedRow[field] = priorValue * (1 + rate / 100);
+      });
+    }
+
+    recalculated.push(normalizedRow);
+  });
+
+  return recalculated;
+};
 const createDefaultFinancialConfig = (startYear) => ({
   startYear,
   projectionYears: 10,
@@ -192,6 +235,15 @@ const CapitalPlanningTool = () => {
     getStaffAssignments,
     deleteStaffAssignment: dbDeleteStaffAssignment,
     exportDatabase,
+    getUtilityProfiles,
+    saveUtilityProfile,
+    getUtilityOperatingBudgets,
+    upsertUtilityOperatingBudgetRows,
+    deleteUtilityOperatingBudgetsNotIn,
+    getProjectTypeUtilities,
+    saveProjectTypeUtility,
+    getFundingSourceAssumptions,
+    saveFundingSourceAssumption,
   } = useDatabase(defaultData);
 
   // Core data states
@@ -292,6 +344,10 @@ const CapitalPlanningTool = () => {
             allocationsData,
             staffMembersData,
             staffAssignmentsData,
+            utilityProfilesData,
+            utilityBudgetMap,
+            projectTypeUtilityAssignments,
+            fundingAssumptionsData,
           ] = await Promise.all([
             getProjects(),
             getStaffCategories(),
@@ -301,6 +357,10 @@ const CapitalPlanningTool = () => {
             getStaffAllocations(),
             getStaffMembers(),
             getStaffAssignments(),
+            getUtilityProfiles(),
+            getUtilityOperatingBudgets(),
+            getProjectTypeUtilities(),
+            getFundingSourceAssumptions(),
           ]);
 
           // Only update if we got actual data
@@ -369,6 +429,96 @@ const CapitalPlanningTool = () => {
             });
             setStaffAllocations(allocationsObject);
           }
+
+          const hasUtilityProfileData =
+            utilityProfilesData && Object.keys(utilityProfilesData).length > 0;
+          const hasUtilityBudgetData = utilityBudgetMap && utilityBudgetMap.size > 0;
+
+          if (hasUtilityProfileData || hasUtilityBudgetData) {
+            setUtilityProfiles((previous) => {
+              const nextProfiles = { ...previous };
+
+              UTILITY_OPTIONS.forEach((option) => {
+                const key = option.value;
+                const existingProfile = previous[key] || createDefaultUtilityProfile(currentYear);
+                const dbProfile = utilityProfilesData?.[key];
+                const mergedConfig = dbProfile?.financialConfig
+                  ? { ...existingProfile.financialConfig, ...dbProfile.financialConfig }
+                  : { ...existingProfile.financialConfig };
+                const mergedEscalations = dbProfile?.budgetEscalations
+                  ? { ...existingProfile.budgetEscalations, ...dbProfile.budgetEscalations }
+                  : { ...existingProfile.budgetEscalations };
+                const budgetRows = utilityBudgetMap?.get(key) || existingProfile.operatingBudget;
+
+                const alignedBudget = ensureBudgetYears(
+                  budgetRows,
+                  mergedConfig.startYear,
+                  mergedConfig.projectionYears
+                );
+                nextProfiles[key] = {
+                  financialConfig: mergedConfig,
+                  budgetEscalations: mergedEscalations,
+                  operatingBudget: recalculateOperatingBudget(
+                    alignedBudget,
+                    mergedEscalations
+                  ),
+                };
+              });
+
+              return nextProfiles;
+            });
+          }
+
+          if (
+            projectTypeUtilityAssignments &&
+            Object.keys(projectTypeUtilityAssignments).length > 0
+          ) {
+            setProjectTypeUtilities(projectTypeUtilityAssignments);
+          }
+
+          if (fundingAssumptionsData && fundingAssumptionsData.length > 0) {
+            setFundingSourceAssumptions((previous) => {
+              const existingById = new Map();
+              (previous || []).forEach((assumption) => {
+                if (!assumption) {
+                  return;
+                }
+                const key =
+                  assumption.fundingSourceId === null || assumption.fundingSourceId === undefined
+                    ? null
+                    : String(assumption.fundingSourceId);
+                if (key !== null) {
+                  existingById.set(key, assumption);
+                }
+              });
+
+              const merged = fundingAssumptionsData.map((assumption) => {
+                if (!assumption || assumption.fundingSourceId === undefined || assumption.fundingSourceId === null) {
+                  return null;
+                }
+                const key = String(assumption.fundingSourceId);
+                const existing = existingById.get(key);
+                if (existing) {
+                  return {
+                    ...existing,
+                    financingType: assumption.financingType,
+                    interestRate: assumption.interestRate,
+                    termYears: assumption.termYears,
+                    sourceName: assumption.sourceName || existing.sourceName,
+                  };
+                }
+                return {
+                  fundingSourceId: assumption.fundingSourceId,
+                  sourceName: assumption.sourceName || '',
+                  financingType: assumption.financingType || 'cash',
+                  interestRate: assumption.interestRate || 0,
+                  termYears: assumption.termYears || 0,
+                };
+              });
+
+              return merged.filter(Boolean);
+            });
+          }
         } catch (error) {
           console.error("Error loading data from database:", error);
         }
@@ -386,6 +536,10 @@ const CapitalPlanningTool = () => {
     getStaffAllocations,
     getStaffMembers,
     getStaffAssignments,
+    getUtilityProfiles,
+    getUtilityOperatingBudgets,
+    getProjectTypeUtilities,
+    getFundingSourceAssumptions,
   ]);
 
   useEffect(() => {
@@ -642,153 +796,176 @@ const CapitalPlanningTool = () => {
     }
   };
 
-  const updateFinancialConfiguration = (utilityKey, updates) => {
+  const updateFinancialConfiguration = async (utilityKey, updates) => {
+    if (isReadOnly) {
+      return;
+    }
+
     const targetUtility = utilityKey || activeUtility;
+    const existingProfile =
+      utilityProfiles[targetUtility] || createDefaultUtilityProfile(currentYear);
 
-    setUtilityProfiles((previous) => {
-      const existing =
-        previous[targetUtility] || createDefaultUtilityProfile(currentYear);
-      const nextConfig = {
-        ...existing.financialConfig,
-        ...updates,
-      };
-      const nextBudget = ensureBudgetYears(
-        existing.operatingBudget,
-        nextConfig.startYear,
-        nextConfig.projectionYears
-      );
+    const nextConfig = {
+      ...existingProfile.financialConfig,
+      ...updates,
+    };
 
-      return {
-        ...previous,
-        [targetUtility]: {
-          ...existing,
+    const nextBudget = ensureBudgetYears(
+      existingProfile.operatingBudget,
+      nextConfig.startYear,
+      nextConfig.projectionYears
+    );
+
+    const recalculatedBudget = recalculateOperatingBudget(
+      nextBudget,
+      existingProfile.budgetEscalations
+    );
+
+    const updatedProfile = {
+      ...existingProfile,
+      financialConfig: nextConfig,
+      operatingBudget: recalculatedBudget,
+    };
+
+    setUtilityProfiles((previous) => ({
+      ...previous,
+      [targetUtility]: updatedProfile,
+    }));
+
+    try {
+      await Promise.all([
+        saveUtilityProfile(targetUtility, {
           financialConfig: nextConfig,
-          operatingBudget: nextBudget,
-        },
-      };
-    });
+          budgetEscalations: updatedProfile.budgetEscalations,
+        }),
+        upsertUtilityOperatingBudgetRows(targetUtility, recalculatedBudget),
+        deleteUtilityOperatingBudgetsNotIn(
+          targetUtility,
+          recalculatedBudget.map((row) => row.year)
+        ),
+      ]);
+    } catch (error) {
+      console.error("Failed to update financial configuration:", error);
+    }
   };
 
-  const updateOperatingBudgetValue = (utilityKey, year, field, value) => {
-    const targetUtility = utilityKey || activeUtility;
+  const updateOperatingBudgetValue = async (utilityKey, year, field, value) => {
+    if (isReadOnly) {
+      return;
+    }
 
-    setUtilityProfiles((previous) => {
-      const existing =
-        previous[targetUtility] || createDefaultUtilityProfile(currentYear);
-      const normalizedBudget = ensureBudgetYears(
-        existing.operatingBudget,
-        existing.financialConfig.startYear,
-        existing.financialConfig.projectionYears
+    const targetUtility = utilityKey || activeUtility;
+    const existingProfile =
+      utilityProfiles[targetUtility] || createDefaultUtilityProfile(currentYear);
+
+    const normalizedBudget = ensureBudgetYears(
+      existingProfile.operatingBudget,
+      existingProfile.financialConfig.startYear,
+      existingProfile.financialConfig.projectionYears
+    );
+
+    const updatedBudget = normalizedBudget.map((row) => {
+      if (!row || row.year !== year) {
+        return row;
+      }
+
+      let nextValue = value;
+      if (field === "rateIncreasePercent") {
+        nextValue = Number(value) || 0;
+      } else {
+        nextValue = getNumericValue(value);
+      }
+
+      return {
+        ...row,
+        [field]: nextValue,
+      };
+    });
+
+    const recalculatedBudget = recalculateOperatingBudget(
+      updatedBudget,
+      existingProfile.budgetEscalations
+    );
+
+    const updatedProfile = {
+      ...existingProfile,
+      operatingBudget: recalculatedBudget,
+    };
+
+    setUtilityProfiles((previous) => ({
+      ...previous,
+      [targetUtility]: updatedProfile,
+    }));
+
+    try {
+      await upsertUtilityOperatingBudgetRows(targetUtility, recalculatedBudget);
+      await deleteUtilityOperatingBudgetsNotIn(
+        targetUtility,
+        recalculatedBudget.map((row) => row.year)
       );
-
-      const updatedBudget = normalizedBudget.map((row) => {
-        if (!row || row.year !== year) {
-          return row;
-        }
-
-        let nextValue = value;
-        if (field === "rateIncreasePercent") {
-          nextValue = Number(value) || 0;
-        } else {
-          nextValue = getNumericValue(value);
-        }
-
-        return {
-          ...row,
-          [field]: nextValue,
-        };
-      });
-
-      return {
-        ...previous,
-        [targetUtility]: {
-          ...existing,
-          operatingBudget: updatedBudget,
-        },
-      };
-    });
+    } catch (error) {
+      console.error("Failed to update operating budget row:", error);
+    }
   };
 
-  const updateBudgetEscalation = (utilityKey, field, value) => {
+  const updateBudgetEscalation = async (utilityKey, field, value) => {
+    if (isReadOnly) {
+      return;
+    }
+
     const targetUtility = utilityKey || activeUtility;
+    const existingProfile =
+      utilityProfiles[targetUtility] || createDefaultUtilityProfile(currentYear);
+    const numericValue = Number(value);
 
-    setUtilityProfiles((previous) => {
-      const existing =
-        previous[targetUtility] || createDefaultUtilityProfile(currentYear);
-      const numericValue = Number(value);
+    const updatedEscalations = {
+      ...existingProfile.budgetEscalations,
+      [field]: Number.isFinite(numericValue) ? numericValue : 0,
+    };
 
-      return {
-        ...previous,
-        [targetUtility]: {
-          ...existing,
-          budgetEscalations: {
-            ...existing.budgetEscalations,
-            [field]: Number.isFinite(numericValue) ? numericValue : 0,
-          },
-        },
-      };
-    });
+    const normalizedBudget = ensureBudgetYears(
+      existingProfile.operatingBudget,
+      existingProfile.financialConfig.startYear,
+      existingProfile.financialConfig.projectionYears
+    );
+
+    const recalculatedBudget = recalculateOperatingBudget(
+      normalizedBudget,
+      updatedEscalations
+    );
+
+    const updatedProfile = {
+      ...existingProfile,
+      budgetEscalations: updatedEscalations,
+      operatingBudget: recalculatedBudget,
+    };
+
+    setUtilityProfiles((previous) => ({
+      ...previous,
+      [targetUtility]: updatedProfile,
+    }));
+
+    try {
+      await Promise.all([
+        saveUtilityProfile(targetUtility, {
+          financialConfig: updatedProfile.financialConfig,
+          budgetEscalations: updatedEscalations,
+        }),
+        upsertUtilityOperatingBudgetRows(targetUtility, recalculatedBudget),
+        deleteUtilityOperatingBudgetsNotIn(
+          targetUtility,
+          recalculatedBudget.map((row) => row.year)
+        ),
+      ]);
+    } catch (error) {
+      console.error("Failed to update budget escalation:", error);
+    }
   };
 
-  const applyBudgetEscalations = (utilityKey) => {
-    const targetUtility = utilityKey || activeUtility;
-
-    setUtilityProfiles((previous) => {
-      const existing =
-        previous[targetUtility] || createDefaultUtilityProfile(currentYear);
-      const { financialConfig, budgetEscalations } = existing;
-
-      const normalizedBudget = ensureBudgetYears(
-        existing.operatingBudget,
-        financialConfig.startYear,
-        financialConfig.projectionYears
-      );
-
-      const escalateFields = [
-        "operatingRevenue",
-        "nonOperatingRevenue",
-        "omExpenses",
-        "salaries",
-        "adminExpenses",
-        "existingDebtService",
-      ];
-
-      const escalatedBudget = [];
-      const sortedBudget = [...normalizedBudget].sort((a, b) => a.year - b.year);
-
-      sortedBudget.forEach((row, index) => {
-        if (index === 0) {
-          const baseRow = { ...row };
-          escalateFields.forEach((field) => {
-            baseRow[field] = getNumericValue(baseRow[field]);
-          });
-          baseRow.rateIncreasePercent = Number(row.rateIncreasePercent) || 0;
-          escalatedBudget.push(baseRow);
-          return;
-        }
-
-        const previousRow = escalatedBudget[index - 1];
-        const nextRow = { ...row };
-        escalateFields.forEach((field) => {
-          const rate = Number(budgetEscalations?.[field]) || 0;
-          const priorValue = getNumericValue(previousRow[field]);
-          nextRow[field] = priorValue * (1 + rate / 100);
-        });
-        nextRow.rateIncreasePercent = Number(row.rateIncreasePercent) || 0;
-        escalatedBudget.push(nextRow);
-      });
-
-      return {
-        ...previous,
-        [targetUtility]: {
-          ...existing,
-          operatingBudget: escalatedBudget,
-        },
-      };
-    });
-  };
-
-  const handleUpdateProjectTypeUtility = (typeId, utilityValue) => {
+  const handleUpdateProjectTypeUtility = async (typeId, utilityValue) => {
+    if (isReadOnly) {
+      return;
+    }
     const key = toIdKey(typeId);
     if (!key) {
       return;
@@ -809,9 +986,20 @@ const CapitalPlanningTool = () => {
         [key]: normalizedUtility,
       };
     });
+    try {
+      await saveProjectTypeUtility(typeId, normalizedUtility);
+    } catch (error) {
+      console.error("Failed to update project type utility assignment:", error);
+    }
   };
 
-  const updateFundingSourceAssumption = (fundingSourceId, field, value) => {
+  const updateFundingSourceAssumption = async (fundingSourceId, field, value) => {
+    if (isReadOnly) {
+      return;
+    }
+
+    let updatedRecord = null;
+
     setFundingSourceAssumptions((previous) =>
       previous.map((assumption) => {
         if (!assumption) {
@@ -826,34 +1014,39 @@ const CapitalPlanningTool = () => {
           return assumption;
         }
 
+        let nextValue = value;
+        if (field === "interestRate" || field === "termYears") {
+          nextValue = getNumericValue(value);
+        }
+
+        let nextAssumption = { ...assumption };
+
         if (field === "financingType") {
-          return {
-            ...assumption,
-            financingType: value,
-          };
-        }
-
-        if (field === "interestRate") {
-          return {
-            ...assumption,
-            interestRate: getNumericValue(value),
-          };
-        }
-
-        if (field === "termYears") {
+          nextAssumption.financingType = value;
+        } else if (field === "interestRate") {
+          nextAssumption.interestRate = getNumericValue(value);
+        } else if (field === "termYears") {
           const numeric = Math.max(0, Math.round(getNumericValue(value)));
-          return {
+          nextAssumption.termYears = numeric;
+        } else {
+          nextAssumption = {
             ...assumption,
-            termYears: numeric,
+            [field]: nextValue,
           };
         }
 
-        return {
-          ...assumption,
-          [field]: value,
-        };
+        updatedRecord = nextAssumption;
+        return nextAssumption;
       })
     );
+
+    if (updatedRecord) {
+      try {
+        await saveFundingSourceAssumption(updatedRecord);
+      } catch (error) {
+        console.error("Failed to update funding source assumption:", error);
+      }
+    }
   };
 
   // Project management functions
@@ -2016,7 +2209,6 @@ const CapitalPlanningTool = () => {
                 </nav>
               </div>
             </div>
-
             <div className="space-y-6">
               {activeTab === "overview" && (
                 <Overview
@@ -2026,7 +2218,6 @@ const CapitalPlanningTool = () => {
                   projectTimelines={projectTimelines}
                 />
               )}
-
               {activeTab === "projects" && (
                 <ProjectsPrograms
                   projects={projects}
@@ -2080,104 +2271,6 @@ const CapitalPlanningTool = () => {
                   isReadOnly={isReadOnly}
                 />
               )}
-              staffMembers={staffMembers}
-              staffCategories={staffCategories}
-              staffAllocations={staffAllocations}
-              assignmentOverrides={staffAssignmentOverrides}
-              assignmentPlan={staffAssignmentPlan}
-              onUpdateAssignment={updateStaffAssignmentOverride}
-              onResetProjectAssignments={resetProjectAssignments}
-              staffAvailabilityByCategory={staffAvailabilityByCategory}
-              isReadOnly={isReadOnly}
-            />
-          )}
-
-          {activeTab === "allocations" && (
-            <StaffAllocations
-              projects={projects.filter((p) => p.type === "project")}
-              projectTypes={projectTypes}
-              staffCategories={staffCategories}
-              staffAllocations={staffAllocations}
-              updateStaffAllocation={updateStaffAllocation}
-              projectEffortTemplates={projectEffortTemplates}
-              onSaveProjectEffortTemplate={upsertProjectEffortTemplate}
-              onDeleteProjectEffortTemplate={removeProjectEffortTemplate}
-              onApplyEffortTemplate={applyProjectEffortTemplate}
-              fundingSources={fundingSources}
-              isReadOnly={isReadOnly}
-            />
-          )}
-
-          {activeTab === "scenarios" && (
-            <ScenariosTab
-              projects={projects}
-              projectTypes={projectTypes}
-              staffCategories={staffCategories}
-              staffAllocations={staffAllocations}
-              staffAvailabilityByCategory={staffAvailabilityByCategory}
-              scenarios={scenarios}
-              activeScenarioId={activeScenarioId}
-              onSelectScenario={setActiveScenarioId}
-              onCreateScenario={createScenario}
-              onDuplicateScenario={duplicateScenario}
-              onUpdateScenarioMeta={updateScenarioMeta}
-              onUpdateScenarioAdjustment={updateScenarioAdjustment}
-              onResetScenarioProject={resetScenarioProject}
-              timeHorizon={timeHorizon}
-              isReadOnly={isReadOnly}
-            />
-          )}
-
-          {activeTab === "schedule" && (
-            <ScheduleView
-              projectTimelines={projectTimelines}
-              projectTypes={projectTypes}
-              staffCategories={staffCategories}
-              staffAllocations={staffAllocations}
-              staffAvailabilityByCategory={staffAvailabilityByCategory}
-              scheduleHorizon={scheduleHorizon}
-              setScheduleHorizon={setScheduleHorizon}
-            />
-          )}
-          {activeTab === "forecast" && (
-            <ResourceForecast
-              resourceForecast={resourceForecast}
-              staffCategories={staffCategories}
-              staffingGaps={staffingGaps}
-              timeHorizon={timeHorizon}
-              setTimeHorizon={setTimeHorizon}
-            />
-          )}
-
-          {activeTab === "reports" && (
-            <ReportsTab
-              projects={projects}
-              projectTypes={projectTypes}
-              fundingSources={fundingSources}
-              projectTimelines={projectTimelines}
-              staffCategories={staffCategories}
-              staffAllocations={staffAllocations}
-              staffingGaps={staffingGaps}
-              resourceForecast={resourceForecast}
-              staffMembers={staffMembers}
-              staffAssignmentPlan={staffAssignmentPlan}
-            />
-          )}
-
-          {activeTab === "settings" && (
-            <SettingsTab
-              projectTypes={projectTypes}
-              fundingSources={fundingSources}
-              addProjectType={addProjectType}
-              updateProjectType={updateProjectType}
-              deleteProjectType={deleteProjectType}
-              addFundingSource={addFundingSource}
-              updateFundingSource={updateFundingSource}
-              deleteFundingSource={deleteFundingSource}
-              isReadOnly={isReadOnly}
-            />
-          )}
-        </div>
 
               {activeTab === "allocations" && (
                 <StaffAllocations
@@ -2279,7 +2372,7 @@ const CapitalPlanningTool = () => {
             onUpdateBudgetEscalation={(field, value) =>
               updateBudgetEscalation(activeUtility, field, value)
             }
-            onApplyBudgetEscalations={() => applyBudgetEscalations(activeUtility)}
+
             fundingSourceAssumptions={fundingSourceAssumptions}
             onUpdateFundingSourceAssumption={updateFundingSourceAssumption}
             activeUtility={activeUtility}
