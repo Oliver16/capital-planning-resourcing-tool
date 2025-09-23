@@ -22,6 +22,28 @@ const normalizeDeliveryType = (value) => {
   return "self-perform";
 };
 
+const parseComplexity = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  const normalized = value.toString().trim().toLowerCase();
+
+  if (normalized === "low") {
+    return "Low";
+  }
+
+  if (normalized === "high") {
+    return "High";
+  }
+
+  if (normalized === "normal" || normalized === "medium") {
+    return "Normal";
+  }
+
+  return "";
+};
+
 const normalizeCategoryName = (value = "") =>
   value.toString().toLowerCase().replace(/[^a-z0-9]+/g, "");
 
@@ -165,6 +187,9 @@ export const handleCSVImport = async (
           projectTypeId: 1, // Default, user can change
           fundingSourceId: 1, // Default, user can change
           deliveryType: normalizeDeliveryType(row["Delivery Type"]),
+          complexity:
+            parseComplexity(row["Project Complexity"] || row["Project Size"]) ||
+            "Normal",
           totalBudget,
           designBudget,
           constructionBudget,
@@ -248,6 +273,7 @@ export const downloadCSVTemplate = (staffCategories = []) => {
       "Priority",
       "Description",
       "Delivery Type",
+      "Project Complexity",
       "Annual Budget",
       "Design %",
       "Construction %",
@@ -281,6 +307,7 @@ export const downloadCSVTemplate = (staffCategories = []) => {
       "High",
       "Sample project description",
       "self-perform",
+      "Medium",
       "",
       "",
       "",
@@ -303,6 +330,7 @@ export const downloadCSVTemplate = (staffCategories = []) => {
       "Medium",
       "Ongoing distribution system improvements",
       "hybrid",
+      "Program",
       "750000",
       "15",
       "85",

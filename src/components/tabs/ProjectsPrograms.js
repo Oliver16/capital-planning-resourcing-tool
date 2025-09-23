@@ -19,6 +19,12 @@ const deliveryOptions = [
   { value: "consultant", label: "Consultant" },
 ];
 
+const complexityOptions = [
+  { value: "Low", label: "Low" },
+  { value: "Normal", label: "Normal" },
+  { value: "High", label: "High" },
+];
+
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
@@ -364,6 +370,11 @@ const ProjectCard = ({
                 Delivery: {deliveryLabel}
               </SummaryChip>
             )}
+            {project.complexity && (
+              <SummaryChip className="bg-green-50 text-green-700">
+                Complexity: {project.complexity}
+              </SummaryChip>
+            )}
             {Number(project.totalBudget) > 0 && (
               <SummaryChip className="bg-purple-50 text-purple-700">
                 Budget {formatGroupBudget(project.totalBudget)}
@@ -441,6 +452,26 @@ const ProjectCard = ({
             disabled={isReadOnly}
           >
             {deliveryOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="Project complexity">
+          <select
+            value={project.complexity || "Normal"}
+            onChange={(event) => {
+              if (isReadOnly) {
+                return;
+              }
+              updateProject(project.id, "complexity", event.target.value);
+            }}
+            className={projectInputClass}
+            disabled={isReadOnly}
+          >
+            {complexityOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -683,6 +714,11 @@ const ProgramCard = ({
                 {formatGroupBudget(program.annualBudget)}/yr
               </SummaryChip>
             )}
+            {program.complexity && (
+              <SummaryChip className="bg-emerald-50 text-emerald-700">
+                Complexity: {program.complexity}
+              </SummaryChip>
+            )}
             {program.programStartDate && program.programEndDate && (
               <SummaryChip className="bg-blue-50 text-blue-700">
                 {program.programStartDate} → {program.programEndDate}
@@ -742,6 +778,26 @@ const ProgramCard = ({
             {fundingSources.map((source) => (
               <option key={source.id} value={source.id}>
                 {source.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="Program complexity">
+          <select
+            value={program.complexity || "Normal"}
+            onChange={(event) => {
+              if (isReadOnly) {
+                return;
+              }
+              updateProject(program.id, "complexity", event.target.value);
+            }}
+            className={programInputClass}
+            disabled={isReadOnly}
+          >
+            {complexityOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
