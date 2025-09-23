@@ -9,6 +9,8 @@ import {
 const numberInputClasses =
   "w-full rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200";
 const readOnlyClasses = "bg-slate-100 text-slate-500 cursor-not-allowed";
+const numberDisplayClasses = "px-4 py-3 text-right font-mono text-sm text-slate-700";
+const numberEmphasisClasses = "px-4 py-3 text-right font-mono text-sm font-semibold text-slate-900";
 
 const DebtServiceView = ({
   years = [],
@@ -24,6 +26,9 @@ const DebtServiceView = ({
   const forecast = forecastResult?.forecast || [];
   const debtIssuedBySource = forecastResult?.debtIssuedBySource || {};
   const targetCoverage = financialConfig?.targetCoverageRatio || 0;
+  const interestByYear = forecastResult?.debtServiceInterestByYear || {};
+  const principalByYear = forecastResult?.debtServicePrincipalByYear || {};
+  const financingSchedules = forecastResult?.financingSchedules || [];
 
   const budgetByYear = useMemo(() => {
     const map = new Map();
@@ -62,6 +67,22 @@ const DebtServiceView = ({
     return map;
   }, [debtIssuedBySource]);
 
+  const bondSchedules = useMemo(
+    () =>
+      financingSchedules.filter(
+        (schedule) => schedule.financingType === "bond" && schedule.totalIssued > 0
+      ),
+    [financingSchedules]
+  );
+
+  const loanSchedules = useMemo(
+    () =>
+      financingSchedules.filter(
+        (schedule) => schedule.financingType === "srf" && schedule.totalIssued > 0
+      ),
+    [financingSchedules]
+  );
+
   const handleExistingDebtChange = (year) => (event) => {
     if (isReadOnly) {
       return;
@@ -91,7 +112,9 @@ const DebtServiceView = ({
               <tr>
                 <th className="px-4 py-3 text-left font-semibold text-slate-600">Fiscal Year</th>
                 <th className="px-4 py-3 text-right font-semibold text-slate-600">Existing Debt Service</th>
-                <th className="px-4 py-3 text-right font-semibold text-slate-600">New Debt Service</th>
+                <th className="px-4 py-3 text-right font-semibold text-slate-600">New Debt Interest</th>
+                <th className="px-4 py-3 text-right font-semibold text-slate-600">New Debt Principal</th>
+                <th className="px-4 py-3 text-right font-semibold text-slate-600">Total New Debt Service</th>
                 <th className="px-4 py-3 text-right font-semibold text-slate-600">Total Debt Service</th>
                 <th className="px-4 py-3 text-right font-semibold text-slate-600">Coverage</th>
               </tr>
@@ -100,9 +123,17 @@ const DebtServiceView = ({
               {years.map((year) => {
                 const budgetRow = budgetByYear.get(year) || {};
                 const yearForecast = forecastByYear.get(year) || {};
-                const existingDebt = budgetRow.existingDebtService ?? 0;
-                const newDebt = yearForecast.newDebtService ?? 0;
-                const totalDebt = yearForecast.totalDebtService ?? existingDebt + newDebt;
+                const existingDebtRaw = budgetRow.existingDebtService ?? 0;
+                const existingDebt = Number(existingDebtRaw) || 0;
+                const interestPayment = Math.max(0, Number(interestByYear?.[year] ?? 0));
+                const principalPayment = Math.max(0, Number(principalByYear?.[year] ?? 0));
+                const computedNewDebt = interestPayment + principalPayment;
+                const hasComputedNewDebt = Math.abs(computedNewDebt) > 1e-6;
+                const fallbackNewDebt = Number(yearForecast.newDebtService ?? 0);
+                const newDebt = hasComputedNewDebt ? computedNewDebt : fallbackNewDebt;
+                const totalDebt = Number.isFinite(Number(yearForecast.totalDebtService))
+                  ? Number(yearForecast.totalDebtService)
+                  : existingDebt + newDebt;
                 const coverage = yearForecast.coverageRatio;
 
                 let coverageClass = "text-slate-700";
@@ -117,23 +148,21 @@ const DebtServiceView = ({
                     </th>
                     <td className="px-4 py-3 text-right">
                       {isReadOnly ? (
-                        <span className="text-slate-700">{formatCurrency(existingDebt)}</span>
+                        <span className="font-mono text-sm text-slate-700">{formatCurrency(existingDebt)}</span>
                       ) : (
                         <input
                           type="number"
-                          value={existingDebt}
+                          value={existingDebtRaw}
                           onChange={handleExistingDebtChange(year)}
                           className={`${numberInputClasses} text-right ${isReadOnly ? readOnlyClasses : ""}`}
                           disabled={isReadOnly}
                         />
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right text-slate-700">
-                      {formatCurrency(newDebt)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium text-slate-900">
-                      {formatCurrency(totalDebt)}
-                    </td>
+                    <td className={numberDisplayClasses}>{formatCurrency(interestPayment)}</td>
+                    <td className={numberDisplayClasses}>{formatCurrency(principalPayment)}</td>
+                    <td className={numberEmphasisClasses}>{formatCurrency(newDebt)}</td>
+                    <td className={numberEmphasisClasses}>{formatCurrency(totalDebt)}</td>
                     <td className={`px-4 py-3 text-right ${coverageClass}`}>
                       {coverage !== null && coverage !== undefined
                         ? formatCoverageRatio(coverage, 2)
@@ -255,6 +284,213 @@ const DebtServiceView = ({
           </div>
         )}
       </div>
+
+      {bondSchedules.length > 0 || loanSchedules.length > 0 ? (
+        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-2">
+            <h3 className="text-lg font-semibold text-slate-900">Financing Timelines</h3>
+            <p className="text-sm text-slate-600">
+              Bond issuances and loan drawdowns are modeled from the CIP spend plan. Interest-only periods and
+              amortization start years reflect the selected financing structure.
+            </p>
+          </div>
+
+          {bondSchedules.length > 0 ? (
+            <div className="mt-6 space-y-4">
+              <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Revenue Bond Issues
+              </h4>
+              {bondSchedules.map((schedule) => {
+                let cumulative = 0;
+                return (
+                  <div
+                    key={schedule.fundingKey || schedule.sourceName}
+                    className="rounded-md border border-slate-100 bg-white p-4 shadow-sm"
+                  >
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-800">{schedule.sourceName}</div>
+                        <div className="text-xs text-slate-500">
+                          Rate {formatPercent(schedule.interestRate || 0, { decimals: 2 })} · Term {schedule.termYears}
+                          {" "}yrs
+                        </div>
+                      </div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Total Issued: {formatCurrency(schedule.totalIssued || 0)}
+                      </div>
+                    </div>
+
+                    {schedule.issues?.length ? (
+                      <div className="mt-4 overflow-x-auto">
+                        <table className="min-w-full divide-y divide-slate-200 text-xs">
+                          <thead className="bg-slate-50">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-semibold text-slate-600">Issue Year</th>
+                              <th className="px-3 py-2 text-right font-semibold text-slate-600">Issue Amount</th>
+                              <th className="px-3 py-2 text-right font-semibold text-slate-600">Payment Start</th>
+                              <th className="px-3 py-2 text-right font-semibold text-slate-600">1st Yr Interest</th>
+                              <th className="px-3 py-2 text-right font-semibold text-slate-600">1st Yr Principal</th>
+                              <th className="px-3 py-2 text-right font-semibold text-slate-600">Level Debt Service</th>
+                              <th className="px-3 py-2 text-right font-semibold text-slate-600">Cumulative Issued</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200">
+                            {schedule.issues.map((issue) => {
+                              cumulative += issue.amount || 0;
+                              return (
+                                <tr key={`${schedule.fundingKey || schedule.sourceName}-${issue.year}`}>
+                                  <th scope="row" className="px-3 py-2 text-left font-medium text-slate-700">
+                                    FY {issue.year}
+                                  </th>
+                                  <td className="px-3 py-2 text-right font-mono text-slate-600">
+                                    {formatCurrency(issue.amount)}
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-mono text-slate-600">
+                                    FY {issue.paymentStartYear}
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-mono text-slate-600">
+                                    {formatCurrency(issue.firstYearInterest)}
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-mono text-slate-600">
+                                    {formatCurrency(issue.firstYearPrincipal)}
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-mono text-slate-700">
+                                    {formatCurrency(issue.annualPayment)}
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-mono text-slate-700">
+                                    {formatCurrency(cumulative)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-xs text-slate-500">
+                        No bond issues fall within the projection horizon.
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {loanSchedules.length > 0 ? (
+            <div className="mt-8 space-y-4">
+              <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Loan Draws & Amortization
+              </h4>
+              {loanSchedules.map((loan) => (
+                <div
+                  key={loan.fundingKey || loan.sourceName}
+                  className="rounded-md border border-slate-100 bg-white p-4 shadow-sm"
+                >
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800">{loan.sourceName}</div>
+                      <div className="text-xs text-slate-500">
+                        Rate {formatPercent(loan.interestRate || 0, { decimals: 2 })} · Term {loan.termYears}{" "}
+                        yrs
+                      </div>
+                    </div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Total Financed: {formatCurrency(loan.totalIssued || 0)}
+                    </div>
+                  </div>
+
+                  {loan.interestOnly?.length ? (
+                    <div className="mt-4 overflow-x-auto">
+                      <table className="min-w-full divide-y divide-slate-200 text-xs">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-semibold text-slate-600">FY</th>
+                            <th className="px-3 py-2 text-right font-semibold text-slate-600">Draw</th>
+                            <th className="px-3 py-2 text-right font-semibold text-slate-600">Interest-Only Payment</th>
+                            <th className="px-3 py-2 text-right font-semibold text-slate-600">Balance End</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200">
+                          {loan.interestOnly.map((entry) => (
+                            <tr key={`interest-${loan.fundingKey || loan.sourceName}-${entry.year}`}>
+                              <th scope="row" className="px-3 py-2 text-left font-medium text-slate-700">
+                                FY {entry.year}
+                              </th>
+                              <td className="px-3 py-2 text-right font-mono text-slate-600">
+                                {formatCurrency(entry.drawAmount)}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono text-slate-600">
+                                {formatCurrency(entry.interestPayment)}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono text-slate-600">
+                                {formatCurrency(entry.outstandingBalance)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-xs text-slate-500">
+                      Interest-only activity falls outside the projection horizon.
+                    </p>
+                  )}
+
+                  <div className="mt-4 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    {loan.amortizationStartYear
+                      ? `Amortization begins FY ${loan.amortizationStartYear} with level payment ${formatCurrency(
+                          loan.annualPayment || 0
+                        )} for ${loan.termYears} years.`
+                      : "No amortization is scheduled."}
+                  </div>
+
+                  {loan.amortization?.length ? (
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="min-w-full divide-y divide-slate-200 text-xs">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-semibold text-slate-600">FY</th>
+                            <th className="px-3 py-2 text-right font-semibold text-slate-600">Payment</th>
+                            <th className="px-3 py-2 text-right font-semibold text-slate-600">Interest</th>
+                            <th className="px-3 py-2 text-right font-semibold text-slate-600">Principal</th>
+                            <th className="px-3 py-2 text-right font-semibold text-slate-600">Ending Balance</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200">
+                          {loan.amortization.map((entry) => (
+                            <tr key={`amort-${loan.fundingKey || loan.sourceName}-${entry.year}`}>
+                              <th scope="row" className="px-3 py-2 text-left font-medium text-slate-700">
+                                FY {entry.year}
+                              </th>
+                              <td className="px-3 py-2 text-right font-mono text-slate-600">
+                                {formatCurrency(entry.payment)}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono text-slate-600">
+                                {formatCurrency(entry.interestPayment)}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono text-slate-600">
+                                {formatCurrency(entry.principalPayment)}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono text-slate-600">
+                                {formatCurrency(entry.remainingBalance)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-xs text-slate-500">
+                      Amortization years fall outside the projection horizon.
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 };

@@ -8,7 +8,8 @@ import CipSummaryView from "./views/CipSummaryView";
 import OperatingBudgetView from "./views/OperatingBudgetView";
 import ProFormaView from "./views/ProFormaView";
 import DebtServiceView from "./views/DebtServiceView";
-import { ClipboardList, FileSpreadsheet, LineChart, PiggyBank } from "lucide-react";
+import SettingsView from "./views/SettingsView";
+import { ClipboardList, FileSpreadsheet, LineChart, PiggyBank, Settings2 } from "lucide-react";
 
 const MODULE_VIEWS = [
   {
@@ -34,6 +35,12 @@ const MODULE_VIEWS = [
     label: "Debt Service",
     description: "Financing assumptions and new debt schedules.",
     icon: PiggyBank,
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    description: "Manage utility mapping and model-wide assumptions.",
+    icon: Settings2,
   },
 ];
 
@@ -266,11 +273,7 @@ const FinancialModelingModule = ({
           years={years}
           fundingSourceMap={fundingLabelMap}
           projectTypeMap={projectTypeMap}
-          utilityOptions={utilityOptions}
-          projectTypeSummaries={projectTypeSummaries}
-          onUpdateProjectTypeUtility={onUpdateProjectTypeUtility}
           activeUtilityLabel={activeUtilityOption?.label}
-          isReadOnly={isReadOnly}
         />
       ) : null}
 
@@ -303,6 +306,16 @@ const FinancialModelingModule = ({
           fundingSourceMap={fundingLabelMap}
           onUpdateOperatingBudget={onUpdateOperatingBudget}
           onUpdateFundingSourceAssumption={onUpdateFundingSourceAssumption}
+          isReadOnly={isReadOnly}
+        />
+      ) : null}
+
+      {activeView === "settings" ? (
+        <SettingsView
+          financialConfig={financialConfig}
+          projectTypeSummaries={projectTypeSummaries}
+          utilityOptions={utilityOptions}
+          onUpdateProjectTypeUtility={onUpdateProjectTypeUtility}
           isReadOnly={isReadOnly}
         />
       ) : null}

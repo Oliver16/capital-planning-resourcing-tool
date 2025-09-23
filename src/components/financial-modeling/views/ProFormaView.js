@@ -6,6 +6,12 @@ import {
 } from "../../../utils/financialModeling";
 import { ShieldCheck, CircleDollarSign, PiggyBank, LineChart, Clock } from "lucide-react";
 
+const INDENT_CLASS_MAP = {
+  0: "pl-6",
+  1: "pl-10",
+  2: "pl-14",
+};
+
 const SummaryCard = ({ title, value, description, icon: Icon, highlight = false }) => (
   <div
     className={`flex items-start justify-between rounded-lg border border-slate-200 bg-white p-4 shadow-sm ${
@@ -98,12 +104,14 @@ const ProFormaView = ({ forecastResult, financialConfig }) => {
         label: "Base Operating Revenue",
         getValue: (row) => row.baseOperatingRevenue,
         formatter: (value) => formatCurrency(value),
+        indentLevel: 1,
       },
       {
         key: "plannedRateIncreasePercent",
         label: "Planned Rate Adjustment",
         getValue: (row) => row.plannedRateIncreasePercent,
         formatter: (value) => formatPercent(value, { decimals: 1 }),
+        indentLevel: 1,
       },
       {
         key: "adjustedOperatingRevenue",
@@ -111,12 +119,14 @@ const ProFormaView = ({ forecastResult, financialConfig }) => {
         getValue: (row) => row.adjustedOperatingRevenue,
         formatter: (value) => formatCurrency(value),
         highlight: true,
+        indentLevel: 1,
       },
       {
         key: "nonOperatingRevenue",
         label: "Non-Operating Revenue",
         getValue: (row) => row.nonOperatingRevenue,
         formatter: (value) => formatCurrency(value),
+        indentLevel: 1,
       },
       {
         key: "totalRevenue",
@@ -124,6 +134,7 @@ const ProFormaView = ({ forecastResult, financialConfig }) => {
         getValue: (row) =>
           (row.adjustedOperatingRevenue || 0) + (row.nonOperatingRevenue || 0),
         formatter: (value) => formatCurrency(value),
+        isSubtotal: true,
       },
       { type: "section", label: "Operating Expenses" },
       {
@@ -131,24 +142,28 @@ const ProFormaView = ({ forecastResult, financialConfig }) => {
         label: "Operations & Maintenance",
         getValue: (row) => row.omExpenses,
         formatter: (value) => formatCurrency(value),
+        indentLevel: 1,
       },
       {
         key: "salaries",
         label: "Salaries & Wages",
         getValue: (row) => row.salaries,
         formatter: (value) => formatCurrency(value),
+        indentLevel: 1,
       },
       {
         key: "adminExpenses",
         label: "Administration",
         getValue: (row) => row.adminExpenses,
         formatter: (value) => formatCurrency(value),
+        indentLevel: 1,
       },
       {
         key: "totalOperatingExpenses",
         label: "Total Operating Expenses",
         getValue: (row) => row.totalOperatingExpenses,
         formatter: (value) => formatCurrency(value),
+        isSubtotal: true,
       },
       { type: "section", label: "Net Position Before Debt" },
       {
@@ -157,6 +172,7 @@ const ProFormaView = ({ forecastResult, financialConfig }) => {
         getValue: (row) => row.netRevenueBeforeDebt,
         formatter: (value) => formatCurrency(value),
         highlight: true,
+        isSubtotal: true,
       },
       { type: "section", label: "Debt Service" },
       {
@@ -164,18 +180,21 @@ const ProFormaView = ({ forecastResult, financialConfig }) => {
         label: "Existing Debt Service",
         getValue: (row) => row.existingDebtService,
         formatter: (value) => formatCurrency(value),
+        indentLevel: 1,
       },
       {
         key: "newDebtService",
         label: "New Debt Service",
         getValue: (row) => row.newDebtService,
         formatter: (value) => formatCurrency(value),
+        indentLevel: 1,
       },
       {
         key: "totalDebtService",
         label: "Total Debt Service",
         getValue: (row) => row.totalDebtService,
         formatter: (value) => formatCurrency(value),
+        isSubtotal: true,
       },
       {
         key: "netAfterDebt",
@@ -184,6 +203,7 @@ const ProFormaView = ({ forecastResult, financialConfig }) => {
           (row.netRevenueBeforeDebt || 0) - (row.totalDebtService || 0),
         formatter: (value) => formatCurrency(value),
         highlight: true,
+        isSubtotal: true,
       },
       { type: "section", label: "Capital & Coverage" },
       {
@@ -191,12 +211,14 @@ const ProFormaView = ({ forecastResult, financialConfig }) => {
         label: "Cash-Funded CIP",
         getValue: (row) => row.cashFundedCapex,
         formatter: (value) => formatCurrency(value),
+        indentLevel: 1,
       },
       {
         key: "cipSpend",
         label: "Total CIP Spend",
         getValue: (row) => row.cipSpend,
         formatter: (value) => formatCurrency(value),
+        indentLevel: 1,
       },
       {
         key: "endingCashBalance",
@@ -204,6 +226,7 @@ const ProFormaView = ({ forecastResult, financialConfig }) => {
         getValue: (row) => row.endingCashBalance,
         formatter: (value) => formatCurrency(value),
         highlight: true,
+        isSubtotal: true,
       },
       {
         key: "daysCashOnHand",
@@ -260,7 +283,7 @@ const ProFormaView = ({ forecastResult, financialConfig }) => {
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
               <tr>
-                <th className="px-4 py-3 text-left font-semibold text-slate-600">Metric</th>
+                <th className="w-72 px-6 py-3 text-left font-semibold text-slate-600">Metric</th>
                 {years.map((year) => (
                   <th key={year} className="px-4 py-3 text-right font-semibold text-slate-600">
                     FY {year}
@@ -268,14 +291,14 @@ const ProFormaView = ({ forecastResult, financialConfig }) => {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200">
+            <tbody className="divide-y divide-slate-100">
               {proFormaRows.map((row) => {
                 if (row.type === "section") {
                   return (
                     <tr key={row.label} className="bg-slate-50/60">
                       <th
                         colSpan={1 + years.length}
-                        className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
+                        className="px-6 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
                       >
                         {row.label}
                       </th>
@@ -283,9 +306,14 @@ const ProFormaView = ({ forecastResult, financialConfig }) => {
                   );
                 }
 
+                const indentClass = INDENT_CLASS_MAP[row.indentLevel || 0] || INDENT_CLASS_MAP[0];
+                const borderClass = row.isSubtotal ? "border-t border-slate-200" : "";
+                const labelWeight = row.highlight || row.isSubtotal ? "font-semibold" : "font-medium";
+                const labelClasses = `py-3 pr-4 text-left text-sm ${labelWeight} text-slate-900 ${indentClass} ${borderClass}`;
+
                 return (
                   <tr key={row.key}>
-                    <th scope="row" className="px-4 py-3 text-left font-medium text-slate-900">
+                    <th scope="row" className={labelClasses}>
                       {row.label}
                     </th>
                     {years.map((year) => {
@@ -295,9 +323,9 @@ const ProFormaView = ({ forecastResult, financialConfig }) => {
                         ? row.formatter(rawValue, yearData)
                         : rawValue;
 
-                      let cellClass = "px-4 py-3 text-right text-slate-700";
+                      let cellClass = `px-4 py-3 text-right font-mono text-sm text-slate-700 ${borderClass}`;
                       if (row.highlight) {
-                        cellClass = "px-4 py-3 text-right font-semibold text-slate-900";
+                        cellClass = `px-4 py-3 text-right font-mono text-sm font-semibold text-slate-900 ${borderClass}`;
                       }
 
                       if (
@@ -306,19 +334,19 @@ const ProFormaView = ({ forecastResult, financialConfig }) => {
                         Number.isFinite(rawValue) &&
                         rawValue < row.emphasizeThreshold
                       ) {
-                        cellClass = "px-4 py-3 text-right font-semibold text-red-600";
+                        cellClass = `px-4 py-3 text-right font-mono text-sm font-semibold text-red-600 ${borderClass}`;
                       } else if (
                         row.key === "additionalRateIncreaseNeeded" &&
                         Number(rawValue) > 0
                       ) {
-                        cellClass = "px-4 py-3 text-right font-medium text-amber-600";
+                        cellClass = `px-4 py-3 text-right font-mono text-sm font-medium text-amber-600 ${borderClass}`;
                       } else if (
                         row.minThreshold !== undefined &&
                         row.minThreshold !== null &&
                         Number.isFinite(rawValue) &&
                         rawValue < row.minThreshold
                       ) {
-                        cellClass = "px-4 py-3 text-right font-semibold text-red-600";
+                        cellClass = `px-4 py-3 text-right font-mono text-sm font-semibold text-red-600 ${borderClass}`;
                       }
 
                       return (

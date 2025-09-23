@@ -43,11 +43,7 @@ const CipSummaryView = ({
   years = [],
   fundingSourceMap,
   projectTypeMap,
-  utilityOptions = [],
-  projectTypeSummaries = [],
-  onUpdateProjectTypeUtility,
   activeUtilityLabel,
-  isReadOnly,
 }) => {
   const totals = useMemo(() => {
     const yearTotals = {};
@@ -65,11 +61,6 @@ const CipSummaryView = ({
 
     return { yearTotals, grandTotal };
   }, [projectSpendBreakdown, years]);
-
-  const assignmentOptions = useMemo(
-    () => [{ value: "", label: "Unassigned" }, ...utilityOptions],
-    [utilityOptions]
-  );
 
   return (
     <div className="space-y-6">
@@ -90,65 +81,6 @@ const CipSummaryView = ({
           ) : null}
         </div>
       </div>
-
-      {projectTypeSummaries.length > 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-2">
-            <h4 className="text-base font-semibold text-slate-900">Project Type Utility Assignments</h4>
-            <p className="text-sm text-slate-600">
-              Map each project type to a utility enterprise fund. Assignments control which projects are included in
-              each pro forma and spend plan.
-            </p>
-          </div>
-          <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">Project Type</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">Projects</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">Assigned Utility</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {projectTypeSummaries.map((summary) => {
-                  const currentValue =
-                    summary.assignedUtility === null || summary.assignedUtility === undefined
-                      ? ""
-                      : summary.assignedUtility;
-
-                  return (
-                    <tr key={summary.id}>
-                      <th scope="row" className="px-4 py-3 text-left font-medium text-slate-900">
-                        {summary.name}
-                      </th>
-                      <td className="px-4 py-3 text-slate-600">{summary.projectCount}</td>
-                      <td className="px-4 py-3">
-                        <select
-                          value={currentValue}
-                          onChange={(event) =>
-                            onUpdateProjectTypeUtility?.(
-                              summary.id,
-                              event.target.value ? event.target.value : null
-                            )
-                          }
-                          className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                          disabled={isReadOnly}
-                        >
-                          {assignmentOptions.map((option) => (
-                            <option key={option.value || "none"} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : null}
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
