@@ -320,7 +320,7 @@ const operatingBudgetFromRow = (row) => {
   return normalized;
 };
 
-const operatingBudgetToRow = (organizationId, utilityKey, row) => ({
+const operatingBudgetToRow = (organizationId, utilityKey, row) => {
   const normalized = normalizeBudgetRow(row);
   const revenueItems = Array.isArray(normalized.revenueLineItems)
     ? normalized.revenueLineItems
