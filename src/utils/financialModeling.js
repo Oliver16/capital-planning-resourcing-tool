@@ -629,6 +629,7 @@ export const buildDebtServiceSchedule = (
         const interestPayment = interestRate > 0 ? averageOutstanding * interestRate : 0;
 
         if (isWithinProjection(year)) {
+
           pushPayment(year, interestPayment, interestPayment, 0);
           loanDetails.interestOnly.push({
             year,
@@ -662,6 +663,7 @@ export const buildDebtServiceSchedule = (
           remainingPrincipal = Math.max(0, remainingPrincipal - principalPayment);
 
           if (isWithinProjection(paymentYear)) {
+
             pushPayment(paymentYear, paymentAmount, interestPayment, principalPayment);
             loanDetails.amortization.push({
               year: paymentYear,
@@ -732,6 +734,7 @@ export const buildDebtServiceSchedule = (
         }
 
         if (isWithinProjection(paymentYear)) {
+
           pushPayment(paymentYear, paymentAmount, interestPayment, principalPayment);
           issueDetail.paymentsWithinHorizon.push({
             year: paymentYear,
@@ -749,6 +752,7 @@ export const buildDebtServiceSchedule = (
         debtIssuedBySource[fundingKey] =
           (debtIssuedBySource[fundingKey] || 0) + issueAmount;
       }
+
     });
 
     if (bondDetails.totalIssued > 0) {

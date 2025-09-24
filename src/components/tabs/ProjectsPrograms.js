@@ -364,6 +364,11 @@ const ProjectCard = ({
                 Delivery: {deliveryLabel}
               </SummaryChip>
             )}
+            {project.sizeCategory && (
+              <SummaryChip className="bg-green-50 text-green-700">
+                Size: {project.sizeCategory}
+              </SummaryChip>
+            )}
             {Number(project.totalBudget) > 0 && (
               <SummaryChip className="bg-purple-50 text-purple-700">
                 Budget {formatGroupBudget(project.totalBudget)}
@@ -446,6 +451,22 @@ const ProjectCard = ({
               </option>
             ))}
           </select>
+        </Field>
+
+        <Field label="Project size">
+          <input
+            type="text"
+            value={project.sizeCategory || ""}
+            onChange={(event) => {
+              if (isReadOnly) {
+                return;
+              }
+              updateProject(project.id, "sizeCategory", event.target.value);
+            }}
+            className={projectInputClass}
+            placeholder="e.g. Small / Medium / Large"
+            disabled={isReadOnly}
+          />
         </Field>
 
         <Field label="Priority">
