@@ -1212,64 +1212,91 @@ export const buildDebtServiceSchedule = (
     }, 0);
 
     if (financingType === "srf") {
+      const interestOnlyYears = 5;
       const loanDetails = {
         fundingKey,
         sourceName,
         financingType,
         interestRate: interestRatePercent,
         termYears,
+        interestOnlyYears,
         totalIssued: 0,
         interestOnly: [],
         amortization: [],
         amortizationStartYear: null,
-        annualPayment: 0,
+        annualPayment: null,
+        loans: [],
       };
 
-      const drawMap = new Map();
+      const interestOnlyByYear = new Map();
+      const outstandingByYear = new Map();
+      const amortizationByYear = new Map();
+
+      let earliestAmortizationStart = null;
+      let totalPrincipal = 0;
+
       drawEntries.forEach((entry) => {
-        drawMap.set(entry.year, (drawMap.get(entry.year) || 0) + entry.amount);
-      });
-
-      const drawYears = Array.from(drawMap.keys()).sort((a, b) => a - b);
-      if (drawYears.length === 0) {
-        return;
-      }
-
-      const firstDrawYear = drawYears[0];
-      const lastDrawYear = drawYears[drawYears.length - 1];
-      let outstanding = 0;
-
-      for (let year = firstDrawYear; year <= lastDrawYear; year += 1) {
-        const drawAmount = sanitizeNumber(drawMap.get(year) || 0, 0);
-        const openingBalance = outstanding;
-        outstanding += drawAmount;
-        const averageOutstanding = openingBalance + drawAmount / 2;
-        const interestPayment = interestRate > 0 ? averageOutstanding * interestRate : 0;
-
-        if (isWithinProjection(year)) {
-          pushPayment(year, interestPayment, interestPayment, 0);
-          loanDetails.interestOnly.push({
-            year,
-            drawAmount,
-            interestPayment,
-            outstandingBalance: outstanding,
-          });
+        const drawYear = entry.year;
+        const principal = sanitizeNumber(entry.amount, 0);
+        if (!(principal > 0)) {
+          return;
         }
-      }
 
-      const totalPrincipal = outstanding;
-      if (totalPrincipal > 0) {
-        loanDetails.totalIssued = totalPrincipal;
-        const annualPayment = calculateLevelDebtPayment(totalPrincipal, interestRatePercent, termYears);
-        loanDetails.annualPayment = annualPayment;
-        loanDetails.amortizationStartYear = lastDrawYear + 1;
+        totalPrincipal += principal;
 
-        let remainingPrincipal = totalPrincipal;
+        const loanAnnualPayment = calculateLevelDebtPayment(
+          principal,
+          interestRatePercent,
+          termYears
+        );
+        const amortizationStartYear = drawYear + interestOnlyYears;
+
+        loanDetails.loans.push({
+          drawYear,
+          principal,
+          interestOnlyYears,
+          amortizationStartYear,
+          annualPayment: loanAnnualPayment,
+        });
+
+        for (let offset = 0; offset < interestOnlyYears; offset += 1) {
+          const year = drawYear + offset;
+          const interestPayment = interestRate > 0 ? principal * interestRate : 0;
+
+          if (isWithinProjection(year)) {
+            pushPayment(year, interestPayment, interestPayment, 0);
+          }
+
+          if (!interestOnlyByYear.has(year)) {
+            interestOnlyByYear.set(year, {
+              year,
+              drawAmount: 0,
+              interestPayment: 0,
+            });
+          }
+
+          const summary = interestOnlyByYear.get(year);
+          if (offset === 0) {
+            summary.drawAmount += principal;
+          }
+          summary.interestPayment += interestPayment;
+
+          outstandingByYear.set(year, (outstandingByYear.get(year) || 0) + principal);
+        }
+
+        if (
+          earliestAmortizationStart == null ||
+          amortizationStartYear < earliestAmortizationStart
+        ) {
+          earliestAmortizationStart = amortizationStartYear;
+        }
+
+        let remainingPrincipal = principal;
 
         for (let i = 0; i < termYears; i += 1) {
-          const paymentYear = lastDrawYear + 1 + i;
+          const paymentYear = amortizationStartYear + i;
           const interestPayment = interestRate > 0 ? remainingPrincipal * interestRate : 0;
-          let principalPayment = annualPayment - interestPayment;
+          let principalPayment = loanAnnualPayment - interestPayment;
           if (principalPayment < 0) {
             principalPayment = 0;
           }
@@ -1281,15 +1308,40 @@ export const buildDebtServiceSchedule = (
 
           if (isWithinProjection(paymentYear)) {
             pushPayment(paymentYear, paymentAmount, interestPayment, principalPayment);
-            loanDetails.amortization.push({
+          }
+
+          if (!amortizationByYear.has(paymentYear)) {
+            amortizationByYear.set(paymentYear, {
               year: paymentYear,
-              payment: paymentAmount,
-              interestPayment,
-              principalPayment,
-              remainingBalance: remainingPrincipal,
+              payment: 0,
+              interestPayment: 0,
+              principalPayment: 0,
+              remainingBalance: 0,
             });
           }
+
+          const amortSummary = amortizationByYear.get(paymentYear);
+          amortSummary.payment += paymentAmount;
+          amortSummary.interestPayment += interestPayment;
+          amortSummary.principalPayment += principalPayment;
+          amortSummary.remainingBalance += remainingPrincipal;
         }
+      });
+
+      if (totalPrincipal > 0) {
+        loanDetails.totalIssued = totalPrincipal;
+        loanDetails.amortizationStartYear = earliestAmortizationStart;
+        loanDetails.interestOnly = Array.from(interestOnlyByYear.values())
+          .filter((entry) => isWithinProjection(entry.year))
+          .sort((a, b) => a.year - b.year)
+          .map((entry) => ({
+            ...entry,
+            outstandingBalance: outstandingByYear.get(entry.year) || 0,
+          }));
+
+        loanDetails.amortization = Array.from(amortizationByYear.values())
+          .filter((entry) => isWithinProjection(entry.year))
+          .sort((a, b) => a.year - b.year);
 
         if (issuedWithinHorizon > 0) {
           debtIssuedBySource[fundingKey] =

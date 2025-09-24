@@ -770,11 +770,17 @@ const DebtServiceView = ({
                   )}
 
                   <div className="mt-4 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                    {loan.amortizationStartYear
-                      ? `Amortization begins FY ${loan.amortizationStartYear} with level payment ${formatCurrency(
-                          loan.annualPayment || 0
-                        )} for ${loan.termYears} years.`
-                      : "No amortization is scheduled."}
+                    {loan.loans?.length
+                      ? `Each annual SRF loan accrues interest-only payments for ${loan.interestOnlyYears ?? 0} years before amortizing over ${loan.termYears} years${
+                          loan.amortizationStartYear
+                            ? `, beginning in FY ${loan.amortizationStartYear}.`
+                            : "."
+                        }`
+                      : loan.amortizationStartYear
+                        ? `Amortization begins FY ${loan.amortizationStartYear} with level payment ${formatCurrency(
+                            loan.annualPayment || 0
+                          )} for ${loan.termYears} years.`
+                        : "No amortization is scheduled."}
                   </div>
 
                   {loan.amortization?.length ? (
