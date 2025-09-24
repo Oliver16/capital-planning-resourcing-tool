@@ -3,9 +3,9 @@ import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { normalizeProjectBudgetBreakdown } from '../utils/projectBudgets';
 import {
-  normalizeEffortTemplate,
-  sanitizeTemplateHours,
-} from '../utils/projectEffortTemplates';
+  sanitizeExistingDebtInstrumentList,
+  sanitizeExistingDebtManualTotals,
+} from '../utils/financialModeling';
 
 const toCamelCaseKey = (key) =>
   key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
@@ -222,6 +222,13 @@ const utilityProfileFromRow = (row) => {
     utilityKey: normalizeUtilityKey(row.utility_key),
     financialConfig: sanitizeFinancialConfig(parseJsonField(row.financial_config, {})),
     budgetEscalations: sanitizeBudgetEscalations(parseJsonField(row.budget_escalations, {})),
+    existingDebtManualTotals: sanitizeExistingDebtManualTotals(
+      parseJsonField(row.existing_debt_manual_totals, {})
+    ),
+    existingDebtInstruments: sanitizeExistingDebtInstrumentList(
+      parseJsonField(row.existing_debt_instruments, [])
+    ),
+
   };
 };
 
@@ -229,12 +236,21 @@ const utilityProfileToRow = (organizationId, utilityKey, profile = {}) => {
   const normalizedKey = normalizeUtilityKey(utilityKey);
   const financialConfig = sanitizeFinancialConfig(profile.financialConfig || {});
   const budgetEscalations = sanitizeBudgetEscalations(profile.budgetEscalations || {});
+  const manualTotals = sanitizeExistingDebtManualTotals(
+    profile.existingDebtManualTotals || {}
+  );
+  const instruments = sanitizeExistingDebtInstrumentList(
+    profile.existingDebtInstruments || []
+  );
 
   return {
     organization_id: organizationId,
     utility_key: normalizedKey,
     financial_config: JSON.stringify(financialConfig),
     budget_escalations: JSON.stringify(budgetEscalations),
+    existing_debt_manual_totals: JSON.stringify(manualTotals),
+    existing_debt_instruments: JSON.stringify(instruments),
+
   };
 };
 
