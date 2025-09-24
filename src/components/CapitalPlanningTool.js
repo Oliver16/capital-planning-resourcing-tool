@@ -52,6 +52,7 @@ import { useDatabase } from "../hooks/useDatabase";
 import { useAuth } from "../context/AuthContext";
 import { buildStaffAssignmentPlan } from "../utils/staffAssignments";
 import { normalizeProjectBudgetBreakdown } from "../utils/projectBudgets";
+import { normalizeEffortTemplate } from "../utils/effortTemplates";
 import {
   generateDefaultOperatingBudget,
   ensureBudgetYears,
@@ -119,6 +120,13 @@ const UTILITY_OPTIONS = [
   { value: "stormwater", label: "Stormwater Utility" },
 ];
 
+if (
+  typeof globalThis !== "undefined" &&
+  typeof globalThis.normalizeEffortTemplate !== "function"
+) {
+  globalThis.normalizeEffortTemplate = normalizeEffortTemplate;
+}
+
 const createDefaultBudgetEscalations = () => ({
   operatingRevenue: 0,
   nonOperatingRevenue: 0,
@@ -172,6 +180,7 @@ const recalculateOperatingBudget = (budgetRows = [], budgetEscalations = {}) => 
 
   return recalculated;
 };
+
 const createDefaultFinancialConfig = (startYear) => ({
   startYear,
   projectionYears: 10,
@@ -199,9 +208,7 @@ const CapitalPlanningTool = () => {
       staffAllocations: {},
       staffMembers: defaultStaffMembers,
       staffAssignments: defaultStaffAssignments,
-      projectEffortTemplates: defaultProjectEffortTemplates.map(
-        normalizeEffortTemplate
-      ),
+      effortTemplates: [],
     }),
     []
   );
@@ -966,6 +973,7 @@ const CapitalPlanningTool = () => {
     if (isReadOnly) {
       return;
     }
+
     const key = toIdKey(typeId);
     if (!key) {
       return;
@@ -986,6 +994,7 @@ const CapitalPlanningTool = () => {
         [key]: normalizedUtility,
       };
     });
+
     try {
       await saveProjectTypeUtility(typeId, normalizedUtility);
     } catch (error) {
@@ -2209,6 +2218,7 @@ const CapitalPlanningTool = () => {
                 </nav>
               </div>
             </div>
+
             <div className="space-y-6">
               {activeTab === "overview" && (
                 <Overview
@@ -2218,6 +2228,7 @@ const CapitalPlanningTool = () => {
                   projectTimelines={projectTimelines}
                 />
               )}
+
               {activeTab === "projects" && (
                 <ProjectsPrograms
                   projects={projects}
@@ -2250,6 +2261,7 @@ const CapitalPlanningTool = () => {
                   addStaffMember={addStaffMember}
                   updateStaffMember={updateStaffMember}
                   deleteStaffMember={deleteStaffMember}
+
                   staffAvailabilityByCategory={staffAvailabilityByCategory}
                   isReadOnly={isReadOnly}
                 />

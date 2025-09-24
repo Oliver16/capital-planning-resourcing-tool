@@ -125,6 +125,7 @@ const OperatingBudgetView = ({
   }, [alignedBudget]);
 
   const baseYearRow = hasBaseYear ? budgetByYear.get(baseYearNumber) || {} : {};
+
   return (
     <div className="space-y-6">
       <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
