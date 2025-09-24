@@ -13,6 +13,54 @@ const sanitizePercent = (value, fallback = 0) => {
   return Number.isFinite(numeric) ? numeric : fallback;
 };
 
+const sanitizeFiscalYearStartMonth = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 1;
+  }
+
+  const rounded = Math.round(numeric);
+  if (rounded < 1) {
+    return 1;
+  }
+
+  if (rounded > 12) {
+    return 12;
+  }
+
+  return rounded;
+};
+
+const getFiscalYear = (date, fiscalYearStartMonth = 1) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  const sanitizedStartMonth = sanitizeFiscalYearStartMonth(fiscalYearStartMonth);
+  const monthIndex = date.getMonth();
+  const year = date.getFullYear();
+
+  if (!Number.isFinite(year)) {
+    return null;
+  }
+
+  if (sanitizedStartMonth <= 1) {
+    return year;
+  }
+
+  const startIndex = sanitizedStartMonth - 1;
+  return monthIndex >= startIndex ? year + 1 : year;
+};
+
+const advanceToNextMonth = (cursor) => {
+  if (!(cursor instanceof Date) || Number.isNaN(cursor.getTime())) {
+    return;
+  }
+
+  cursor.setDate(1);
+  cursor.setMonth(cursor.getMonth() + 1);
+};
+
 const sanitizeLineItemId = (id, label, prefix) => {
   if (id !== undefined && id !== null) {
     const stringId = String(id).trim();
@@ -526,7 +574,15 @@ const addToYearMap = (target, year, amount) => {
   target[year] = (target[year] || 0) + amount;
 };
 
-const allocateEvenMonthlySpend = (startDate, months, budget, fundingSourceId, plan, type) => {
+const allocateEvenMonthlySpend = (
+  startDate,
+  months,
+  budget,
+  fundingSourceId,
+  plan,
+  type,
+  fiscalYearStartMonth
+) => {
   const amount = sanitizeNumber(budget, 0);
   const duration = Math.max(1, sanitizePositiveInteger(months, 1));
   if (!Number.isFinite(amount) || amount <= 0) {
@@ -542,13 +598,13 @@ const allocateEvenMonthlySpend = (startDate, months, budget, fundingSourceId, pl
   const cursor = new Date(start.getTime());
 
   for (let i = 0; i < duration; i += 1) {
-    const year = cursor.getFullYear();
+    const year = getFiscalYear(cursor, fiscalYearStartMonth);
     addSpend(plan, year, monthlySpend, fundingSourceId, type);
-    cursor.setMonth(cursor.getMonth() + 1);
+    advanceToNextMonth(cursor);
   }
 };
 
-const allocateProgramSpend = (project, plan) => {
+const allocateProgramSpend = (project, plan, fiscalYearStartMonth) => {
   const annualBudget = sanitizeNumber(project?.annualBudget, 0);
   if (!annualBudget || annualBudget <= 0) {
     return;
@@ -572,14 +628,17 @@ const allocateProgramSpend = (project, plan) => {
   const monthlySpend = annualBudget / 12;
   const cursor = new Date(start.getTime());
   while (cursor <= end) {
-    const year = cursor.getFullYear();
+    const year = getFiscalYear(cursor, fiscalYearStartMonth);
     addSpend(plan, year, monthlySpend, project?.fundingSourceId, "program");
-    cursor.setMonth(cursor.getMonth() + 1);
+    advanceToNextMonth(cursor);
   }
 };
 
-export const buildProjectSpendPlan = (projectTimelines = []) => {
+export const buildProjectSpendPlan = (projectTimelines = [], options = {}) => {
   const spendPlan = {};
+  const fiscalYearStartMonth = sanitizeFiscalYearStartMonth(
+    options?.fiscalYearStartMonth
+  );
 
   (projectTimelines || []).forEach((project) => {
     if (!project) {
@@ -587,7 +646,7 @@ export const buildProjectSpendPlan = (projectTimelines = []) => {
     }
 
     if (project.type === "program") {
-      allocateProgramSpend(project, spendPlan);
+      allocateProgramSpend(project, spendPlan, fiscalYearStartMonth);
       return;
     }
 
@@ -615,7 +674,8 @@ export const buildProjectSpendPlan = (projectTimelines = []) => {
         designBudget,
         project.fundingSourceId,
         spendPlan,
-        "design"
+        "design",
+        fiscalYearStartMonth
       );
     }
 
@@ -631,7 +691,8 @@ export const buildProjectSpendPlan = (projectTimelines = []) => {
         constructionBudget,
         project.fundingSourceId,
         spendPlan,
-        "construction"
+        "construction",
+        fiscalYearStartMonth
       );
     }
   });
@@ -654,7 +715,13 @@ const normalizeDate = (value) => {
   return null;
 };
 
-const allocateProjectSpend = (entry, startDate, months, budget) => {
+const allocateProjectSpend = (
+  entry,
+  startDate,
+  months,
+  budget,
+  fiscalYearStartMonth
+) => {
   const amount = sanitizeNumber(budget, 0);
   const duration = Math.max(1, sanitizePositiveInteger(months, 1));
 
@@ -671,17 +738,20 @@ const allocateProjectSpend = (entry, startDate, months, budget) => {
   const cursor = new Date(start.getTime());
 
   for (let index = 0; index < duration; index += 1) {
-    const year = cursor.getFullYear();
+    const year = getFiscalYear(cursor, fiscalYearStartMonth);
     if (Number.isFinite(year)) {
       entry.spendByYear[year] = (entry.spendByYear[year] || 0) + monthlySpend;
       entry.totalSpend += monthlySpend;
     }
-    cursor.setMonth(cursor.getMonth() + 1);
+    advanceToNextMonth(cursor);
   }
 };
 
-export const buildProjectSpendBreakdown = (projectTimelines = []) => {
+export const buildProjectSpendBreakdown = (projectTimelines = [], options = {}) => {
   const breakdown = [];
+  const fiscalYearStartMonth = sanitizeFiscalYearStartMonth(
+    options?.fiscalYearStartMonth
+  );
 
   (projectTimelines || []).forEach((project) => {
     if (!project) {
@@ -717,13 +787,13 @@ export const buildProjectSpendBreakdown = (projectTimelines = []) => {
         const cursor = new Date(start.getTime());
 
         while (cursor <= end) {
-          const year = cursor.getFullYear();
+          const year = getFiscalYear(cursor, fiscalYearStartMonth);
           if (Number.isFinite(year)) {
             entry.spendByYear[year] =
               (entry.spendByYear[year] || 0) + monthlySpend;
             entry.totalSpend += monthlySpend;
           }
-          cursor.setMonth(cursor.getMonth() + 1);
+          advanceToNextMonth(cursor);
         }
       }
 
@@ -772,7 +842,8 @@ export const buildProjectSpendBreakdown = (projectTimelines = []) => {
         entry,
         project.designStart || project.designStartDate,
         project.designDuration,
-        designBudget
+        designBudget,
+        fiscalYearStartMonth
       );
     }
 
@@ -781,7 +852,8 @@ export const buildProjectSpendBreakdown = (projectTimelines = []) => {
         entry,
         project.constructionStart || project.constructionStartDate,
         project.constructionDuration,
-        constructionBudget
+        constructionBudget,
+        fiscalYearStartMonth
       );
     }
 
@@ -1414,7 +1486,9 @@ export const calculateFinancialForecast = ({
     normalizedBudget.map((row) => [row.year, normalizeBudgetRow(row)])
   );
 
-  const spendPlan = buildProjectSpendPlan(projectTimelines);
+  const spendPlan = buildProjectSpendPlan(projectTimelines, {
+    fiscalYearStartMonth: financialConfig?.fiscalYearStartMonth,
+  });
   const {
     debtServiceByYear,
     debtServiceInterestByYear,

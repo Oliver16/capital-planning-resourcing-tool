@@ -5,6 +5,31 @@ const numberInputClasses =
   "w-full rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200";
 const readOnlyClasses = "bg-slate-100 text-slate-500 cursor-not-allowed";
 
+const MONTH_OPTIONS = [
+  { value: 1, label: "January" },
+  { value: 2, label: "February" },
+  { value: 3, label: "March" },
+  { value: 4, label: "April" },
+  { value: 5, label: "May" },
+  { value: 6, label: "June" },
+  { value: 7, label: "July" },
+  { value: 8, label: "August" },
+  { value: 9, label: "September" },
+  { value: 10, label: "October" },
+  { value: 11, label: "November" },
+  { value: 12, label: "December" },
+];
+
+const getMonthLabel = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "—";
+  }
+
+  const match = MONTH_OPTIONS.find((option) => option.value === numeric);
+  return match ? match.label : "—";
+};
+
 const SettingsView = ({
   financialConfig = {},
   projectTypeSummaries = [],
@@ -44,6 +69,12 @@ const SettingsView = ({
         parsedValue = financialConfig.targetCoverageRatio || 1;
       }
       parsedValue = Math.max(0, parsedValue);
+    } else if (field === "fiscalYearStartMonth") {
+      parsedValue = Number(rawValue);
+      if (!Number.isFinite(parsedValue)) {
+        parsedValue = financialConfig.fiscalYearStartMonth || 1;
+      }
+      parsedValue = Math.min(12, Math.max(1, Math.round(parsedValue)));
     }
 
     onUpdateFinancialConfig?.({ [field]: parsedValue });
@@ -54,6 +85,10 @@ const SettingsView = ({
       {
         label: "Start Year",
         value: financialConfig.startYear ? `FY ${financialConfig.startYear}` : "—",
+      },
+      {
+        label: "Fiscal Year Begins",
+        value: getMonthLabel(financialConfig.fiscalYearStartMonth),
       },
       {
         label: "Projection Horizon",
@@ -96,6 +131,21 @@ const SettingsView = ({
               disabled={isReadOnly}
               min={1900}
             />
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            <span>Fiscal Year Start Month</span>
+            <select
+              value={financialConfig.fiscalYearStartMonth || 1}
+              onChange={handleConfigChange("fiscalYearStartMonth")}
+              className={`${numberInputClasses} mt-1 ${isReadOnly ? readOnlyClasses : ""}`}
+              disabled={isReadOnly}
+            >
+              {MONTH_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="text-sm font-medium text-slate-700">
             <span>Projection Years</span>
