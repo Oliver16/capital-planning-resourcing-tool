@@ -1087,6 +1087,27 @@ export const calculateFinancialForecast = ({
     years.push(startYear + i);
   }
 
+  const projectionYearKeys = new Set(years.map((year) => String(year)));
+
+  const spendPlanWithinWindow = {};
+  Object.entries(spendPlan || {}).forEach(([yearKey, entry]) => {
+    if (projectionYearKeys.has(yearKey)) {
+      spendPlanWithinWindow[yearKey] = entry;
+    }
+  });
+
+  const cashUsesWithinWindow = {};
+  years.forEach((year) => {
+    const value = sanitizeNumber(cashUsesByYear?.[year], 0);
+    cashUsesWithinWindow[year] = Math.abs(value) > 1e-9 ? value : 0;
+  });
+
+  const filteredDebtIssuedBySource = Object.fromEntries(
+    Object.entries(debtIssuedBySource || {})
+      .map(([key, amount]) => [key, sanitizeNumber(amount, 0)])
+      .filter(([, amount]) => Math.abs(amount) > 1e-9)
+  );
+
   const forecast = [];
   let runningCash = startingCash;
   let minCoverage = Number.POSITIVE_INFINITY;
@@ -1132,7 +1153,8 @@ export const calculateFinancialForecast = ({
     }
 
     const operatingCashFlow = netRevenueBeforeDebt - totalDebtService;
-    const cashCapex = sanitizeNumber(cashUsesByYear[year], 0);
+    const cashCapex = sanitizeNumber(cashUsesWithinWindow[year], 0);
+
     runningCash += operatingCashFlow - cashCapex;
 
     const daysCashOnHand =
@@ -1161,7 +1183,7 @@ export const calculateFinancialForecast = ({
       coverageRatio,
       additionalRateIncreaseNeeded,
       cashFundedCapex: cashCapex,
-      cipSpend: sanitizeNumber(spendPlan[year]?.totalSpend, 0),
+      cipSpend: sanitizeNumber(spendPlanWithinWindow[year]?.totalSpend, 0),
       endingCashBalance: runningCash,
       daysCashOnHand,
     });
@@ -1176,26 +1198,27 @@ export const calculateFinancialForecast = ({
   }
 
   const totalCapitalSpend = years.reduce(
-    (sum, year) => sum + sanitizeNumber(spendPlan?.[year]?.totalSpend, 0),
+    (sum, year) =>
+      sum + sanitizeNumber(spendPlanWithinWindow?.[year]?.totalSpend, 0),
     0
   );
   const totalCashCapex = years.reduce(
-    (sum, year) => sum + sanitizeNumber(cashUsesByYear?.[year], 0),
+    (sum, year) => sum + sanitizeNumber(cashUsesWithinWindow?.[year], 0),
     0
   );
-  const totalDebtIssued = Object.values(debtIssuedBySource).reduce(
+  const totalDebtIssued = Object.values(filteredDebtIssuedBySource).reduce(
     (sum, value) => sum + sanitizeNumber(value, 0),
     0
   );
 
   return {
     forecast,
-    spendPlan,
+    spendPlan: spendPlanWithinWindow,
     debtServiceByYear,
     debtServiceInterestByYear,
     debtServicePrincipalByYear,
-    cashUsesByYear,
-    debtIssuedBySource,
+    cashUsesByYear: cashUsesWithinWindow,
+    debtIssuedBySource: filteredDebtIssuedBySource,
     financingSchedules,
     totals: {
       totalCapitalSpend,
