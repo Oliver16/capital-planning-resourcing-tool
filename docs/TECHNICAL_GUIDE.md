@@ -8,6 +8,7 @@ underlying architecture.
 ## How to use Vector
 
 ### 1. Navigate the workspace
+=======
 
 - **Header actions** – Switch between the capital planning workspace, financial
   modeling suite, admin console (superusers), and this Help view. The active
@@ -137,6 +138,7 @@ utilities, assignments, and financial settings.
 - **People** – Manage staff categories (capacity + rates) and the staff roster
   (availability per phase). Validation keeps combined category capacity within
   realistic limits.
+
 - **Assignments** – `StaffAssignmentsTab` blends automated demand balancing with
   manual overrides. Utilization summaries, unfilled demand callouts, and reset
   actions keep project staffing aligned with available people.

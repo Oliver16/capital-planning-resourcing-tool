@@ -3,6 +3,10 @@ import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { normalizeProjectBudgetBreakdown } from '../utils/projectBudgets';
 import {
+  normalizeEffortTemplate,
+  sanitizeTemplateHours,
+} from '../utils/projectEffortTemplates';
+import {
   sanitizeExistingDebtInstrumentList,
   sanitizeExistingDebtManualTotals,
   normalizeBudgetRow,
@@ -175,6 +179,35 @@ const staffAssignmentToRow = (assignment, organizationId) => ({
   design_hours: normalizeNullable(assignment.designHours) ?? 0,
   construction_hours: normalizeNullable(assignment.constructionHours) ?? 0,
 });
+
+function projectEffortTemplateFromRow(row) {
+  const camel = camelizeRecord(row);
+
+  return {
+    ...camel,
+    hoursByCategory: sanitizeTemplateHours(
+      parseJsonField(camel.hoursByCategory, {})
+    ),
+  };
+}
+
+const projectEffortTemplateToRow = (template, organizationId) => {
+  const normalized = normalizeEffortTemplate(template || {});
+  const hoursByCategory = sanitizeTemplateHours(
+    normalized.hoursByCategory || {}
+  );
+
+  return {
+    organization_id: organizationId,
+    name: normalized.name || '',
+    project_type_id: normalizeNullable(normalized.projectTypeId),
+    size_category: normalized.sizeCategory || null,
+    delivery_type: normalized.deliveryType || null,
+    notes: normalized.notes || null,
+    hours_by_category:
+      Object.keys(hoursByCategory).length > 0 ? hoursByCategory : null,
+  };
+};
 
 const UTILITY_KEYS = new Set(['water', 'sewer', 'power', 'gas', 'stormwater']);
 
