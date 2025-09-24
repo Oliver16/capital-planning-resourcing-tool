@@ -6,82 +6,6 @@ const toNumber = (value) => {
   return Math.round(parsed * 100) / 100;
 };
 
-const parseBudgetBoundary = (value) => {
-  if (value === null || value === undefined || value === "") {
-    return null;
-  }
-
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric) || numeric < 0) {
-    return null;
-  }
-
-  return Math.round(numeric);
-};
-
-const normalizeComplexity = (value) => {
-  if (value === null || value === undefined) {
-    return "";
-  }
-
-  const normalized = value.toString().trim().toLowerCase();
-
-  if (normalized === "low") {
-    return "Low";
-  }
-
-  if (normalized === "high") {
-    return "High";
-  }
-
-  if (normalized === "medium" || normalized === "normal") {
-    return "Normal";
-  }
-
-  return "";
-};
-
-const complexityKey = (value) => {
-  if (!value) {
-    return "";
-  }
-
-  const normalized = value.toString().trim().toLowerCase();
-
-  if (normalized === "medium") {
-    return "normal";
-  }
-
-  if (normalized === "low" || normalized === "normal" || normalized === "high") {
-    return normalized;
-  }
-
-  return "";
-};
-
-const currencyFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 0,
-});
-
-const formatBudget = (value) => {
-  if (!Number.isFinite(value)) {
-    return "$0";
-  }
-
-  const absolute = Math.abs(value);
-  if (absolute >= 1_000_000) {
-    return `$${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-  }
-
-  if (absolute >= 1_000) {
-    return `$${Math.round(value / 1_000)}K`;
-  }
-
-  return currencyFormatter.format(value);
-};
-
 export const sanitizeTemplateHours = (hoursByCategory = {}) => {
   if (!hoursByCategory || typeof hoursByCategory !== "object") {
     return {};
@@ -109,26 +33,11 @@ export const sanitizeTemplateHours = (hoursByCategory = {}) => {
 export const normalizeEffortTemplate = (template = {}) => {
   const normalizedHours = sanitizeTemplateHours(template.hoursByCategory);
 
-  let minBudget = parseBudgetBoundary(
-    template.minTotalBudget ?? template.minBudget
-  );
-  let maxBudget = parseBudgetBoundary(
-    template.maxTotalBudget ?? template.maxBudget
-  );
-
-  if (minBudget !== null && maxBudget !== null && maxBudget < minBudget) {
-    [minBudget, maxBudget] = [maxBudget, minBudget];
-  }
-
   return {
     id: template.id ?? null,
     name: template.name?.toString().trim() || "Untitled template",
     projectTypeId: template.projectTypeId ?? null,
-    complexity: normalizeComplexity(
-      template.complexity ?? template.sizeCategory
-    ),
-    minTotalBudget: minBudget,
-    maxTotalBudget: maxBudget,
+    sizeCategory: template.sizeCategory?.toString().trim() || "",
     deliveryType: template.deliveryType?.toString().trim() || "",
     notes: template.notes?.toString().trim() || "",
     hoursByCategory: normalizedHours,
@@ -149,25 +58,20 @@ export const getTemplateTotals = (template) => {
   );
 };
 
+const normalizeString = (value) => value?.toString().trim().toLowerCase() || "";
+
 export const getMatchingProjectIds = (template, projects = []) => {
   if (!template) {
     return [];
   }
 
-  const normalizedTemplate = normalizeEffortTemplate(template);
-  const normalizedType = normalizedTemplate.projectTypeId
-    ? String(normalizedTemplate.projectTypeId)
+  const normalizedType = template.projectTypeId
+    ? String(template.projectTypeId)
     : null;
-  const normalizedComplexity = complexityKey(normalizedTemplate.complexity);
-  const normalizedDelivery = normalizedTemplate.deliveryType
-    ? normalizedTemplate.deliveryType.toString().trim().toLowerCase()
+  const normalizedSize = normalizeString(template.sizeCategory);
+  const normalizedDelivery = template.deliveryType
+    ? template.deliveryType.toString().trim().toLowerCase()
     : "";
-  const minBudget = Number.isFinite(normalizedTemplate.minTotalBudget)
-    ? normalizedTemplate.minTotalBudget
-    : null;
-  const maxBudget = Number.isFinite(normalizedTemplate.maxTotalBudget)
-    ? normalizedTemplate.maxTotalBudget
-    : null;
 
   return projects
     .filter((project) => project && project.type === "project")
@@ -176,11 +80,9 @@ export const getMatchingProjectIds = (template, projects = []) => {
         return false;
       }
 
-      if (normalizedComplexity) {
-        const projectComplexity = complexityKey(
-          project.complexity ?? project.sizeCategory
-        );
-        if (!projectComplexity || projectComplexity !== normalizedComplexity) {
+      if (normalizedSize) {
+        const projectSize = normalizeString(project.sizeCategory);
+        if (!projectSize || projectSize !== normalizedSize) {
           return false;
         }
       }
@@ -190,18 +92,6 @@ export const getMatchingProjectIds = (template, projects = []) => {
           ? project.deliveryType.toString().trim().toLowerCase()
           : "";
         if (!projectDelivery || projectDelivery !== normalizedDelivery) {
-          return false;
-        }
-      }
-
-      const projectBudget = Number(project.totalBudget);
-      if (minBudget !== null) {
-        if (!Number.isFinite(projectBudget) || projectBudget < minBudget) {
-          return false;
-        }
-      }
-      if (maxBudget !== null) {
-        if (!Number.isFinite(projectBudget) || projectBudget > maxBudget) {
           return false;
         }
       }
@@ -221,12 +111,11 @@ export const formatTemplateCriteria = ({
     return [];
   }
 
-  const normalizedTemplate = normalizeEffortTemplate(template);
   const chips = [];
 
-  if (normalizedTemplate.projectTypeId) {
+  if (template.projectTypeId) {
     const match = projectTypes.find(
-      (type) => String(type.id) === String(normalizedTemplate.projectTypeId)
+      (type) => String(type.id) === String(template.projectTypeId)
     );
     if (match?.name) {
       chips.push({ label: match.name, tone: "type" });
@@ -235,44 +124,18 @@ export const formatTemplateCriteria = ({
     chips.push({ label: "Any type", tone: "muted" });
   }
 
-  if (normalizedTemplate.complexity) {
-    chips.push({
-      label: `Complexity: ${normalizedTemplate.complexity}`,
-      tone: "complexity",
-    });
+  if (template.sizeCategory) {
+    chips.push({ label: `Size: ${template.sizeCategory}`, tone: "size" });
   } else {
-    chips.push({ label: "Any complexity", tone: "muted" });
+    chips.push({ label: "Any size", tone: "muted" });
   }
 
-  const minBudget = Number.isFinite(normalizedTemplate.minTotalBudget)
-    ? normalizedTemplate.minTotalBudget
-    : null;
-  const maxBudget = Number.isFinite(normalizedTemplate.maxTotalBudget)
-    ? normalizedTemplate.maxTotalBudget
-    : null;
-
-  if (minBudget !== null || maxBudget !== null) {
-    let label = "";
-    if (minBudget !== null && maxBudget !== null) {
-      label = `Budget ${formatBudget(minBudget)}–${formatBudget(maxBudget)}`;
-    } else if (minBudget !== null) {
-      label = `Budget ≥ ${formatBudget(minBudget)}`;
-    } else {
-      label = `Budget ≤ ${formatBudget(maxBudget)}`;
-    }
-
-    chips.push({ label, tone: "budget" });
-  } else {
-    chips.push({ label: "Any budget", tone: "muted" });
-  }
-
-  if (normalizedTemplate.deliveryType) {
+  if (template.deliveryType) {
     const match = deliveryOptions.find(
-      (option) => option.value === normalizedTemplate.deliveryType
+      (option) => option.value === template.deliveryType
     );
     chips.push({
-      label:
-        match?.label || `Delivery: ${normalizedTemplate.deliveryType}`,
+      label: match?.label || `Delivery: ${template.deliveryType}`,
       tone: "delivery",
     });
   } else {

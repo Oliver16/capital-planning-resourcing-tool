@@ -22,19 +22,11 @@ const DELIVERY_OPTIONS = [
   { value: "consultant", label: "Consultant" },
 ];
 
-const COMPLEXITY_OPTIONS = [
-  { value: "Low", label: "Low" },
-  { value: "Normal", label: "Normal" },
-  { value: "High", label: "High" },
-];
-
 const defaultDraft = {
   id: null,
   name: "",
   projectTypeId: "",
-  complexity: "",
-  minBudget: "",
-  maxBudget: "",
+  sizeCategory: "",
   deliveryType: "",
   notes: "",
   hoursByCategory: {},
@@ -87,20 +79,8 @@ const TemplateFormModal = ({
     setDraft({
       id: normalized.id ?? null,
       name: normalized.name || "",
-      projectTypeId: normalized.projectTypeId
-        ? String(normalized.projectTypeId)
-        : "",
-      complexity: normalized.complexity || "",
-      minBudget:
-        normalized.minTotalBudget !== null &&
-        normalized.minTotalBudget !== undefined
-          ? normalized.minTotalBudget.toString()
-          : "",
-      maxBudget:
-        normalized.maxTotalBudget !== null &&
-        normalized.maxTotalBudget !== undefined
-          ? normalized.maxTotalBudget.toString()
-          : "",
+      projectTypeId: normalized.projectTypeId ? String(normalized.projectTypeId) : "",
+      sizeCategory: normalized.sizeCategory || "",
       deliveryType: normalized.deliveryType || "",
       notes: normalized.notes || "",
       hoursByCategory: categoryConfig,
@@ -163,30 +143,10 @@ const TemplateFormModal = ({
       }
     });
 
-    const parseBudgetValue = (value) => {
-      if (value === null || value === undefined) {
-        return null;
-      }
-
-      const trimmed = value.toString().trim();
-      if (trimmed === "") {
-        return null;
-      }
-
-      const numeric = Number(trimmed);
-      if (!Number.isFinite(numeric) || numeric < 0) {
-        return null;
-      }
-
-      return Math.round(numeric);
-    };
-
     onSave({
       ...normalized,
       projectTypeId: draft.projectTypeId || null,
-      complexity: draft.complexity || "",
-      minTotalBudget: parseBudgetValue(draft.minBudget),
-      maxTotalBudget: parseBudgetValue(draft.maxBudget),
+      sizeCategory: draft.sizeCategory?.trim() || "",
       deliveryType: draft.deliveryType || "",
       notes: draft.notes?.trim() || "",
       hoursByCategory,
@@ -275,61 +235,16 @@ const TemplateFormModal = ({
           </label>
 
           <label className="flex flex-col gap-2 text-sm text-gray-600">
-            <span className="font-medium text-gray-700">Project complexity</span>
-            <select
-              value={draft.complexity}
-              onChange={handleFieldChange("complexity")}
-              disabled={isReadOnly}
+            <span className="font-medium text-gray-700">Project size</span>
+            <input
+              type="text"
+              value={draft.sizeCategory}
+              onChange={handleFieldChange("sizeCategory")}
               className="rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200"
-            >
-              <option value="">Any complexity</option>
-              {COMPLEXITY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              placeholder="e.g. Small / Medium / Large"
+              disabled={isReadOnly}
+            />
           </label>
-
-          <div className="md:col-span-2 flex flex-col gap-2 text-sm text-gray-600">
-            <span className="font-medium text-gray-700">Total budget range</span>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-xs text-gray-500">
-                <span className="font-semibold uppercase tracking-wide text-gray-500">
-                  Minimum budget
-                </span>
-                <input
-                  type="number"
-                  min="0"
-                  step="1000"
-                  value={draft.minBudget}
-                  onChange={handleFieldChange("minBudget")}
-                  className="rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200"
-                  placeholder="e.g. 250000"
-                  disabled={isReadOnly}
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-gray-500">
-                <span className="font-semibold uppercase tracking-wide text-gray-500">
-                  Maximum budget
-                </span>
-                <input
-                  type="number"
-                  min="0"
-                  step="1000"
-                  value={draft.maxBudget}
-                  onChange={handleFieldChange("maxBudget")}
-                  className="rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200"
-                  placeholder="e.g. 1500000"
-                  disabled={isReadOnly}
-                />
-              </label>
-            </div>
-            <p className="text-xs text-gray-500">
-              Only projects whose total budget falls within this range will match
-              when applying the template.
-            </p>
-          </div>
 
           <label className="flex flex-col gap-2 text-sm text-gray-600">
             <span className="font-medium text-gray-700">Delivery model</span>
@@ -568,10 +483,8 @@ const ApplyTemplateModal = ({
                   className={`inline-flex items-center gap-1 rounded-full px-3 py-1 font-medium ${
                     chip.tone === "type"
                       ? "bg-blue-100 text-blue-800"
-                      : chip.tone === "complexity"
-                      ? "bg-emerald-100 text-emerald-800"
-                      : chip.tone === "budget"
-                      ? "bg-amber-100 text-amber-800"
+                      : chip.tone === "size"
+                      ? "bg-green-100 text-green-800"
                       : chip.tone === "delivery"
                       ? "bg-purple-100 text-purple-800"
                       : "bg-gray-100 text-gray-600"
@@ -823,10 +736,8 @@ const ProjectEffortTemplatesPanel = ({
                           className={`inline-flex items-center gap-1 rounded-full px-3 py-1 font-medium ${
                             chip.tone === "type"
                               ? "bg-blue-100 text-blue-800"
-                              : chip.tone === "complexity"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : chip.tone === "budget"
-                              ? "bg-amber-100 text-amber-800"
+                              : chip.tone === "size"
+                              ? "bg-green-100 text-green-800"
                               : chip.tone === "delivery"
                               ? "bg-purple-100 text-purple-800"
                               : "bg-gray-100 text-gray-600"

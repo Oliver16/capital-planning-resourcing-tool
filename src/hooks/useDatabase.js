@@ -126,7 +126,7 @@ const projectToRow = (project, organizationId) => {
     program_end_date: normalizedProject.programEndDate || null,
     priority: normalizedProject.priority || 'Medium',
     description: normalizedProject.description || '',
-    complexity: normalizedProject.complexity || 'Normal',
+    size_category: normalizeNullable(normalizedProject.sizeCategory),
     delivery_type: normalizedProject.deliveryType || 'self-perform',
   };
 };
@@ -175,29 +175,140 @@ const staffAssignmentToRow = (assignment, organizationId) => ({
   construction_hours: normalizeNullable(assignment.constructionHours) ?? 0,
 });
 
-const projectEffortTemplateFromRow = (row) => {
-  const camel = camelizeRecord(row);
-  camel.hoursByCategory = parseJsonField(camel.hoursByCategory, {});
-  return normalizeEffortTemplate(camel);
+const UTILITY_KEYS = new Set(['water', 'sewer', 'power', 'gas', 'stormwater']);
+
+const normalizeUtilityKey = (value) => {
+  if (!value || typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return UTILITY_KEYS.has(normalized) ? normalized : null;
 };
 
-const projectEffortTemplateToRow = (template, organizationId) => {
-  const normalized = normalizeEffortTemplate(template);
-  const sanitizedHours = sanitizeTemplateHours(normalized.hoursByCategory);
+const sanitizeFinancialConfig = (rawConfig = {}) => {
+  const currentYear = new Date().getFullYear();
+  const startYear = Number(rawConfig.startYear);
+  const projectionYears = Number(rawConfig.projectionYears);
+  const startingCashBalance = Number(rawConfig.startingCashBalance);
+  const targetCoverageRatio = Number(rawConfig.targetCoverageRatio);
+
+  return {
+    startYear: Number.isFinite(startYear) ? startYear : currentYear,
+    projectionYears: Number.isFinite(projectionYears) && projectionYears > 0
+      ? Math.round(projectionYears)
+      : 10,
+    startingCashBalance: Number.isFinite(startingCashBalance) ? startingCashBalance : 0,
+    targetCoverageRatio: Number.isFinite(targetCoverageRatio) ? targetCoverageRatio : 1.5,
+  };
+};
+
+const sanitizeBudgetEscalations = (rawEscalations = {}) => ({
+  operatingRevenue: Number(rawEscalations.operatingRevenue) || 0,
+  nonOperatingRevenue: Number(rawEscalations.nonOperatingRevenue) || 0,
+  omExpenses: Number(rawEscalations.omExpenses) || 0,
+  salaries: Number(rawEscalations.salaries) || 0,
+  adminExpenses: Number(rawEscalations.adminExpenses) || 0,
+  existingDebtService: Number(rawEscalations.existingDebtService) || 0,
+});
+
+const utilityProfileFromRow = (row) => {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    utilityKey: normalizeUtilityKey(row.utility_key),
+    financialConfig: sanitizeFinancialConfig(parseJsonField(row.financial_config, {})),
+    budgetEscalations: sanitizeBudgetEscalations(parseJsonField(row.budget_escalations, {})),
+  };
+};
+
+const utilityProfileToRow = (organizationId, utilityKey, profile = {}) => {
+  const normalizedKey = normalizeUtilityKey(utilityKey);
+  const financialConfig = sanitizeFinancialConfig(profile.financialConfig || {});
+  const budgetEscalations = sanitizeBudgetEscalations(profile.budgetEscalations || {});
 
   return {
     organization_id: organizationId,
-    name: normalized.name,
-    project_type_id: normalizeNullable(normalized.projectTypeId),
-    complexity: normalizeNullable(normalized.complexity),
-    min_total_budget: normalizeNullable(normalized.minTotalBudget),
-    max_total_budget: normalizeNullable(normalized.maxTotalBudget),
-    delivery_type: normalizeNullable(normalized.deliveryType),
-    notes: normalized.notes || '',
-    hours_by_category:
-      Object.keys(sanitizedHours).length > 0 ? sanitizedHours : null,
+    utility_key: normalizedKey,
+    financial_config: JSON.stringify(financialConfig),
+    budget_escalations: JSON.stringify(budgetEscalations),
   };
 };
+
+const operatingBudgetFromRow = (row) => {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    year: Number(row.fiscal_year),
+    operatingRevenue: Number(row.operating_revenue) || 0,
+    nonOperatingRevenue: Number(row.non_operating_revenue) || 0,
+    omExpenses: Number(row.om_expenses) || 0,
+    salaries: Number(row.salaries) || 0,
+    adminExpenses: Number(row.admin_expenses) || 0,
+    existingDebtService: Number(row.existing_debt_service) || 0,
+    rateIncreasePercent: Number(row.rate_increase_percent) || 0,
+  };
+};
+
+const operatingBudgetToRow = (organizationId, utilityKey, row) => ({
+  organization_id: organizationId,
+  utility_key: normalizeUtilityKey(utilityKey),
+  fiscal_year: Number(row.year),
+  operating_revenue: normalizeNullable(row.operatingRevenue) ?? 0,
+  non_operating_revenue: normalizeNullable(row.nonOperatingRevenue) ?? 0,
+  om_expenses: normalizeNullable(row.omExpenses) ?? 0,
+  salaries: normalizeNullable(row.salaries) ?? 0,
+  admin_expenses: normalizeNullable(row.adminExpenses) ?? 0,
+  existing_debt_service: normalizeNullable(row.existingDebtService) ?? 0,
+  rate_increase_percent: normalizeNullable(row.rateIncreasePercent) ?? 0,
+});
+
+const projectTypeUtilityFromRow = (row) => {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    projectTypeId: row.project_type_id,
+    utilityKey: normalizeUtilityKey(row.utility_key),
+  };
+};
+
+const projectTypeUtilityToRow = (organizationId, projectTypeId, utilityKey) => ({
+  organization_id: organizationId,
+  project_type_id: projectTypeId,
+  utility_key: normalizeUtilityKey(utilityKey),
+});
+
+const fundingAssumptionFromRow = (row) => {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    fundingSourceId: row.funding_source_id,
+    sourceName: row.source_name || '',
+    financingType: row.financing_type || 'cash',
+    interestRate: Number(row.interest_rate) || 0,
+    termYears: Number(row.term_years) || 0,
+  };
+};
+
+const fundingAssumptionToRow = (organizationId, assumption) => ({
+  organization_id: organizationId,
+  funding_source_id: assumption.fundingSourceId,
+  source_name: assumption.sourceName || null,
+  financing_type: assumption.financingType || 'cash',
+  interest_rate: normalizeNullable(assumption.interestRate) ?? 0,
+  term_years: normalizeNullable(assumption.termYears) ?? 0,
+});
 
 const buildErrorMessage = (error, fallback) =>
   error?.message || fallback || 'Unexpected database error.';
@@ -390,7 +501,7 @@ export const useDatabase = (defaultData = {}) => {
             Object.keys(remappedContinuous).length > 0
               ? JSON.stringify(remappedContinuous)
               : null,
-          complexity: normalizedProject.complexity || 'Normal',
+          size_category: normalizedProject.sizeCategory || null,
           program_start_date: normalizedProject.programStartDate || null,
           program_end_date: normalizedProject.programEndDate || null,
           priority: normalizedProject.priority || 'Medium',
@@ -437,9 +548,7 @@ export const useDatabase = (defaultData = {}) => {
           project_type_id: projectTypeName
             ? projectTypeIdByName.get(projectTypeName) || null
             : null,
-          complexity: normalizedTemplate.complexity || null,
-          min_total_budget: normalizeNullable(normalizedTemplate.minTotalBudget),
-          max_total_budget: normalizeNullable(normalizedTemplate.maxTotalBudget),
+          size_category: normalizedTemplate.sizeCategory || null,
           delivery_type: normalizedTemplate.deliveryType || null,
           notes: normalizedTemplate.notes || null,
           hours_by_category:
@@ -1076,6 +1185,250 @@ export const useDatabase = (defaultData = {}) => {
     [organizationId, assertReady, assertCanEdit]
   );
 
+  const getUtilityProfiles = useCallback(async () => {
+    assertReady();
+
+    const { data, error: fetchError } = await supabase
+      .from('utility_financial_profiles')
+      .select('*')
+      .eq('organization_id', organizationId);
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    const profiles = {};
+    (data || []).forEach((row) => {
+      const parsed = utilityProfileFromRow(row);
+      if (parsed?.utilityKey) {
+        profiles[parsed.utilityKey] = parsed;
+      }
+    });
+
+    return profiles;
+  }, [organizationId, assertReady]);
+
+  const saveUtilityProfile = useCallback(
+    async (utilityKey, profile) => {
+      assertReady();
+      assertCanEdit();
+
+      const normalizedKey = normalizeUtilityKey(utilityKey);
+      if (!normalizedKey) {
+        throw new Error('A valid utility key is required.');
+      }
+
+      const payload = utilityProfileToRow(organizationId, normalizedKey, profile);
+      const { data, error: upsertError } = await supabase
+        .from('utility_financial_profiles')
+        .upsert(payload, { onConflict: 'organization_id,utility_key' })
+        .select()
+        .single();
+
+      if (upsertError) {
+        throw upsertError;
+      }
+
+      return utilityProfileFromRow(data);
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
+  const getUtilityOperatingBudgets = useCallback(async () => {
+    assertReady();
+
+    const { data, error: fetchError } = await supabase
+      .from('utility_operating_budgets')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('fiscal_year', { ascending: true });
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    const budgets = new Map();
+    (data || []).forEach((row) => {
+      const utilityKey = normalizeUtilityKey(row.utility_key);
+      const parsedRow = operatingBudgetFromRow(row);
+      if (!utilityKey || !parsedRow) {
+        return;
+      }
+      if (!budgets.has(utilityKey)) {
+        budgets.set(utilityKey, []);
+      }
+      budgets.get(utilityKey).push(parsedRow);
+    });
+
+    return budgets;
+  }, [organizationId, assertReady]);
+
+  const upsertUtilityOperatingBudgetRows = useCallback(
+    async (utilityKey, rows) => {
+      if (!rows || !rows.length) {
+        return;
+      }
+
+      assertReady();
+      assertCanEdit();
+
+      const payload = rows
+        .filter((row) => Number.isFinite(Number(row?.year)))
+        .map((row) => operatingBudgetToRow(organizationId, utilityKey, row));
+
+      if (!payload.length) {
+        return;
+      }
+
+      const { error: upsertError } = await supabase
+        .from('utility_operating_budgets')
+        .upsert(payload, { onConflict: 'organization_id,utility_key,fiscal_year' });
+
+      if (upsertError) {
+        throw upsertError;
+      }
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
+  const deleteUtilityOperatingBudgetsNotIn = useCallback(
+    async (utilityKey, yearsToKeep = []) => {
+      assertReady();
+      assertCanEdit();
+
+      const normalizedKey = normalizeUtilityKey(utilityKey);
+      if (!normalizedKey) {
+        return;
+      }
+
+      let query = supabase
+        .from('utility_operating_budgets')
+        .delete()
+        .eq('organization_id', organizationId)
+        .eq('utility_key', normalizedKey);
+
+      const sanitizedYears = (yearsToKeep || [])
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value));
+
+      if (sanitizedYears.length > 0) {
+        query = query.not('fiscal_year', 'in', `(${sanitizedYears.join(',')})`);
+      }
+
+      const { error: deleteError } = await query;
+
+      if (deleteError) {
+        throw deleteError;
+      }
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
+  const getProjectTypeUtilities = useCallback(async () => {
+    assertReady();
+
+    const { data, error: fetchError } = await supabase
+      .from('project_type_utilities')
+      .select('*')
+      .eq('organization_id', organizationId);
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    const assignments = {};
+    (data || []).forEach((row) => {
+      const parsed = projectTypeUtilityFromRow(row);
+      if (!parsed?.projectTypeId) {
+        return;
+      }
+      assignments[String(parsed.projectTypeId)] = parsed.utilityKey || null;
+    });
+
+    return assignments;
+  }, [organizationId, assertReady]);
+
+  const saveProjectTypeUtility = useCallback(
+    async (projectTypeId, utilityKey) => {
+      assertReady();
+      assertCanEdit();
+
+      if (!projectTypeId) {
+        throw new Error('Project type id is required.');
+      }
+
+      const normalizedKey = normalizeUtilityKey(utilityKey);
+
+      if (!normalizedKey) {
+        const { error: deleteError } = await supabase
+          .from('project_type_utilities')
+          .delete()
+          .eq('organization_id', organizationId)
+          .eq('project_type_id', projectTypeId);
+
+        if (deleteError) {
+          throw deleteError;
+        }
+
+        return null;
+      }
+
+      const payload = projectTypeUtilityToRow(organizationId, projectTypeId, normalizedKey);
+      const { data, error: upsertError } = await supabase
+        .from('project_type_utilities')
+        .upsert(payload, { onConflict: 'organization_id,project_type_id' })
+        .select()
+        .single();
+
+      if (upsertError) {
+        throw upsertError;
+      }
+
+      return projectTypeUtilityFromRow(data);
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
+  const getFundingSourceAssumptions = useCallback(async () => {
+    assertReady();
+
+    const { data, error: fetchError } = await supabase
+      .from('funding_source_financing_assumptions')
+      .select('*')
+      .eq('organization_id', organizationId);
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    return (data || []).map(fundingAssumptionFromRow).filter(Boolean);
+  }, [organizationId, assertReady]);
+
+  const saveFundingSourceAssumption = useCallback(
+    async (assumption) => {
+      assertReady();
+      assertCanEdit();
+
+      if (!assumption || !assumption.fundingSourceId) {
+        throw new Error('A funding source id is required.');
+      }
+
+      const payload = fundingAssumptionToRow(organizationId, assumption);
+      const { data, error: upsertError } = await supabase
+        .from('funding_source_financing_assumptions')
+        .upsert(payload, { onConflict: 'organization_id,funding_source_id' })
+        .select()
+        .single();
+
+      if (upsertError) {
+        throw upsertError;
+      }
+
+      return fundingAssumptionFromRow(data);
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
   const exportDatabase = useCallback(async () => {
     assertReady();
 
@@ -1147,6 +1500,15 @@ export const useDatabase = (defaultData = {}) => {
       saveStaffAssignment,
       getStaffAssignments,
       deleteStaffAssignment,
+      getUtilityProfiles,
+      saveUtilityProfile,
+      getUtilityOperatingBudgets,
+      upsertUtilityOperatingBudgetRows,
+      deleteUtilityOperatingBudgetsNotIn,
+      getProjectTypeUtilities,
+      saveProjectTypeUtility,
+      getFundingSourceAssumptions,
+      saveFundingSourceAssumption,
       exportDatabase,
       importDatabase,
     }),
@@ -1178,6 +1540,15 @@ export const useDatabase = (defaultData = {}) => {
       saveStaffAssignment,
       getStaffAssignments,
       deleteStaffAssignment,
+      getUtilityProfiles,
+      saveUtilityProfile,
+      getUtilityOperatingBudgets,
+      upsertUtilityOperatingBudgetRows,
+      deleteUtilityOperatingBudgetsNotIn,
+      getProjectTypeUtilities,
+      saveProjectTypeUtility,
+      getFundingSourceAssumptions,
+      saveFundingSourceAssumption,
       exportDatabase,
       importDatabase,
     ]

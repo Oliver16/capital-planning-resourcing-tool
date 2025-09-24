@@ -180,7 +180,7 @@ const generateForecastFromDate = (
   staffAvailabilityByCategory = {}
 ) => {
   const forecast = [];
-  const safeTimeHorizon = Math.max(1, Math.min(timeHorizon || 36, 120)); // Limit to reasonable range
+  const safeTimeHorizon = Math.max(1, Math.min(timeHorizon || 60, 120)); // Limit to reasonable range
 
   const hasExplicitAvailability =
     staffAvailabilityByCategory &&
@@ -479,7 +479,7 @@ export const generateScenarioForecastDetails = (
     return { forecast: [], monthDetails: {}, startDate: new Date() };
   }
 
-  const safeTimeHorizon = Math.max(1, Math.min(timeHorizon || 36, 120));
+  const safeTimeHorizon = Math.max(1, Math.min(timeHorizon || 60, 120));
   const startDate = getScenarioStartDate(projectTimelines);
   const forecast = [];
   const monthDetails = {};
@@ -1187,7 +1187,7 @@ export const analyzeScenario = (
   staffAllocations,
   staffCategories,
   staffAvailabilityByCategory = {},
-  timeHorizon = 36
+  timeHorizon = 60
 ) => {
   const scenarioProjects = applyScenarioAdjustments(
     baselineProjects,

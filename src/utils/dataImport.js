@@ -22,28 +22,6 @@ const normalizeDeliveryType = (value) => {
   return "self-perform";
 };
 
-const parseComplexity = (value) => {
-  if (!value) {
-    return "";
-  }
-
-  const normalized = value.toString().trim().toLowerCase();
-
-  if (normalized === "low") {
-    return "Low";
-  }
-
-  if (normalized === "high") {
-    return "High";
-  }
-
-  if (normalized === "normal" || normalized === "medium") {
-    return "Normal";
-  }
-
-  return "";
-};
-
 const normalizeCategoryName = (value = "") =>
   value.toString().toLowerCase().replace(/[^a-z0-9]+/g, "");
 
@@ -187,9 +165,7 @@ export const handleCSVImport = async (
           projectTypeId: 1, // Default, user can change
           fundingSourceId: 1, // Default, user can change
           deliveryType: normalizeDeliveryType(row["Delivery Type"]),
-          complexity:
-            parseComplexity(row["Project Complexity"] || row["Project Size"]) ||
-            "Normal",
+          sizeCategory: row["Project Size"] || "",
           totalBudget,
           designBudget,
           constructionBudget,
@@ -273,7 +249,7 @@ export const downloadCSVTemplate = (staffCategories = []) => {
       "Priority",
       "Description",
       "Delivery Type",
-      "Project Complexity",
+      "Project Size",
       "Annual Budget",
       "Design %",
       "Construction %",
