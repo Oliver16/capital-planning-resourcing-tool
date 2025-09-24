@@ -1,3 +1,6 @@
+const path = require('path');
+const ModuleScopePlugin = require('react-dev-utils/ModuleScopePlugin');
+
 const SUPABASE_ENV_MAPPINGS = {
   REACT_APP_SUPABASE_URL: [
     'REACT_APP_SUPABASE_URL',
@@ -64,6 +67,33 @@ module.exports = function override(config) {
   };
 
   normalizeEnvDefinitions(config);
+
+  const moduleScopePlugin = (config.resolve.plugins || []).find(
+    (plugin) => plugin instanceof ModuleScopePlugin
+  );
+
+  if (moduleScopePlugin && moduleScopePlugin.allowedFiles) {
+    moduleScopePlugin.allowedFiles.add(
+      path.resolve(__dirname, 'docs/TECHNICAL_GUIDE.md')
+    );
+  }
+
+  if (config.module && Array.isArray(config.module.rules)) {
+    const markdownRule = {
+      test: /\.md$/i,
+      type: 'asset/source',
+    };
+
+    const oneOfRule = config.module.rules.find((rule) =>
+      Array.isArray(rule.oneOf)
+    );
+
+    if (oneOfRule) {
+      oneOfRule.oneOf = [markdownRule, ...oneOfRule.oneOf];
+    } else {
+      config.module.rules.push(markdownRule);
+    }
+  }
 
   return config;
 };
