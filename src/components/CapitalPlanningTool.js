@@ -14,6 +14,7 @@ import {
   GitBranch,
   FileSpreadsheet,
   ChevronDown,
+  LayoutDashboard,
 } from "lucide-react";
 
 // Import components
@@ -28,6 +29,7 @@ import PeopleTab from "./tabs/PeopleTab";
 import ScenariosTab from "./tabs/ScenariosTab";
 import ReportsTab from "./tabs/ReportsTab";
 import StaffAssignmentsTab from "./tabs/StaffAssignmentsTab";
+import FinancialModelingModule from "./financial-modeling/FinancialModelingModule";
 import { isProjectOrProgram } from "../utils/projectTypes.js";
 
 // Import data and utilities
@@ -49,6 +51,13 @@ import { useDatabase } from "../hooks/useDatabase";
 import { useAuth } from "../context/AuthContext";
 import { buildStaffAssignmentPlan } from "../utils/staffAssignments";
 import { normalizeProjectBudgetBreakdown } from "../utils/projectBudgets";
+import { normalizeEffortTemplate } from "../utils/effortTemplates";
+import {
+  generateDefaultOperatingBudget,
+  ensureBudgetYears,
+  generateDefaultFundingAssumptions,
+  createDefaultFundingAssumption,
+} from "../utils/financialModeling";
 
 const MAX_MONTHLY_FTE_HOURS = 2080 / 12;
 const CAPACITY_FIELDS = [
@@ -102,6 +111,88 @@ const normalizeStorageId = (value) => {
   return null;
 };
 
+const UTILITY_OPTIONS = [
+  { value: "water", label: "Water Utility" },
+  { value: "sewer", label: "Sewer Utility" },
+  { value: "power", label: "Electric Utility" },
+  { value: "gas", label: "Gas Utility" },
+  { value: "stormwater", label: "Stormwater Utility" },
+];
+
+if (
+  typeof globalThis !== "undefined" &&
+  typeof globalThis.normalizeEffortTemplate !== "function"
+) {
+  globalThis.normalizeEffortTemplate = normalizeEffortTemplate;
+}
+
+const createDefaultBudgetEscalations = () => ({
+  operatingRevenue: 0,
+  nonOperatingRevenue: 0,
+  omExpenses: 0,
+  salaries: 0,
+  adminExpenses: 0,
+  existingDebtService: 0,
+});
+
+const ESCALATION_FIELDS = [
+  "operatingRevenue",
+  "nonOperatingRevenue",
+  "omExpenses",
+  "salaries",
+  "adminExpenses",
+  "existingDebtService",
+];
+
+const recalculateOperatingBudget = (budgetRows = [], budgetEscalations = {}) => {
+  if (!Array.isArray(budgetRows) || budgetRows.length === 0) {
+    return [];
+  }
+
+  const sortedRows = [...budgetRows].sort(
+    (a, b) => (Number(a?.year) || 0) - (Number(b?.year) || 0)
+  );
+  const recalculated = [];
+
+  sortedRows.forEach((row, index) => {
+    const normalizedRow = {
+      ...row,
+      year: Number(row?.year) || 0,
+      rateIncreasePercent: getNumericValue(row?.rateIncreasePercent),
+    };
+
+    if (index === 0) {
+      ESCALATION_FIELDS.forEach((field) => {
+        normalizedRow[field] = getNumericValue(row?.[field]);
+      });
+    } else {
+      const previousRow = recalculated[index - 1];
+      ESCALATION_FIELDS.forEach((field) => {
+        const rate = Number(budgetEscalations?.[field]) || 0;
+        const priorValue = getNumericValue(previousRow?.[field]);
+        normalizedRow[field] = priorValue * (1 + rate / 100);
+      });
+    }
+
+    recalculated.push(normalizedRow);
+  });
+
+  return recalculated;
+};
+
+const createDefaultFinancialConfig = (startYear) => ({
+  startYear,
+  projectionYears: 10,
+  startingCashBalance: 2500000,
+  targetCoverageRatio: 1.5,
+});
+
+const createDefaultUtilityProfile = (startYear) => ({
+  financialConfig: createDefaultFinancialConfig(startYear),
+  operatingBudget: generateDefaultOperatingBudget(startYear, 10),
+  budgetEscalations: createDefaultBudgetEscalations(),
+});
+
 const CapitalPlanningTool = () => {
   const { canEditActiveOrg } = useAuth();
   const isReadOnly = !canEditActiveOrg;
@@ -116,6 +207,7 @@ const CapitalPlanningTool = () => {
       staffAllocations: {},
       staffMembers: defaultStaffMembers,
       staffAssignments: defaultStaffAssignments,
+      effortTemplates: [],
     }),
     []
   );
@@ -146,6 +238,15 @@ const CapitalPlanningTool = () => {
     getStaffAssignments,
     deleteStaffAssignment: dbDeleteStaffAssignment,
     exportDatabase,
+    getUtilityProfiles,
+    saveUtilityProfile,
+    getUtilityOperatingBudgets,
+    upsertUtilityOperatingBudgetRows,
+    deleteUtilityOperatingBudgetsNotIn,
+    getProjectTypeUtilities,
+    saveProjectTypeUtility,
+    getFundingSourceAssumptions,
+    saveFundingSourceAssumption,
   } = useDatabase(defaultData);
 
   // Core data states
@@ -159,8 +260,24 @@ const CapitalPlanningTool = () => {
   );
   const [staffAllocations, setStaffAllocations] = useState({});
   const [staffMembers, setStaffMembers] = useState(defaultStaffMembers);
+  const currentYear = useMemo(() => new Date().getFullYear(), []);
+  const [utilityProfiles, setUtilityProfiles] = useState(() => {
+    const profiles = {};
+    UTILITY_OPTIONS.forEach((option) => {
+      profiles[option.value] = createDefaultUtilityProfile(currentYear);
+    });
+    return profiles;
+  });
+  const [activeUtility, setActiveUtility] = useState(
+    UTILITY_OPTIONS[0]?.value || "water"
+  );
+  const [projectTypeUtilities, setProjectTypeUtilities] = useState({});
+  const [fundingSourceAssumptions, setFundingSourceAssumptions] = useState(() =>
+    generateDefaultFundingAssumptions(defaultFundingSources)
+  );
   const [staffAssignmentOverrides, setStaffAssignmentOverrides] = useState({});
   const [activeTab, setActiveTab] = useState("overview");
+  const [activeModule, setActiveModule] = useState("planning");
   const [activeDropdown, setActiveDropdown] = useState(null);
   const dropdownRefs = useRef({});
   const [timeHorizon, setTimeHorizon] = useState(36);
@@ -179,6 +296,40 @@ const CapitalPlanningTool = () => {
   ]);
   const [activeScenarioId, setActiveScenarioId] = useState("baseline");
 
+  useEffect(() => {
+    if (!Array.isArray(projectTypes)) {
+      return;
+    }
+
+    setProjectTypeUtilities((previous) => {
+      const nextAssignments = { ...previous };
+      let changed = false;
+
+      projectTypes.forEach((type) => {
+        const key = toIdKey(type?.id);
+        if (!key) {
+          return;
+        }
+        if (nextAssignments[key] === undefined) {
+          nextAssignments[key] = UTILITY_OPTIONS[0]?.value || null;
+          changed = true;
+        }
+      });
+
+      Object.keys(nextAssignments).forEach((key) => {
+        const stillExists = projectTypes.some(
+          (type) => String(type?.id) === key
+        );
+        if (!stillExists) {
+          delete nextAssignments[key];
+          changed = true;
+        }
+      });
+
+      return changed ? nextAssignments : previous;
+    });
+  }, [projectTypes]);
+
   // Load data from database only once when initialized
   useEffect(() => {
     const loadData = async () => {
@@ -192,6 +343,10 @@ const CapitalPlanningTool = () => {
             allocationsData,
             staffMembersData,
             staffAssignmentsData,
+            utilityProfilesData,
+            utilityBudgetMap,
+            projectTypeUtilityAssignments,
+            fundingAssumptionsData,
           ] = await Promise.all([
             getProjects(),
             getStaffCategories(),
@@ -200,6 +355,10 @@ const CapitalPlanningTool = () => {
             getStaffAllocations(),
             getStaffMembers(),
             getStaffAssignments(),
+            getUtilityProfiles(),
+            getUtilityOperatingBudgets(),
+            getProjectTypeUtilities(),
+            getFundingSourceAssumptions(),
           ]);
 
           // Only update if we got actual data
@@ -259,6 +418,96 @@ const CapitalPlanningTool = () => {
             });
             setStaffAllocations(allocationsObject);
           }
+
+          const hasUtilityProfileData =
+            utilityProfilesData && Object.keys(utilityProfilesData).length > 0;
+          const hasUtilityBudgetData = utilityBudgetMap && utilityBudgetMap.size > 0;
+
+          if (hasUtilityProfileData || hasUtilityBudgetData) {
+            setUtilityProfiles((previous) => {
+              const nextProfiles = { ...previous };
+
+              UTILITY_OPTIONS.forEach((option) => {
+                const key = option.value;
+                const existingProfile = previous[key] || createDefaultUtilityProfile(currentYear);
+                const dbProfile = utilityProfilesData?.[key];
+                const mergedConfig = dbProfile?.financialConfig
+                  ? { ...existingProfile.financialConfig, ...dbProfile.financialConfig }
+                  : { ...existingProfile.financialConfig };
+                const mergedEscalations = dbProfile?.budgetEscalations
+                  ? { ...existingProfile.budgetEscalations, ...dbProfile.budgetEscalations }
+                  : { ...existingProfile.budgetEscalations };
+                const budgetRows = utilityBudgetMap?.get(key) || existingProfile.operatingBudget;
+
+                const alignedBudget = ensureBudgetYears(
+                  budgetRows,
+                  mergedConfig.startYear,
+                  mergedConfig.projectionYears
+                );
+                nextProfiles[key] = {
+                  financialConfig: mergedConfig,
+                  budgetEscalations: mergedEscalations,
+                  operatingBudget: recalculateOperatingBudget(
+                    alignedBudget,
+                    mergedEscalations
+                  ),
+                };
+              });
+
+              return nextProfiles;
+            });
+          }
+
+          if (
+            projectTypeUtilityAssignments &&
+            Object.keys(projectTypeUtilityAssignments).length > 0
+          ) {
+            setProjectTypeUtilities(projectTypeUtilityAssignments);
+          }
+
+          if (fundingAssumptionsData && fundingAssumptionsData.length > 0) {
+            setFundingSourceAssumptions((previous) => {
+              const existingById = new Map();
+              (previous || []).forEach((assumption) => {
+                if (!assumption) {
+                  return;
+                }
+                const key =
+                  assumption.fundingSourceId === null || assumption.fundingSourceId === undefined
+                    ? null
+                    : String(assumption.fundingSourceId);
+                if (key !== null) {
+                  existingById.set(key, assumption);
+                }
+              });
+
+              const merged = fundingAssumptionsData.map((assumption) => {
+                if (!assumption || assumption.fundingSourceId === undefined || assumption.fundingSourceId === null) {
+                  return null;
+                }
+                const key = String(assumption.fundingSourceId);
+                const existing = existingById.get(key);
+                if (existing) {
+                  return {
+                    ...existing,
+                    financingType: assumption.financingType,
+                    interestRate: assumption.interestRate,
+                    termYears: assumption.termYears,
+                    sourceName: assumption.sourceName || existing.sourceName,
+                  };
+                }
+                return {
+                  fundingSourceId: assumption.fundingSourceId,
+                  sourceName: assumption.sourceName || '',
+                  financingType: assumption.financingType || 'cash',
+                  interestRate: assumption.interestRate || 0,
+                  termYears: assumption.termYears || 0,
+                };
+              });
+
+              return merged.filter(Boolean);
+            });
+          }
         } catch (error) {
           console.error("Error loading data from database:", error);
         }
@@ -275,7 +524,45 @@ const CapitalPlanningTool = () => {
     getStaffAllocations,
     getStaffMembers,
     getStaffAssignments,
+    getUtilityProfiles,
+    getUtilityOperatingBudgets,
+    getProjectTypeUtilities,
+    getFundingSourceAssumptions,
   ]);
+
+  useEffect(() => {
+    setFundingSourceAssumptions((previous) => {
+      const existingMap = new Map();
+
+      (previous || []).forEach((assumption) => {
+        if (!assumption) {
+          return;
+        }
+        const key =
+          assumption.fundingSourceId === null ||
+          assumption.fundingSourceId === undefined
+            ? "unassigned"
+            : String(assumption.fundingSourceId);
+        existingMap.set(key, assumption);
+      });
+
+      return fundingSources.map((source) => {
+        const key =
+          source.id === null || source.id === undefined
+            ? "unassigned"
+            : String(source.id);
+        const existing = existingMap.get(key);
+        if (existing) {
+          return {
+            ...existing,
+            fundingSourceId: source.id,
+            sourceName: source.name,
+          };
+        }
+        return createDefaultFundingAssumption(source);
+      });
+    });
+  }, [fundingSources]);
 
   useEffect(() => {
     if (!activeDropdown) {
@@ -438,6 +725,12 @@ const CapitalPlanningTool = () => {
     [projects]
   );
 
+  const activeUtilityProfile = useMemo(
+    () =>
+      utilityProfiles[activeUtility] || createDefaultUtilityProfile(currentYear),
+    [utilityProfiles, activeUtility, currentYear]
+  );
+
   // Generate monthly resource forecast
   const resourceForecast = useMemo(
     () =>
@@ -467,6 +760,284 @@ const CapitalPlanningTool = () => {
       ),
     [resourceForecast, staffCategories, staffAvailabilityByCategory]
   );
+
+  const moduleOptions = [
+    {
+      id: "planning",
+      label: "Capital Planning Workspace",
+      description: "Projects, people, scheduling, and reporting.",
+      icon: LayoutDashboard,
+    },
+    {
+      id: "financial",
+      label: "Financial Modeling Suite",
+      description: "CIP spend plans, pro forma, and debt coverage analysis.",
+      icon: DollarSign,
+    },
+  ];
+
+  const handleSelectModule = (moduleId) => {
+    setActiveDropdown(null);
+    setActiveModule(moduleId);
+    if (moduleId === "planning" && activeTab === "finance") {
+      setActiveTab("overview");
+    }
+  };
+
+  const updateFinancialConfiguration = async (utilityKey, updates) => {
+    if (isReadOnly) {
+      return;
+    }
+
+    const targetUtility = utilityKey || activeUtility;
+    const existingProfile =
+      utilityProfiles[targetUtility] || createDefaultUtilityProfile(currentYear);
+
+    const nextConfig = {
+      ...existingProfile.financialConfig,
+      ...updates,
+    };
+
+    const nextBudget = ensureBudgetYears(
+      existingProfile.operatingBudget,
+      nextConfig.startYear,
+      nextConfig.projectionYears
+    );
+
+    const recalculatedBudget = recalculateOperatingBudget(
+      nextBudget,
+      existingProfile.budgetEscalations
+    );
+
+    const updatedProfile = {
+      ...existingProfile,
+      financialConfig: nextConfig,
+      operatingBudget: recalculatedBudget,
+    };
+
+    setUtilityProfiles((previous) => ({
+      ...previous,
+      [targetUtility]: updatedProfile,
+    }));
+
+    try {
+      await Promise.all([
+        saveUtilityProfile(targetUtility, {
+          financialConfig: nextConfig,
+          budgetEscalations: updatedProfile.budgetEscalations,
+        }),
+        upsertUtilityOperatingBudgetRows(targetUtility, recalculatedBudget),
+        deleteUtilityOperatingBudgetsNotIn(
+          targetUtility,
+          recalculatedBudget.map((row) => row.year)
+        ),
+      ]);
+    } catch (error) {
+      console.error("Failed to update financial configuration:", error);
+    }
+  };
+
+  const updateOperatingBudgetValue = async (utilityKey, year, field, value) => {
+    if (isReadOnly) {
+      return;
+    }
+
+    const targetUtility = utilityKey || activeUtility;
+    const existingProfile =
+      utilityProfiles[targetUtility] || createDefaultUtilityProfile(currentYear);
+
+    const normalizedBudget = ensureBudgetYears(
+      existingProfile.operatingBudget,
+      existingProfile.financialConfig.startYear,
+      existingProfile.financialConfig.projectionYears
+    );
+
+    const updatedBudget = normalizedBudget.map((row) => {
+      if (!row || row.year !== year) {
+        return row;
+      }
+
+      let nextValue = value;
+      if (field === "rateIncreasePercent") {
+        nextValue = Number(value) || 0;
+      } else {
+        nextValue = getNumericValue(value);
+      }
+
+      return {
+        ...row,
+        [field]: nextValue,
+      };
+    });
+
+    const recalculatedBudget = recalculateOperatingBudget(
+      updatedBudget,
+      existingProfile.budgetEscalations
+    );
+
+    const updatedProfile = {
+      ...existingProfile,
+      operatingBudget: recalculatedBudget,
+    };
+
+    setUtilityProfiles((previous) => ({
+      ...previous,
+      [targetUtility]: updatedProfile,
+    }));
+
+    try {
+      await upsertUtilityOperatingBudgetRows(targetUtility, recalculatedBudget);
+      await deleteUtilityOperatingBudgetsNotIn(
+        targetUtility,
+        recalculatedBudget.map((row) => row.year)
+      );
+    } catch (error) {
+      console.error("Failed to update operating budget row:", error);
+    }
+  };
+
+  const updateBudgetEscalation = async (utilityKey, field, value) => {
+    if (isReadOnly) {
+      return;
+    }
+
+    const targetUtility = utilityKey || activeUtility;
+    const existingProfile =
+      utilityProfiles[targetUtility] || createDefaultUtilityProfile(currentYear);
+    const numericValue = Number(value);
+
+    const updatedEscalations = {
+      ...existingProfile.budgetEscalations,
+      [field]: Number.isFinite(numericValue) ? numericValue : 0,
+    };
+
+    const normalizedBudget = ensureBudgetYears(
+      existingProfile.operatingBudget,
+      existingProfile.financialConfig.startYear,
+      existingProfile.financialConfig.projectionYears
+    );
+
+    const recalculatedBudget = recalculateOperatingBudget(
+      normalizedBudget,
+      updatedEscalations
+    );
+
+    const updatedProfile = {
+      ...existingProfile,
+      budgetEscalations: updatedEscalations,
+      operatingBudget: recalculatedBudget,
+    };
+
+    setUtilityProfiles((previous) => ({
+      ...previous,
+      [targetUtility]: updatedProfile,
+    }));
+
+    try {
+      await Promise.all([
+        saveUtilityProfile(targetUtility, {
+          financialConfig: updatedProfile.financialConfig,
+          budgetEscalations: updatedEscalations,
+        }),
+        upsertUtilityOperatingBudgetRows(targetUtility, recalculatedBudget),
+        deleteUtilityOperatingBudgetsNotIn(
+          targetUtility,
+          recalculatedBudget.map((row) => row.year)
+        ),
+      ]);
+    } catch (error) {
+      console.error("Failed to update budget escalation:", error);
+    }
+  };
+
+  const handleUpdateProjectTypeUtility = async (typeId, utilityValue) => {
+    if (isReadOnly) {
+      return;
+    }
+
+    const key = toIdKey(typeId);
+    if (!key) {
+      return;
+    }
+
+    const normalizedUtility =
+      utilityValue && UTILITY_OPTIONS.some((option) => option.value === utilityValue)
+        ? utilityValue
+        : null;
+
+    setProjectTypeUtilities((previous) => {
+      if (previous[key] === normalizedUtility) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        [key]: normalizedUtility,
+      };
+    });
+
+    try {
+      await saveProjectTypeUtility(typeId, normalizedUtility);
+    } catch (error) {
+      console.error("Failed to update project type utility assignment:", error);
+    }
+  };
+
+  const updateFundingSourceAssumption = async (fundingSourceId, field, value) => {
+    if (isReadOnly) {
+      return;
+    }
+
+    let updatedRecord = null;
+
+    setFundingSourceAssumptions((previous) =>
+      previous.map((assumption) => {
+        if (!assumption) {
+          return assumption;
+        }
+
+        const matches =
+          assumption.fundingSourceId === fundingSourceId ||
+          String(assumption.fundingSourceId) === String(fundingSourceId);
+
+        if (!matches) {
+          return assumption;
+        }
+
+        let nextValue = value;
+        if (field === "interestRate" || field === "termYears") {
+          nextValue = getNumericValue(value);
+        }
+
+        let nextAssumption = { ...assumption };
+
+        if (field === "financingType") {
+          nextAssumption.financingType = value;
+        } else if (field === "interestRate") {
+          nextAssumption.interestRate = getNumericValue(value);
+        } else if (field === "termYears") {
+          const numeric = Math.max(0, Math.round(getNumericValue(value)));
+          nextAssumption.termYears = numeric;
+        } else {
+          nextAssumption = {
+            ...assumption,
+            [field]: nextValue,
+          };
+        }
+
+        updatedRecord = nextAssumption;
+        return nextAssumption;
+      })
+    );
+
+    if (updatedRecord) {
+      try {
+        await saveFundingSourceAssumption(updatedRecord);
+      } catch (error) {
+        console.error("Failed to update funding source assumption:", error);
+      }
+    }
+  };
 
   // Project management functions
   const addProject = async (type = "project") => {
@@ -1295,298 +1866,358 @@ const CapitalPlanningTool = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Navigation Tabs */}
-        <div className="bg-white rounded-lg shadow-sm mb-6 relative">
-          {isSaving && (
-            <div className="absolute top-4 right-4 flex items-center gap-2 text-blue-600">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-              <span className="text-sm">Saving...</span>
-            </div>
-          )}
-          <div className="border-b border-gray-200">
-            <nav className="flex space-x-8 px-6">
-              {[
-                { id: "overview", label: "Overview", icon: Calendar },
-                {
-                  id: "projects",
-                  label: "Projects & Programs",
-                  icon: FolderOpen,
-                },
-                {
-                  type: "dropdown",
-                  id: "people-menu",
-                  label: "People",
-                  icon: Users,
-                  items: [
-                    { id: "people", label: "Staff", icon: UserCircle },
-                    { id: "assignments", label: "Assignments", icon: Users },
-                    { id: "staff", label: "Categories", icon: Settings },
-                  ],
-                },
-                {
-                  id: "allocations",
-                  label: "Effort Projections",
-                  icon: Edit3,
-                },
-                { id: "scenarios", label: "Scenarios", icon: GitBranch },
-                {
-                  id: "schedule",
-                  label: "Schedule View",
-                  icon: CalendarClock,
-                },
-                {
-                  id: "forecast",
-                  label: "Resource Forecast",
-                  icon: AlertTriangle,
-                },
-                { id: "reports", label: "Reports", icon: FileSpreadsheet },
-                { id: "settings", label: "Settings", icon: Settings },
-              ].map((tab) => {
-                if (tab.type === "dropdown") {
-                  const Icon = tab.icon;
-                  const isActive = tab.items.some((item) => item.id === activeTab);
-                  return (
-                    <div
-                      key={tab.id}
-                      className="relative"
-                      ref={(element) => {
-                        if (element) {
-                          dropdownRefs.current[tab.id] = element;
-                        } else {
-                          delete dropdownRefs.current[tab.id];
-                        }
-                      }}
-                    >
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="grid gap-4 md:grid-cols-2">
+          {moduleOptions.map((module) => {
+            const Icon = module.icon;
+            const isActive = activeModule === module.id;
+            return (
+              <button
+                type="button"
+                key={module.id}
+                onClick={() => handleSelectModule(module.id)}
+                className={`flex h-full w-full items-start gap-3 rounded-lg border px-4 py-3 text-left shadow-sm transition ${
+                  isActive
+                    ? "border-blue-500 bg-blue-50 text-blue-700"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-blue-300"
+                }`}
+              >
+                <span
+                  className={`rounded-full border p-2 ${
+                    isActive
+                      ? "border-blue-400 bg-blue-100 text-blue-600"
+                      : "border-slate-200 bg-slate-100 text-slate-500"
+                  }`}
+                >
+                  <Icon size={20} />
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold">{module.label}</span>
+                  <span className="mt-1 block text-xs text-inherit">{module.description}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {activeModule === "planning" ? (
+          <>
+            <div className="bg-white rounded-lg shadow-sm relative">
+              {isSaving && (
+                <div className="absolute top-4 right-4 flex items-center gap-2 text-blue-600">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                  <span className="text-sm">Saving...</span>
+                </div>
+              )}
+              <div className="border-b border-gray-200">
+                <nav className="flex space-x-8 px-6">
+                  {[
+                    { id: "overview", label: "Overview", icon: Calendar },
+                    {
+                      id: "projects",
+                      label: "Projects & Programs",
+                      icon: FolderOpen,
+                    },
+                    {
+                      type: "dropdown",
+                      id: "people-menu",
+                      label: "People",
+                      icon: Users,
+                      items: [
+                        { id: "people", label: "Staff", icon: UserCircle },
+                        { id: "assignments", label: "Assignments", icon: Users },
+                        { id: "staff", label: "Categories", icon: Settings },
+                      ],
+                    },
+                    {
+                      id: "allocations",
+                      label: "Effort Projections",
+                      icon: Edit3,
+                    },
+                    { id: "scenarios", label: "Scenarios", icon: GitBranch },
+                    {
+                      id: "schedule",
+                      label: "Schedule View",
+                      icon: CalendarClock,
+                    },
+                    {
+                      id: "forecast",
+                      label: "Resource Forecast",
+                      icon: AlertTriangle,
+                    },
+                    { id: "reports", label: "Reports", icon: FileSpreadsheet },
+                    { id: "settings", label: "Settings", icon: Settings },
+                  ].map((tab) => {
+                    if (tab.type === "dropdown") {
+                      const Icon = tab.icon;
+                      const isActive = tab.items.some((item) => item.id === activeTab);
+                      return (
+                        <div
+                          key={tab.id}
+                          className="relative"
+                          ref={(element) => {
+                            if (element) {
+                              dropdownRefs.current[tab.id] = element;
+                            } else {
+                              delete dropdownRefs.current[tab.id];
+                            }
+                          }}
+                        >
+                          <button
+                            type="button"
+                            id={`${tab.id}-button`}
+                            onClick={() =>
+                              setActiveDropdown((current) =>
+                                current === tab.id ? null : tab.id
+                              )
+                            }
+                            className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                              isActive
+                                ? "border-blue-500 text-blue-600"
+                                : "border-transparent text-gray-500 hover:text-gray-700"
+                            }`}
+                            aria-haspopup="menu"
+                            aria-expanded={activeDropdown === tab.id}
+                          >
+                            <Icon size={16} />
+                            {tab.label}
+                            <ChevronDown size={14} />
+                          </button>
+                          {activeDropdown === tab.id && (
+                            <div
+                              className="absolute left-0 top-full mt-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-10"
+                              role="menu"
+                              aria-labelledby={`${tab.id}-button`}
+                            >
+                              {tab.items.map((item) => {
+                                const SubIcon = item.icon;
+                                const isSubActive = activeTab === item.id;
+                                return (
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    key={item.id}
+                                    onClick={() => {
+                                      setActiveTab(item.id);
+                                      setActiveDropdown(null);
+                                    }}
+                                    className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 ${
+                                      isSubActive
+                                        ? "bg-blue-50 text-blue-600"
+                                        : "text-gray-700 hover:bg-gray-50"
+                                    }`}
+                                  >
+                                    <SubIcon size={16} />
+                                    {item.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    const Icon = tab.icon;
+                    return (
                       <button
                         type="button"
-                        id={`${tab.id}-button`}
-                        onClick={() =>
-                          setActiveDropdown((current) =>
-                            current === tab.id ? null : tab.id
-                          )
-                        }
+                        key={tab.id}
+                        onClick={() => {
+                          setActiveDropdown(null);
+                          setActiveTab(tab.id);
+                        }}
                         className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
-                          isActive
+                          activeTab === tab.id
                             ? "border-blue-500 text-blue-600"
                             : "border-transparent text-gray-500 hover:text-gray-700"
                         }`}
-                        aria-haspopup="menu"
-                        aria-expanded={activeDropdown === tab.id}
                       >
                         <Icon size={16} />
                         {tab.label}
-                        <ChevronDown size={14} />
                       </button>
-                      {activeDropdown === tab.id && (
-                        <div
-                          className="absolute left-0 top-full mt-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-10"
-                          role="menu"
-                          aria-labelledby={`${tab.id}-button`}
-                        >
-                          {tab.items.map((item) => {
-                            const SubIcon = item.icon;
-                            const isSubActive = activeTab === item.id;
-                            return (
-                              <button
-                                type="button"
-                                role="menuitem"
-                                key={item.id}
-                                onClick={() => {
-                                  setActiveTab(item.id);
-                                  setActiveDropdown(null);
-                                }}
-                                className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 ${
-                                  isSubActive
-                                    ? "bg-blue-50 text-blue-600"
-                                    : "text-gray-700 hover:bg-gray-50"
-                                }`}
-                              >
-                                <SubIcon size={16} />
-                                {item.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
+                    );
+                  })}
+                </nav>
+              </div>
+            </div>
 
-                const Icon = tab.icon;
-                return (
-                  <button
-                    type="button"
-                    key={tab.id}
-                    onClick={() => {
-                      setActiveDropdown(null);
-                      setActiveTab(tab.id);
-                    }}
-                    className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
-                      activeTab === tab.id
-                        ? "border-blue-500 text-blue-600"
-                        : "border-transparent text-gray-500 hover:text-gray-700"
-                    }`}
-                  >
-                    <Icon size={16} />
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-        </div>
-
-        {/* Tab Content */}
-        <div className="space-y-6">
-          {activeTab === "overview" && (
-            <Overview
-              projects={projects}
-              projectTypes={projectTypes}
-              staffingGaps={staffingGaps}
-              projectTimelines={projectTimelines}
-            />
-          )}
-
-          {activeTab === "projects" && (
-            <ProjectsPrograms
-              projects={projects}
-              projectTypes={projectTypes}
-              fundingSources={fundingSources}
-              staffCategories={staffCategories}
-              addProject={addProject}
-              updateProject={updateProject}
-              deleteProject={deleteProject}
-              handleImport={handleImport}
-              isReadOnly={isReadOnly}
-            />
-          )}
-          {activeTab === "staff" && (
-            <StaffCategories
-              staffCategories={staffCategories}
-              addStaffCategory={addStaffCategory}
-              updateStaffCategory={updateStaffCategory}
-              deleteStaffCategory={deleteStaffCategory}
-              capacityWarnings={categoryCapacityWarnings}
-              maxMonthlyFteHours={MAX_MONTHLY_FTE_HOURS}
-              isReadOnly={isReadOnly}
-            />
-          )}
-
-          {activeTab === "people" && (
-            <PeopleTab
-              staffMembers={staffMembers}
-              staffCategories={staffCategories}
-              addStaffMember={addStaffMember}
-              updateStaffMember={updateStaffMember}
-              deleteStaffMember={deleteStaffMember}
-              staffAvailabilityByCategory={staffAvailabilityByCategory}
-              isReadOnly={isReadOnly}
-            />
-          )}
-
-          {activeTab === "assignments" && (
-            <StaffAssignmentsTab
-              projects={projects.filter((project) =>
-                isProjectOrProgram(project)
+            <div className="space-y-6">
+              {activeTab === "overview" && (
+                <Overview
+                  projects={projects}
+                  projectTypes={projectTypes}
+                  staffingGaps={staffingGaps}
+                  projectTimelines={projectTimelines}
+                />
               )}
-              staffMembers={staffMembers}
-              staffCategories={staffCategories}
-              staffAllocations={staffAllocations}
-              assignmentOverrides={staffAssignmentOverrides}
-              assignmentPlan={staffAssignmentPlan}
-              onUpdateAssignment={updateStaffAssignmentOverride}
-              onResetProjectAssignments={resetProjectAssignments}
-              staffAvailabilityByCategory={staffAvailabilityByCategory}
-              isReadOnly={isReadOnly}
-            />
-          )}
 
-          {activeTab === "allocations" && (
-            <StaffAllocations
-              projects={projects.filter((p) => p.type === "project")}
-              projectTypes={projectTypes}
-              staffCategories={staffCategories}
-              staffAllocations={staffAllocations}
-              updateStaffAllocation={updateStaffAllocation}
-              fundingSources={fundingSources}
-              isReadOnly={isReadOnly}
-            />
-          )}
+              {activeTab === "projects" && (
+                <ProjectsPrograms
+                  projects={projects}
+                  projectTypes={projectTypes}
+                  fundingSources={fundingSources}
+                  staffCategories={staffCategories}
+                  addProject={addProject}
+                  updateProject={updateProject}
+                  deleteProject={deleteProject}
+                  handleImport={handleImport}
+                  isReadOnly={isReadOnly}
+                />
+              )}
+              {activeTab === "staff" && (
+                <StaffCategories
+                  staffCategories={staffCategories}
+                  addStaffCategory={addStaffCategory}
+                  updateStaffCategory={updateStaffCategory}
+                  deleteStaffCategory={deleteStaffCategory}
+                  capacityWarnings={categoryCapacityWarnings}
+                  maxMonthlyFteHours={MAX_MONTHLY_FTE_HOURS}
+                  isReadOnly={isReadOnly}
+                />
+              )}
 
-          {activeTab === "scenarios" && (
-            <ScenariosTab
-              projects={projects}
-              projectTypes={projectTypes}
-              staffCategories={staffCategories}
-              staffAllocations={staffAllocations}
-              staffAvailabilityByCategory={staffAvailabilityByCategory}
-              scenarios={scenarios}
-              activeScenarioId={activeScenarioId}
-              onSelectScenario={setActiveScenarioId}
-              onCreateScenario={createScenario}
-              onDuplicateScenario={duplicateScenario}
-              onUpdateScenarioMeta={updateScenarioMeta}
-              onUpdateScenarioAdjustment={updateScenarioAdjustment}
-              onResetScenarioProject={resetScenarioProject}
-              timeHorizon={timeHorizon}
-              isReadOnly={isReadOnly}
-            />
-          )}
+              {activeTab === "people" && (
+                <PeopleTab
+                  staffMembers={staffMembers}
+                  staffCategories={staffCategories}
+                  addStaffMember={addStaffMember}
+                  updateStaffMember={updateStaffMember}
+                  deleteStaffMember={deleteStaffMember}
+                  staffAvailabilityByCategory={staffAvailabilityByCategory}
+                  isReadOnly={isReadOnly}
+                />
+              )}
 
-          {activeTab === "schedule" && (
-            <ScheduleView
-              projectTimelines={projectTimelines}
-              projectTypes={projectTypes}
-              staffCategories={staffCategories}
-              staffAllocations={staffAllocations}
-              staffAvailabilityByCategory={staffAvailabilityByCategory}
-              scheduleHorizon={scheduleHorizon}
-              setScheduleHorizon={setScheduleHorizon}
-            />
-          )}
-          {activeTab === "forecast" && (
-            <ResourceForecast
-              resourceForecast={resourceForecast}
-              staffCategories={staffCategories}
-              staffingGaps={staffingGaps}
-              timeHorizon={timeHorizon}
-              setTimeHorizon={setTimeHorizon}
-            />
-          )}
+              {activeTab === "assignments" && (
+                <StaffAssignmentsTab
+                  projects={projects.filter((project) =>
+                    isProjectOrProgram(project)
+                  )}
+                  staffMembers={staffMembers}
+                  staffCategories={staffCategories}
+                  staffAllocations={staffAllocations}
+                  assignmentOverrides={staffAssignmentOverrides}
+                  assignmentPlan={staffAssignmentPlan}
+                  onUpdateAssignment={updateStaffAssignmentOverride}
+                  onResetProjectAssignments={resetProjectAssignments}
+                  staffAvailabilityByCategory={staffAvailabilityByCategory}
+                  isReadOnly={isReadOnly}
+                />
+              )}
 
-          {activeTab === "reports" && (
-            <ReportsTab
-              projects={projects}
-              projectTypes={projectTypes}
-              fundingSources={fundingSources}
-              projectTimelines={projectTimelines}
-              staffCategories={staffCategories}
-              staffAllocations={staffAllocations}
-              staffingGaps={staffingGaps}
-              resourceForecast={resourceForecast}
-              staffMembers={staffMembers}
-              staffAssignmentPlan={staffAssignmentPlan}
-            />
-          )}
+              {activeTab === "allocations" && (
+                <StaffAllocations
+                  projects={projects.filter((p) => p.type === "project")}
+                  projectTypes={projectTypes}
+                  staffCategories={staffCategories}
+                  staffAllocations={staffAllocations}
+                  updateStaffAllocation={updateStaffAllocation}
+                  fundingSources={fundingSources}
+                  isReadOnly={isReadOnly}
+                />
+              )}
 
-          {activeTab === "settings" && (
-            <SettingsTab
-              projectTypes={projectTypes}
-              fundingSources={fundingSources}
-              addProjectType={addProjectType}
-              updateProjectType={updateProjectType}
-              deleteProjectType={deleteProjectType}
-              addFundingSource={addFundingSource}
-              updateFundingSource={updateFundingSource}
-              deleteFundingSource={deleteFundingSource}
-              isReadOnly={isReadOnly}
-            />
-          )}
-        </div>
+              {activeTab === "scenarios" && (
+                <ScenariosTab
+                  projects={projects}
+                  projectTypes={projectTypes}
+                  staffCategories={staffCategories}
+                  staffAllocations={staffAllocations}
+                  staffAvailabilityByCategory={staffAvailabilityByCategory}
+                  scenarios={scenarios}
+                  activeScenarioId={activeScenarioId}
+                  onSelectScenario={setActiveScenarioId}
+                  onCreateScenario={createScenario}
+                  onDuplicateScenario={duplicateScenario}
+                  onUpdateScenarioMeta={updateScenarioMeta}
+                  onUpdateScenarioAdjustment={updateScenarioAdjustment}
+                  onResetScenarioProject={resetScenarioProject}
+                  timeHorizon={timeHorizon}
+                  isReadOnly={isReadOnly}
+                />
+              )}
 
-        {/* Export/Import Controls */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mt-6">
+              {activeTab === "schedule" && (
+                <ScheduleView
+                  projectTimelines={projectTimelines}
+                  projectTypes={projectTypes}
+                  staffCategories={staffCategories}
+                  staffAllocations={staffAllocations}
+                  staffAvailabilityByCategory={staffAvailabilityByCategory}
+                  scheduleHorizon={scheduleHorizon}
+                  setScheduleHorizon={setScheduleHorizon}
+                />
+              )}
+              {activeTab === "forecast" && (
+                <ResourceForecast
+                  resourceForecast={resourceForecast}
+                  staffCategories={staffCategories}
+                  staffingGaps={staffingGaps}
+                  timeHorizon={timeHorizon}
+                  setTimeHorizon={setTimeHorizon}
+                />
+              )}
+
+              {activeTab === "reports" && (
+                <ReportsTab
+                  projects={projects}
+                  projectTypes={projectTypes}
+                  fundingSources={fundingSources}
+                  projectTimelines={projectTimelines}
+                  staffCategories={staffCategories}
+                  staffAllocations={staffAllocations}
+                  staffingGaps={staffingGaps}
+                  resourceForecast={resourceForecast}
+                  staffMembers={staffMembers}
+                  staffAssignmentPlan={staffAssignmentPlan}
+                />
+              )}
+
+              {activeTab === "settings" && (
+                <SettingsTab
+                  projectTypes={projectTypes}
+                  fundingSources={fundingSources}
+                  addProjectType={addProjectType}
+                  updateProjectType={updateProjectType}
+                  deleteProjectType={deleteProjectType}
+                  addFundingSource={addFundingSource}
+                  updateFundingSource={updateFundingSource}
+                  deleteFundingSource={deleteFundingSource}
+                  isReadOnly={isReadOnly}
+                />
+              )}
+            </div>
+          </>
+        ) : (
+          <FinancialModelingModule
+            projectTimelines={projectTimelines}
+            projectTypes={projectTypes}
+            fundingSources={fundingSources}
+            operatingBudget={activeUtilityProfile.operatingBudget}
+            onUpdateOperatingBudget={(year, field, value) =>
+              updateOperatingBudgetValue(activeUtility, year, field, value)
+            }
+            financialConfig={activeUtilityProfile.financialConfig}
+            onUpdateFinancialConfig={(updates) =>
+              updateFinancialConfiguration(activeUtility, updates)
+            }
+            budgetEscalations={activeUtilityProfile.budgetEscalations}
+            onUpdateBudgetEscalation={(field, value) =>
+              updateBudgetEscalation(activeUtility, field, value)
+            }
+            fundingSourceAssumptions={fundingSourceAssumptions}
+            onUpdateFundingSourceAssumption={updateFundingSourceAssumption}
+            activeUtility={activeUtility}
+            onChangeUtility={(utility) => setActiveUtility(utility)}
+            utilityOptions={UTILITY_OPTIONS}
+            projectTypeUtilities={projectTypeUtilities}
+            onUpdateProjectTypeUtility={handleUpdateProjectTypeUtility}
+            isReadOnly={isReadOnly}
+          />
+        )}
+
+        <div className="bg-white rounded-lg shadow-sm p-6">
           <h3 className="text-lg font-semibold mb-4">Data Management</h3>
           <div className="flex flex-wrap gap-4 items-center">
             <button

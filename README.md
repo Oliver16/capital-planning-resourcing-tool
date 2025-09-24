@@ -52,6 +52,10 @@ The project targets modern browsers through React 18, Tailwind CSS, and Recharts
 
 Vector now tracks database changes with the Supabase CLI:
 
+- Timestamped SQL migrations live in [`supabase/migrations/`](supabase/migrations/) (for example,
+  `20240101000000_init.sql`). Apply them with the CLI to provision the schema that the React client
+  expects.
+
 - `npm run db:mig:new <name>` – scaffold a timestamped SQL file inside `supabase/migrations/`.
 - `npm run db:push` – apply all pending migrations to the linked Supabase project.
 - `npm run db:reset:local` – recreate the local development stack and re-apply migrations (mirrors `supabase db reset --force`).
