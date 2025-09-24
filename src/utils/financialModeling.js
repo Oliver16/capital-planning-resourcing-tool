@@ -485,6 +485,283 @@ const calculateLevelDebtPayment = (principal, interestRatePercent, termYears) =>
   return (principalAmount * factor) / ((1 + rate) ** term - 1);
 };
 
+export const sanitizeExistingDebtManualTotals = (manualTotals = {}) => {
+  const sanitized = {};
+
+  if (!manualTotals || typeof manualTotals !== "object") {
+    return sanitized;
+  }
+
+  Object.entries(manualTotals).forEach(([yearKey, rawValue]) => {
+    const year = Number(yearKey);
+    const amount = sanitizeNumber(rawValue, 0);
+    if (Number.isFinite(year) && Number.isFinite(amount)) {
+      sanitized[year] = amount;
+    }
+  });
+
+  return sanitized;
+};
+
+export const sanitizeExistingDebtInstrument = (instrument = {}) => {
+  if (!instrument || typeof instrument !== "object") {
+    return null;
+  }
+
+  const fallbackId =
+    typeof globalThis !== "undefined" &&
+    globalThis.crypto &&
+    typeof globalThis.crypto.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : `existing-debt-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  const id = instrument.id || fallbackId;
+  const label =
+    typeof instrument.label === "string" && instrument.label.trim()
+      ? instrument.label.trim()
+      : "Existing Debt";
+
+  const financingType =
+    instrument.financingType === "bond" || instrument.financingType === "srf"
+      ? instrument.financingType
+      : "bond";
+
+  const outstandingPrincipal = Math.max(0, sanitizeNumber(instrument.outstandingPrincipal, 0));
+  const interestRate = Math.max(0, sanitizeNumber(instrument.interestRate, 0));
+  const termYears = Math.max(1, sanitizePositiveInteger(instrument.termYears, 1));
+  const firstPaymentYear = sanitizePositiveInteger(instrument.firstPaymentYear, new Date().getFullYear());
+  const interestOnlyYears = Math.max(0, sanitizePositiveInteger(instrument.interestOnlyYears, 0));
+
+  return {
+    id,
+    label,
+    financingType,
+    outstandingPrincipal,
+    interestRate,
+    termYears,
+    firstPaymentYear,
+    interestOnlyYears,
+  };
+};
+
+export const sanitizeExistingDebtInstrumentList = (instruments = []) => {
+  if (!Array.isArray(instruments)) {
+    return [];
+  }
+
+  return instruments
+    .map((instrument) => sanitizeExistingDebtInstrument(instrument))
+    .filter(Boolean);
+};
+
+const buildExistingDebtInstrumentSchedule = (
+  instrument,
+  startYear,
+  projectionYears
+) => {
+  const horizonStart = sanitizePositiveInteger(
+    startYear,
+    new Date().getFullYear()
+  );
+  const totalYears = Math.max(1, sanitizePositiveInteger(projectionYears, 1));
+  const horizonEnd = horizonStart + totalYears - 1;
+
+  const sanitizedInstrument = sanitizeExistingDebtInstrument(instrument);
+  if (!sanitizedInstrument) {
+    return null;
+  }
+
+  const {
+    id,
+    label,
+    financingType,
+    outstandingPrincipal,
+    interestRate,
+    termYears,
+    firstPaymentYear,
+    interestOnlyYears,
+  } = sanitizedInstrument;
+
+  if (!(outstandingPrincipal > 0)) {
+    return {
+      id,
+      label,
+      financingType,
+      outstandingPrincipal,
+      interestRate,
+      termYears,
+      firstPaymentYear,
+      interestOnlyYears,
+      totalsByYear: {},
+      interestByYear: {},
+      principalByYear: {},
+    };
+  }
+
+  const paymentStartYear = Number.isFinite(firstPaymentYear)
+    ? firstPaymentYear
+    : horizonStart;
+  const rate = interestRate / 100;
+  const totalsByYear = {};
+  const interestByYear = {};
+  const principalByYear = {};
+
+  let remainingPrincipal = outstandingPrincipal;
+  const interestOnlyWindow = Math.min(interestOnlyYears, termYears);
+  const amortizationYears = Math.max(0, termYears - interestOnlyWindow);
+
+  for (let offset = 0; offset < interestOnlyWindow; offset += 1) {
+    const year = paymentStartYear + offset;
+    const interestPayment = rate > 0 ? remainingPrincipal * rate : 0;
+    if (year >= horizonStart && year <= horizonEnd) {
+      totalsByYear[year] = (totalsByYear[year] || 0) + interestPayment;
+      interestByYear[year] = (interestByYear[year] || 0) + interestPayment;
+      principalByYear[year] = principalByYear[year] || 0;
+    }
+  }
+
+  if (amortizationYears <= 0) {
+    return {
+      id,
+      label,
+      financingType,
+      outstandingPrincipal,
+      interestRate,
+      termYears,
+      firstPaymentYear,
+      interestOnlyYears,
+      totalsByYear,
+      interestByYear,
+      principalByYear,
+    };
+  }
+
+  const amortizationStartYear = paymentStartYear + interestOnlyWindow;
+  const annualPayment = calculateLevelDebtPayment(
+    remainingPrincipal,
+    interestRate,
+    amortizationYears
+  );
+
+  for (let i = 0; i < amortizationYears; i += 1) {
+    const year = amortizationStartYear + i;
+    const interestPayment = rate > 0 ? remainingPrincipal * rate : 0;
+    let principalPayment = annualPayment - interestPayment;
+
+    if (principalPayment < 0) {
+      principalPayment = 0;
+    }
+
+    if (principalPayment > remainingPrincipal || i === amortizationYears - 1) {
+      principalPayment = remainingPrincipal;
+    }
+
+    const paymentAmount = interestPayment + principalPayment;
+    remainingPrincipal = Math.max(0, remainingPrincipal - principalPayment);
+
+    if (year >= horizonStart && year <= horizonEnd) {
+      totalsByYear[year] = (totalsByYear[year] || 0) + paymentAmount;
+      interestByYear[year] = (interestByYear[year] || 0) + interestPayment;
+      principalByYear[year] = (principalByYear[year] || 0) + principalPayment;
+    }
+  }
+
+  return {
+    id,
+    label,
+    financingType,
+    outstandingPrincipal,
+    interestRate,
+    termYears,
+    firstPaymentYear,
+    interestOnlyYears,
+    totalsByYear,
+    interestByYear,
+    principalByYear,
+  };
+};
+
+export const calculateExistingDebtSchedule = ({
+  manualTotals = {},
+  instruments = [],
+  startYear,
+  projectionYears,
+}) => {
+  const sanitizedManual = sanitizeExistingDebtManualTotals(manualTotals);
+  const sanitizedStartYear = sanitizePositiveInteger(
+    startYear,
+    new Date().getFullYear()
+  );
+  const totalYears = Math.max(1, sanitizePositiveInteger(projectionYears, 1));
+  const horizonEnd = sanitizedStartYear + totalYears - 1;
+
+  const manualByYear = {};
+  const totalsByYear = {};
+  const interestByYear = {};
+  const principalByYear = {};
+
+  Object.entries(sanitizedManual).forEach(([yearKey, amount]) => {
+    const year = Number(yearKey);
+    if (!Number.isFinite(year)) {
+      return;
+    }
+    if (year < sanitizedStartYear || year > horizonEnd) {
+      return;
+    }
+    manualByYear[year] = amount;
+    totalsByYear[year] = (totalsByYear[year] || 0) + amount;
+  });
+
+  const instrumentSummaries = [];
+
+  sanitizeExistingDebtInstrumentList(instruments).forEach((instrument) => {
+    const summary = buildExistingDebtInstrumentSchedule(
+      instrument,
+      sanitizedStartYear,
+      totalYears
+    );
+    if (!summary) {
+      return;
+    }
+
+    instrumentSummaries.push(summary);
+
+    Object.entries(summary.totalsByYear).forEach(([yearKey, amount]) => {
+      const year = Number(yearKey);
+      if (!Number.isFinite(year)) {
+        return;
+      }
+      totalsByYear[year] = (totalsByYear[year] || 0) + amount;
+    });
+
+    Object.entries(summary.interestByYear).forEach(([yearKey, amount]) => {
+      const year = Number(yearKey);
+      if (!Number.isFinite(year)) {
+        return;
+      }
+      interestByYear[year] = (interestByYear[year] || 0) + amount;
+    });
+
+    Object.entries(summary.principalByYear).forEach(([yearKey, amount]) => {
+      const year = Number(yearKey);
+      if (!Number.isFinite(year)) {
+        return;
+      }
+      principalByYear[year] = (principalByYear[year] || 0) + amount;
+    });
+  });
+
+  return {
+    manualByYear,
+    totalsByYear,
+    interestByYear,
+    principalByYear,
+    instrumentSummaries,
+    startYear: sanitizedStartYear,
+    projectionYears: totalYears,
+  };
+};
+
 export const buildDebtServiceSchedule = (
   spendPlan,
   fundingSourceAssumptions,
@@ -629,7 +906,6 @@ export const buildDebtServiceSchedule = (
         const interestPayment = interestRate > 0 ? averageOutstanding * interestRate : 0;
 
         if (isWithinProjection(year)) {
-
           pushPayment(year, interestPayment, interestPayment, 0);
           loanDetails.interestOnly.push({
             year,
@@ -663,7 +939,6 @@ export const buildDebtServiceSchedule = (
           remainingPrincipal = Math.max(0, remainingPrincipal - principalPayment);
 
           if (isWithinProjection(paymentYear)) {
-
             pushPayment(paymentYear, paymentAmount, interestPayment, principalPayment);
             loanDetails.amortization.push({
               year: paymentYear,
@@ -734,7 +1009,6 @@ export const buildDebtServiceSchedule = (
         }
 
         if (isWithinProjection(paymentYear)) {
-
           pushPayment(paymentYear, paymentAmount, interestPayment, principalPayment);
           issueDetail.paymentsWithinHorizon.push({
             year: paymentYear,
@@ -752,7 +1026,6 @@ export const buildDebtServiceSchedule = (
         debtIssuedBySource[fundingKey] =
           (debtIssuedBySource[fundingKey] || 0) + issueAmount;
       }
-
     });
 
     if (bondDetails.totalIssued > 0) {
@@ -943,16 +1216,28 @@ export const FINANCING_TYPE_OPTIONS = [
   { value: "grant", label: "Grant / External" },
 ];
 
-export const formatCurrency = (value) => {
+export const formatCurrency = (value, options = {}) => {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
-    return "-";
+    return options.fallback ?? "-";
   }
-  return new Intl.NumberFormat("en-US", {
+
+  const compact = Boolean(options.compact);
+  const formatOptions = {
     style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(numeric);
+    currency: options.currency || "USD",
+    minimumFractionDigits:
+      options.minimumFractionDigits ?? (compact ? 0 : 0),
+    maximumFractionDigits:
+      options.maximumFractionDigits ?? (compact ? 1 : 0),
+  };
+
+  if (compact) {
+    formatOptions.notation = "compact";
+    formatOptions.compactDisplay = options.compactDisplay || "short";
+  }
+
+  return new Intl.NumberFormat("en-US", formatOptions).format(numeric);
 };
 
 export const formatPercent = (value, options = {}) => {

@@ -1,17 +1,54 @@
 import React, { useMemo } from "react";
 import { formatCurrency } from "../../../utils/financialModeling";
 
+const numberInputClasses =
+  "w-full rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200";
+const readOnlyClasses = "bg-slate-100 text-slate-500 cursor-not-allowed";
+
 const SettingsView = ({
   financialConfig = {},
   projectTypeSummaries = [],
   utilityOptions = [],
   onUpdateProjectTypeUtility,
+  onUpdateFinancialConfig,
+
   isReadOnly,
 }) => {
   const assignmentOptions = useMemo(
     () => [{ value: "", label: "Unassigned" }, ...utilityOptions],
     [utilityOptions]
   );
+
+  const handleConfigChange = (field) => (event) => {
+    if (isReadOnly) {
+      return;
+    }
+
+    const rawValue = event.target.value;
+    let parsedValue = rawValue;
+
+    if (field === "startYear" || field === "projectionYears") {
+      parsedValue = Number(rawValue);
+      if (!Number.isFinite(parsedValue)) {
+        parsedValue = financialConfig[field] || 0;
+      }
+      parsedValue = Math.max(field === "projectionYears" ? 1 : 1900, Math.round(parsedValue));
+    } else if (field === "startingCashBalance") {
+      parsedValue = Number(rawValue);
+      if (!Number.isFinite(parsedValue)) {
+        parsedValue = financialConfig.startingCashBalance || 0;
+      }
+      parsedValue = Math.max(0, parsedValue);
+    } else if (field === "targetCoverageRatio") {
+      parsedValue = Number(rawValue);
+      if (!Number.isFinite(parsedValue)) {
+        parsedValue = financialConfig.targetCoverageRatio || 1;
+      }
+      parsedValue = Math.max(0, parsedValue);
+    }
+
+    onUpdateFinancialConfig?.({ [field]: parsedValue });
+  };
 
   const configItems = useMemo(
     () => [
@@ -44,13 +81,59 @@ const SettingsView = ({
   return (
     <div className="space-y-6">
       <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 className="text-lg font-semibold text-slate-900">Model Configuration Overview</h3>
+        <h3 className="text-lg font-semibold text-slate-900">Projection Settings</h3>
         <p className="mt-1 text-sm text-slate-600">
-          Global settings drive the timing window, opening reserves, and coverage targets that power the pro forma. Adjust
-          these values from the operating budget view to update the assumptions here.
+          Configure the fiscal window, opening reserves, and policy targets that guide every pro forma scenario.
         </p>
 
-        <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <label className="text-sm font-medium text-slate-700">
+            <span>Start Fiscal Year</span>
+            <input
+              type="number"
+              value={financialConfig.startYear}
+              onChange={handleConfigChange("startYear")}
+              className={`${numberInputClasses} mt-1 ${isReadOnly ? readOnlyClasses : ""}`}
+              disabled={isReadOnly}
+              min={1900}
+            />
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            <span>Projection Years</span>
+            <input
+              type="number"
+              value={financialConfig.projectionYears}
+              onChange={handleConfigChange("projectionYears")}
+              className={`${numberInputClasses} mt-1 ${isReadOnly ? readOnlyClasses : ""}`}
+              disabled={isReadOnly}
+              min={1}
+            />
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            <span>Starting Cash Balance</span>
+            <input
+              type="number"
+              value={financialConfig.startingCashBalance}
+              onChange={handleConfigChange("startingCashBalance")}
+              className={`${numberInputClasses} mt-1 ${isReadOnly ? readOnlyClasses : ""}`}
+              disabled={isReadOnly}
+              min={0}
+            />
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            <span>Target Coverage Ratio</span>
+            <input
+              type="number"
+              step="0.01"
+              value={financialConfig.targetCoverageRatio}
+              onChange={handleConfigChange("targetCoverageRatio")}
+              className={`${numberInputClasses} mt-1 ${isReadOnly ? readOnlyClasses : ""}`}
+              disabled={isReadOnly}
+              min={0}
+            />
+          </label>
+        </div>
+        <dl className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {configItems.map((item) => (
             <div key={item.label} className="rounded-md bg-slate-50 px-4 py-3">
               <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">{item.label}</dt>

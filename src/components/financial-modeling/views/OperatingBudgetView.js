@@ -104,7 +104,8 @@ const OperatingBudgetView = ({
       key: "existingDebtService",
       label: "Existing Debt Service",
       description: "Legacy principal and interest scheduled prior to new CIP financing.",
-      supportsEscalation: true,
+      supportsEscalation: false,
+      isReadOnly: true,
     },
   ];
 
@@ -219,7 +220,9 @@ const OperatingBudgetView = ({
                 <th className="px-4 py-3 text-left font-semibold text-slate-600">Line Item</th>
                 <th className="px-4 py-3 text-left font-semibold text-slate-600">Notes</th>
                 <th className="px-4 py-3 text-right font-semibold text-slate-600">{baseYearLabel}</th>
-                <th className="px-4 py-3 text-right font-semibold text-slate-600">Escalation</th>
+                <th className="px-4 py-3 text-right font-semibold text-slate-600 whitespace-nowrap">
+                  Escalation (%/yr)
+                </th>
                 {outYears.map((year) => (
                   <th key={year} className="px-4 py-3 text-right font-semibold text-slate-600">
                     FY {year}
@@ -232,10 +235,10 @@ const OperatingBudgetView = ({
                 const supportsEscalation = line.supportsEscalation !== false;
                 const baseValue = baseYearRow[line.key] ?? 0;
                 const escalationValue = budgetEscalations?.[line.key] ?? 0;
-                const formatDisplay = (value) =>
+                const formatDisplay = (value, options = {}) =>
                   line.isPercent
                     ? formatPercent(value, { decimals: 1 })
-                    : formatCurrency(value);
+                    : formatCurrency(value, options);
 
                 return (
                   <tr key={line.key}>
@@ -255,8 +258,11 @@ const OperatingBudgetView = ({
                             step={line.step ?? (line.isPercent ? 0.01 : 1000)}
                             value={line.isPercent ? baseValue : baseValue || 0}
                             onChange={handleBudgetChange(baseYearNumber, line.key)}
-                            className={`${numberInputClasses} text-right ${isReadOnly ? readOnlyClasses : ""}`}
-                            disabled={isReadOnly || !hasBaseYear}
+                            className={`${numberInputClasses} min-w-[14rem] text-right ${
+                              isReadOnly ? readOnlyClasses : ""
+                            }`}
+                            disabled={isReadOnly || !hasBaseYear || line.isReadOnly}
+
                           />
                         )
                       ) : (
@@ -265,21 +271,27 @@ const OperatingBudgetView = ({
                     </td>
                     <td className="px-4 py-3">
                       {supportsEscalation ? (
-                        isReadOnly ? (
+                        isReadOnly || line.isReadOnly ? (
+
                           <span className="block text-right text-slate-700">
                             {formatPercent(escalationValue, { decimals: 1 })}
                           </span>
                         ) : (
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex min-w-[10rem] items-center justify-end gap-2">
+
                             <input
                               type="number"
                               step={0.1}
                               value={escalationValue}
                               onChange={handleEscalationChange(line.key)}
-                              className={`${numberInputClasses} w-24 text-right ${isReadOnly ? readOnlyClasses : ""}`}
+                              className={`${numberInputClasses} w-32 text-right ${
+                                isReadOnly ? readOnlyClasses : ""
+                              }`}
                               disabled={isReadOnly}
                             />
-                            <span className="text-xs font-medium text-slate-500">% / yr</span>
+                            <span className="text-xs font-medium text-slate-500 whitespace-nowrap">
+                              (%/year)
+                            </span>
                           </div>
                         )
                       ) : (
@@ -294,21 +306,23 @@ const OperatingBudgetView = ({
                       if (!supportsEscalation && !isReadOnly) {
                         return (
                           <td key={year} className="px-4 py-3">
-                            <input
-                              type="number"
-                              step={line.step ?? (line.isPercent ? 0.01 : 1000)}
-                              value={line.isPercent ? value : value || 0}
-                              onChange={handleBudgetChange(numericYear, line.key)}
-                              className={`${numberInputClasses} text-right ${isReadOnly ? readOnlyClasses : ""}`}
-                              disabled={isReadOnly}
-                            />
+                              <input
+                                type="number"
+                                step={line.step ?? (line.isPercent ? 0.01 : 1000)}
+                                value={line.isPercent ? value : value || 0}
+                                onChange={handleBudgetChange(numericYear, line.key)}
+                                className={`${numberInputClasses} min-w-[12rem] text-right ${
+                                  isReadOnly ? readOnlyClasses : ""
+                                }`}
+                                disabled={isReadOnly || line.isReadOnly}
+                              />
                           </td>
                         );
                       }
 
                       return (
                         <td key={year} className="px-4 py-3 text-right text-slate-700">
-                          {formatDisplay(value)}
+                          {formatDisplay(value, { compact: true, maximumFractionDigits: 1 })}
                         </td>
                       );
                     })}

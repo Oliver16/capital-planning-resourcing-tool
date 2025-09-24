@@ -235,6 +235,9 @@ create table if not exists public.utility_financial_profiles (
   utility_key text not null,
   financial_config jsonb not null default '{}'::jsonb,
   budget_escalations jsonb not null default '{}'::jsonb,
+  existing_debt_manual_totals jsonb not null default '{}'::jsonb,
+  existing_debt_instruments jsonb not null default '[]'::jsonb,
+
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now()),
   constraint utility_financial_profiles_utility_key_check

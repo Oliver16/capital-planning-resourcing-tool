@@ -3,6 +3,8 @@ import {
   calculateFinancialForecast,
   ensureBudgetYears,
   buildProjectSpendBreakdown,
+  calculateExistingDebtSchedule,
+
 } from "../../utils/financialModeling";
 import CipSummaryView from "./views/CipSummaryView";
 import OperatingBudgetView from "./views/OperatingBudgetView";
@@ -98,6 +100,12 @@ const FinancialModelingModule = ({
   onUpdateProjectTypeUtility,
   budgetEscalations = {},
   onUpdateBudgetEscalation,
+  existingDebtManualTotals = {},
+  existingDebtInstruments = [],
+  onUpdateExistingDebtManual,
+  onAddExistingDebtInstrument,
+  onRemoveExistingDebtInstrument,
+
 }) => {
   const [activeView, setActiveView] = useState("cip");
 
@@ -196,6 +204,23 @@ const FinancialModelingModule = ({
     () => buildProjectTypeMap(projectTypes),
     [projectTypes]
   );
+
+  const existingDebtSchedule = useMemo(
+    () =>
+      calculateExistingDebtSchedule({
+        manualTotals: existingDebtManualTotals,
+        instruments: existingDebtInstruments,
+        startYear: financialConfig.startYear,
+        projectionYears: financialConfig.projectionYears,
+      }),
+    [
+      existingDebtManualTotals,
+      existingDebtInstruments,
+      financialConfig.startYear,
+      financialConfig.projectionYears,
+    ]
+  );
+
 
   return (
     <div className="space-y-6">
@@ -297,13 +322,17 @@ const FinancialModelingModule = ({
       {activeView === "debt" ? (
         <DebtServiceView
           years={years}
-          alignedBudget={alignedBudget}
           forecastResult={forecastResult}
           financialConfig={financialConfig}
           fundingSourceAssumptions={fundingSourceAssumptions}
           fundingSourceMap={fundingLabelMap}
-          onUpdateOperatingBudget={onUpdateOperatingBudget}
           onUpdateFundingSourceAssumption={onUpdateFundingSourceAssumption}
+          existingDebtSchedule={existingDebtSchedule}
+          onUpdateExistingDebtManual={(year, value) =>
+            onUpdateExistingDebtManual?.(year, value)
+          }
+          onAddExistingDebtInstrument={onAddExistingDebtInstrument}
+          onRemoveExistingDebtInstrument={onRemoveExistingDebtInstrument}
           isReadOnly={isReadOnly}
         />
       ) : null}
@@ -314,6 +343,8 @@ const FinancialModelingModule = ({
           projectTypeSummaries={projectTypeSummaries}
           utilityOptions={utilityOptions}
           onUpdateProjectTypeUtility={onUpdateProjectTypeUtility}
+          onUpdateFinancialConfig={onUpdateFinancialConfig}
+
           isReadOnly={isReadOnly}
         />
       ) : null}
