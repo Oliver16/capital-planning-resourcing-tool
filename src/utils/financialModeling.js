@@ -1154,6 +1154,7 @@ export const calculateFinancialForecast = ({
 
     const operatingCashFlow = netRevenueBeforeDebt - totalDebtService;
     const cashCapex = sanitizeNumber(cashUsesWithinWindow[year], 0);
+
     runningCash += operatingCashFlow - cashCapex;
 
     const daysCashOnHand =
