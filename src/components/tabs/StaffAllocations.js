@@ -7,6 +7,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { groupProjectsByType } from "../../utils/projectGrouping";
+import ProjectEffortTemplatesPanel from "./ProjectEffortTemplatesPanel";
 
 const HOURS_PER_FTE = 4.33 * 40;
 
@@ -240,6 +241,10 @@ const StaffAllocations = ({
   staffCategories,
   staffAllocations,
   updateStaffAllocation,
+  projectEffortTemplates = [],
+  onSaveProjectEffortTemplate,
+  onDeleteProjectEffortTemplate,
+  onApplyEffortTemplate,
   fundingSources = [],
   isReadOnly = false,
 }) => {
@@ -356,6 +361,17 @@ const StaffAllocations = ({
 
   return (
     <div className="space-y-6">
+      <ProjectEffortTemplatesPanel
+        templates={projectEffortTemplates}
+        projects={projects}
+        projectTypes={projectTypes}
+        staffCategories={staffCategories}
+        onSaveTemplate={onSaveProjectEffortTemplate}
+        onDeleteTemplate={onDeleteProjectEffortTemplate}
+        onApplyTemplate={onApplyEffortTemplate}
+        isReadOnly={isReadOnly}
+      />
+
       {projectGroups.length === 0 ? (
         <div className="bg-white rounded-lg shadow-sm p-6 text-center text-sm text-gray-500">
           No capital projects require allocations yet. Assign project types in

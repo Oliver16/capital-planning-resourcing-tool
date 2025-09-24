@@ -372,7 +372,6 @@ const DebtServiceView = ({
             </tbody>
           </table>
         </div>
-
         <div className="mt-6 rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-600">
           Existing debt totals roll into the operating budget and pro forma automatically. Manual overrides are
           added to any instrument-based schedules defined below.
@@ -586,6 +585,7 @@ const DebtServiceView = ({
                               event.target.value
                             )
                           }
+
                           className={`${numberInputClasses} text-right ${isReadOnly ? readOnlyClasses : ""}`}
                           disabled={isReadOnly}
                         />
@@ -645,6 +645,7 @@ const DebtServiceView = ({
                         <div className="text-sm font-semibold text-slate-800">{schedule.sourceName}</div>
                         <div className="text-xs text-slate-500">
                           Rate {formatPercent(schedule.interestRate || 0, { decimals: 2 })} · Term {schedule.termYears} yrs
+
                         </div>
                       </div>
                       <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -700,6 +701,7 @@ const DebtServiceView = ({
                       </div>
                     ) : (
                       <p className="mt-3 text-xs text-slate-500">No bond issues fall within the projection horizon.</p>
+
                     )}
                   </div>
                 );
@@ -722,6 +724,7 @@ const DebtServiceView = ({
                       <div className="text-sm font-semibold text-slate-800">{loan.sourceName}</div>
                       <div className="text-xs text-slate-500">
                         Rate {formatPercent(loan.interestRate || 0, { decimals: 2 })} · Term {loan.termYears} yrs
+
                       </div>
                     </div>
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">

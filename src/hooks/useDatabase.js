@@ -127,6 +127,7 @@ const projectToRow = (project, organizationId) => {
     program_end_date: normalizedProject.programEndDate || null,
     priority: normalizedProject.priority || 'Medium',
     description: normalizedProject.description || '',
+    size_category: normalizeNullable(normalizedProject.sizeCategory),
     delivery_type: normalizedProject.deliveryType || 'self-perform',
   };
 };
@@ -607,11 +608,58 @@ export const useDatabase = (defaultData = {}) => {
             Object.keys(remappedContinuous).length > 0
               ? JSON.stringify(remappedContinuous)
               : null,
+          size_category: normalizedProject.sizeCategory || null,
           program_start_date: normalizedProject.programStartDate || null,
           program_end_date: normalizedProject.programEndDate || null,
           priority: normalizedProject.priority || 'Medium',
           description: normalizedProject.description || '',
           delivery_type: normalizedProject.deliveryType || 'self-perform',
+        };
+      })
+    );
+
+    await ensureEntries('project_effort_templates', () =>
+      (defaultData.projectEffortTemplates || []).map((template) => {
+        const normalizedTemplate = normalizeEffortTemplate(template);
+
+        const projectTypeName = (defaultData.projectTypes || []).find(
+          (type) => String(type.id) === String(normalizedTemplate.projectTypeId)
+        )?.name;
+
+        const remappedHours = {};
+        Object.entries(normalizedTemplate.hoursByCategory || {}).forEach(
+          ([key, value]) => {
+            const categoryName = (defaultData.staffCategories || []).find(
+              (category) => String(category.id) === String(key)
+            )?.name;
+
+            const categoryId = categoryName
+              ? categoryIdByName.get(categoryName)
+              : null;
+
+            if (!categoryId || !value) {
+              return;
+            }
+
+            remappedHours[categoryId] = {
+              pmHours: value.pmHours || 0,
+              designHours: value.designHours || 0,
+              constructionHours: value.constructionHours || 0,
+            };
+          }
+        );
+
+        return {
+          organization_id: organizationId,
+          name: normalizedTemplate.name,
+          project_type_id: projectTypeName
+            ? projectTypeIdByName.get(projectTypeName) || null
+            : null,
+          size_category: normalizedTemplate.sizeCategory || null,
+          delivery_type: normalizedTemplate.deliveryType || null,
+          notes: normalizedTemplate.notes || null,
+          hours_by_category:
+            Object.keys(remappedHours).length > 0 ? remappedHours : null,
         };
       })
     );
@@ -1012,6 +1060,79 @@ export const useDatabase = (defaultData = {}) => {
 
       const { error: deleteError } = await supabase
         .from('staff_members')
+        .delete()
+        .eq('id', id)
+        .eq('organization_id', organizationId);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      return true;
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
+  const saveProjectEffortTemplate = useCallback(
+    async (template) => {
+      assertReady();
+      assertCanEdit();
+
+      const payload = projectEffortTemplateToRow(template, organizationId);
+      const { organization_id, ...updatePayload } = payload;
+
+      if (template.id) {
+        const { error: updateError } = await supabase
+          .from('project_effort_templates')
+          .update(updatePayload)
+          .eq('id', template.id)
+          .eq('organization_id', organizationId);
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        return template.id;
+      }
+
+      const { data, error: insertError } = await supabase
+        .from('project_effort_templates')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      return data?.id;
+    },
+    [organizationId, assertReady, assertCanEdit]
+  );
+
+  const getProjectEffortTemplates = useCallback(async () => {
+    assertReady();
+
+    const { data, error: fetchError } = await supabase
+      .from('project_effort_templates')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('updated_at', { ascending: false });
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    return (data || []).map(projectEffortTemplateFromRow);
+  }, [organizationId, assertReady]);
+
+  const deleteProjectEffortTemplate = useCallback(
+    async (id) => {
+      assertReady();
+      assertCanEdit();
+
+      const { error: deleteError } = await supabase
+        .from('project_effort_templates')
         .delete()
         .eq('id', id)
         .eq('organization_id', organizationId);
@@ -1442,6 +1563,7 @@ export const useDatabase = (defaultData = {}) => {
         staffMembers: await fetchTable('staff_members'),
         staffAllocations: await fetchTable('staff_allocations'),
         staffAssignments: await fetchTable('staff_assignments'),
+        projectEffortTemplates: await fetchTable('project_effort_templates'),
       },
     };
 
@@ -1479,6 +1601,9 @@ export const useDatabase = (defaultData = {}) => {
       saveStaffMember,
       getStaffMembers,
       deleteStaffMember,
+      saveProjectEffortTemplate,
+      getProjectEffortTemplates,
+      deleteProjectEffortTemplate,
       saveStaffAssignment,
       getStaffAssignments,
       deleteStaffAssignment,
@@ -1516,6 +1641,9 @@ export const useDatabase = (defaultData = {}) => {
       saveStaffMember,
       getStaffMembers,
       deleteStaffMember,
+      saveProjectEffortTemplate,
+      getProjectEffortTemplates,
+      deleteProjectEffortTemplate,
       saveStaffAssignment,
       getStaffAssignments,
       deleteStaffAssignment,

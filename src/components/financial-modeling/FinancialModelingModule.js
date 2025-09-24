@@ -4,6 +4,7 @@ import {
   ensureBudgetYears,
   buildProjectSpendBreakdown,
   calculateExistingDebtSchedule,
+
 } from "../../utils/financialModeling";
 import CipSummaryView from "./views/CipSummaryView";
 import OperatingBudgetView from "./views/OperatingBudgetView";
@@ -100,11 +101,13 @@ const FinancialModelingModule = ({
   budgetEscalations = {},
   onUpdateBudgetEscalation,
   onAddCustomLineItem,
+
   existingDebtManualTotals = {},
   existingDebtInstruments = [],
   onUpdateExistingDebtManual,
   onAddExistingDebtInstrument,
   onRemoveExistingDebtInstrument,
+
 }) => {
   const [activeView, setActiveView] = useState("cip");
 
@@ -220,6 +223,7 @@ const FinancialModelingModule = ({
     ]
   );
 
+
   return (
     <div className="space-y-6">
       <div className="rounded-lg border border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100 p-6 shadow-sm">
@@ -309,6 +313,7 @@ const FinancialModelingModule = ({
           budgetEscalations={budgetEscalations}
           onUpdateBudgetEscalation={onUpdateBudgetEscalation}
           onAddCustomLineItem={onAddCustomLineItem}
+
           activeUtilityLabel={activeUtilityOption?.label}
           isReadOnly={isReadOnly}
         />

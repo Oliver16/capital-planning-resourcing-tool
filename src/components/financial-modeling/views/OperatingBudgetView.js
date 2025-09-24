@@ -18,6 +18,7 @@ const OperatingBudgetView = ({
   budgetEscalations = {},
   onUpdateBudgetEscalation,
   onAddCustomLineItem,
+
   activeUtilityLabel,
   isReadOnly,
 }) => {
