@@ -226,6 +226,7 @@ const sanitizeFinancialConfig = (rawConfig = {}) => {
   const projectionYears = Number(rawConfig.projectionYears);
   const startingCashBalance = Number(rawConfig.startingCashBalance);
   const targetCoverageRatio = Number(rawConfig.targetCoverageRatio);
+  const fiscalYearStartMonth = Number(rawConfig.fiscalYearStartMonth);
 
   return {
     startYear: Number.isFinite(startYear) ? startYear : currentYear,
@@ -234,6 +235,10 @@ const sanitizeFinancialConfig = (rawConfig = {}) => {
       : 10,
     startingCashBalance: Number.isFinite(startingCashBalance) ? startingCashBalance : 0,
     targetCoverageRatio: Number.isFinite(targetCoverageRatio) ? targetCoverageRatio : 1.5,
+    fiscalYearStartMonth:
+      Number.isFinite(fiscalYearStartMonth) && fiscalYearStartMonth >= 1 && fiscalYearStartMonth <= 12
+        ? Math.round(fiscalYearStartMonth)
+        : 1,
   };
 };
 
