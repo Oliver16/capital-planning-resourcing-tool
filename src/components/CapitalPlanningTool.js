@@ -62,7 +62,9 @@ import {
   sanitizeExistingDebtInstrument,
   sanitizeExistingDebtInstrumentList,
   sanitizeExistingDebtManualTotals,
-
+  DEFAULT_OPERATING_REVENUE_LINE_ITEMS,
+  DEFAULT_OPERATING_EXPENSE_LINE_ITEMS,
+  normalizeBudgetRow,
 } from "../utils/financialModeling";
 
 const MAX_MONTHLY_FTE_HOURS = 2080 / 12;
@@ -76,6 +78,22 @@ const AVAILABILITY_FIELDS = [
   "designAvailability",
   "constructionAvailability",
 ];
+
+const generateLineItemId = (category, label) => {
+  const prefix = category === "expense" ? "expense" : "revenue";
+  const sanitizedLabel =
+    typeof label === "string"
+      ? label
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/(^-|-$)/g, "")
+      : "";
+  const base = sanitizedLabel ? `${prefix}-${sanitizedLabel}` : `${prefix}-custom`;
+  return `${base}-${Date.now().toString(36)}${Math.random()
+    .toString(36)
+    .slice(2, 6)}`;
+};
 
 const getNumericValue = (value) => {
   if (typeof value === "number") {
@@ -132,57 +150,119 @@ if (
   globalThis.normalizeEffortTemplate = normalizeEffortTemplate;
 }
 
-const createDefaultBudgetEscalations = () => ({
-  operatingRevenue: 0,
-  nonOperatingRevenue: 0,
-  omExpenses: 0,
-  salaries: 0,
-  adminExpenses: 0,
-  existingDebtService: 0,
-});
-
-const ESCALATION_FIELDS = [
-  "operatingRevenue",
-  "nonOperatingRevenue",
-  "omExpenses",
-  "salaries",
-  "adminExpenses",
-];
+const createDefaultBudgetEscalations = () => {
+  const entries = new Map();
+  [...DEFAULT_OPERATING_REVENUE_LINE_ITEMS, ...DEFAULT_OPERATING_EXPENSE_LINE_ITEMS].forEach((item) => {
+    if (!item || !item.id) {
+      return;
+    }
+    entries.set(item.id, 0);
+  });
+  return Object.fromEntries(entries);
+};
 
 const recalculateOperatingBudget = (budgetRows = [], budgetEscalations = {}) => {
   if (!Array.isArray(budgetRows) || budgetRows.length === 0) {
     return [];
   }
 
-  const sortedRows = [...budgetRows].sort(
-    (a, b) => (Number(a?.year) || 0) - (Number(b?.year) || 0)
-  );
-  const recalculated = [];
-
-  sortedRows.forEach((row, index) => {
-    const normalizedRow = {
-      ...row,
-      year: Number(row?.year) || 0,
-      rateIncreasePercent: getNumericValue(row?.rateIncreasePercent),
-    };
-
-    if (index === 0) {
-      ESCALATION_FIELDS.forEach((field) => {
-        normalizedRow[field] = getNumericValue(row?.[field]);
-      });
-    } else {
-      const previousRow = recalculated[index - 1];
-      ESCALATION_FIELDS.forEach((field) => {
-        const rate = Number(budgetEscalations?.[field]) || 0;
-        const priorValue = getNumericValue(previousRow?.[field]);
-        normalizedRow[field] = priorValue * (1 + rate / 100);
-      });
+  const escalationMap = new Map();
+  Object.entries(budgetEscalations || {}).forEach(([key, value]) => {
+    if (!key) {
+      return;
     }
-
-    recalculated.push(normalizedRow);
+    const numeric = Number(value);
+    escalationMap.set(String(key), Number.isFinite(numeric) ? numeric : 0);
   });
 
-  return recalculated;
+  const sortedRows = [...budgetRows]
+    .map((row) => normalizeBudgetRow(row))
+    .sort((a, b) => (Number(a?.year) || 0) - (Number(b?.year) || 0));
+
+  const recalc = [];
+
+  const escalateItems = (previousItems = [], currentItems = []) => {
+    const currentMap = new Map(
+      (currentItems || []).map((item) => [item?.id, item])
+    );
+    const results = [];
+
+    (previousItems || []).forEach((item) => {
+      if (!item || !item.id) {
+        return;
+      }
+      const rate = escalationMap.get(item.id) || 0;
+      const template = currentMap.get(item.id) || item;
+      const amount = getNumericValue(item.amount) * (1 + rate / 100);
+      results.push({
+        ...template,
+        id: item.id,
+        amount,
+      });
+      currentMap.delete(item.id);
+    });
+
+    currentMap.forEach((item, id) => {
+      const rate = escalationMap.get(id) || 0;
+      const baseAmount = getNumericValue(item?.amount);
+      results.push({
+        ...item,
+        id,
+        amount: baseAmount * (1 + rate / 100),
+      });
+    });
+
+    return results;
+  };
+
+  sortedRows.forEach((row, index) => {
+    if (index === 0) {
+      recalc.push(normalizeBudgetRow(row));
+      return;
+    }
+
+    const previousRow = recalc[index - 1];
+    const alignedRevenue = escalateItems(
+      previousRow.revenueLineItems,
+      row.revenueLineItems
+    );
+    const alignedExpenses = escalateItems(
+      previousRow.expenseLineItems,
+      row.expenseLineItems
+    );
+
+    recalc.push(
+      normalizeBudgetRow({
+        year: row.year,
+        revenueLineItems: alignedRevenue,
+        expenseLineItems: alignedExpenses,
+        rateIncreasePercent: row.rateIncreasePercent,
+        existingDebtService: row.existingDebtService,
+      })
+    );
+  });
+
+  return recalc;
+};
+
+const ensureBudgetEscalationCoverage = (budgetRows, budgetEscalations = {}) => {
+  const nextEscalations = { ...(budgetEscalations || {}) };
+
+  (budgetRows || []).forEach((row) => {
+    const normalized = normalizeBudgetRow(row);
+    normalized.revenueLineItems.forEach((item) => {
+      if (item?.id && !(item.id in nextEscalations)) {
+        nextEscalations[item.id] = 0;
+      }
+    });
+    normalized.expenseLineItems.forEach((item) => {
+      if (item?.id && !(item.id in nextEscalations)) {
+        nextEscalations[item.id] = 0;
+      }
+    });
+  });
+
+  return nextEscalations;
 };
 
 const createDefaultFinancialConfig = (startYear) => ({
@@ -221,15 +301,23 @@ const applyExistingDebtToBudget = (profile, budgetOverride) => {
     profile.financialConfig.projectionYears
   );
 
-  const budgetWithDebt = alignedBudget.map((row) => ({
-    ...row,
-    existingDebtService: schedule.totalsByYear[row.year] || 0,
-  }));
+  const budgetWithDebt = alignedBudget.map((row) =>
+    normalizeBudgetRow({
+      ...row,
+      existingDebtService: schedule.totalsByYear[row.year] || 0,
+    })
+  );
+
 
   return {
     profile: {
       ...profile,
       operatingBudget: budgetWithDebt,
+      budgetEscalations: ensureBudgetEscalationCoverage(
+        budgetWithDebt,
+        profile.budgetEscalations
+      ),
+
       existingDebtManualTotals: sanitizedManual,
       existingDebtInstruments: sanitizedInstruments,
     },
@@ -506,9 +594,15 @@ const CapitalPlanningTool = () => {
                   mergedConfig.projectionYears
                 );
 
-                const recalculatedBudget = recalculateOperatingBudget(
+                const coveredEscalations = ensureBudgetEscalationCoverage(
                   alignedBudget,
                   mergedEscalations
+                );
+
+                const recalculatedBudget = recalculateOperatingBudget(
+                  alignedBudget,
+                  coveredEscalations
+
                 );
 
                 const manualTotals = dbProfile?.existingDebtManualTotals
@@ -526,7 +620,8 @@ const CapitalPlanningTool = () => {
                 const { profile: profileWithDebt } = applyExistingDebtToBudget(
                   {
                     financialConfig: mergedConfig,
-                    budgetEscalations: mergedEscalations,
+                    budgetEscalations: coveredEscalations,
+
                     operatingBudget: recalculatedBudget,
                     existingDebtManualTotals: manualTotals,
                     existingDebtInstruments: instrumentList,
@@ -893,16 +988,22 @@ const CapitalPlanningTool = () => {
       nextBudget,
       existingProfile.budgetEscalations
     );
+    const mergedEscalations = ensureBudgetEscalationCoverage(
+      recalculatedBudget,
+      existingProfile.budgetEscalations
+    );
+
 
     const { profile: updatedProfile } = applyExistingDebtToBudget(
       {
         ...existingProfile,
         financialConfig: nextConfig,
         operatingBudget: recalculatedBudget,
+        budgetEscalations: mergedEscalations,
+
       },
       recalculatedBudget
     );
-
 
     setUtilityProfiles((previous) => ({
       ...previous,
@@ -921,7 +1022,6 @@ const CapitalPlanningTool = () => {
         deleteUtilityOperatingBudgetsNotIn(
           targetUtility,
           updatedProfile.operatingBudget.map((row) => row.year)
-
         ),
       ]);
     } catch (error) {
@@ -944,11 +1044,30 @@ const CapitalPlanningTool = () => {
       existingProfile.financialConfig.projectionYears
     );
 
+    const targetYear = Number(year);
     const updatedBudget = normalizedBudget.map((row) => {
-      if (!row || row.year !== year) {
+      if (!row || Number(row.year) !== targetYear) {
         return row;
       }
 
+      if (field && typeof field === "object" && field.id) {
+        const category = field.category === "expense" ? "expenseLineItems" : "revenueLineItems";
+        const items = Array.isArray(row[category]) ? row[category] : [];
+        const nextItems = items.map((item) => {
+          if (!item || item.id !== field.id) {
+            return { ...item };
+          }
+          return {
+            ...item,
+            amount: getNumericValue(value),
+          };
+        });
+
+        return normalizeBudgetRow({
+          ...row,
+          [category]: nextItems,
+        });
+      }
       let nextValue = value;
       if (field === "rateIncreasePercent") {
         nextValue = Number(value) || 0;
@@ -956,25 +1075,31 @@ const CapitalPlanningTool = () => {
         nextValue = getNumericValue(value);
       }
 
-      return {
+      return normalizeBudgetRow({
         ...row,
         [field]: nextValue,
-      };
+      });
     });
+
+    const mergedEscalations = ensureBudgetEscalationCoverage(
+      updatedBudget,
+      existingProfile.budgetEscalations
+    );
 
     const recalculatedBudget = recalculateOperatingBudget(
       updatedBudget,
-      existingProfile.budgetEscalations
+      mergedEscalations
     );
 
     const { profile: updatedProfile } = applyExistingDebtToBudget(
       {
         ...existingProfile,
         operatingBudget: recalculatedBudget,
+        budgetEscalations: mergedEscalations,
+
       },
       recalculatedBudget
     );
-
 
     setUtilityProfiles((previous) => ({
       ...previous,
@@ -986,7 +1111,6 @@ const CapitalPlanningTool = () => {
       await deleteUtilityOperatingBudgetsNotIn(
         targetUtility,
         updatedProfile.operatingBudget.map((row) => row.year)
-
       );
     } catch (error) {
       console.error("Failed to update operating budget row:", error);
@@ -1014,15 +1138,21 @@ const CapitalPlanningTool = () => {
       existingProfile.financialConfig.projectionYears
     );
 
-    const recalculatedBudget = recalculateOperatingBudget(
+    const coveredEscalations = ensureBudgetEscalationCoverage(
       normalizedBudget,
       updatedEscalations
+    );
+
+    const recalculatedBudget = recalculateOperatingBudget(
+      normalizedBudget,
+      coveredEscalations
+
     );
 
     const { profile: updatedProfile } = applyExistingDebtToBudget(
       {
         ...existingProfile,
-        budgetEscalations: updatedEscalations,
+        budgetEscalations: coveredEscalations,
         operatingBudget: recalculatedBudget,
       },
       recalculatedBudget
@@ -1037,7 +1167,8 @@ const CapitalPlanningTool = () => {
       await Promise.all([
         saveUtilityProfile(targetUtility, {
           financialConfig: updatedProfile.financialConfig,
-          budgetEscalations: updatedEscalations,
+          budgetEscalations: coveredEscalations,
+
           existingDebtManualTotals: updatedProfile.existingDebtManualTotals,
           existingDebtInstruments: updatedProfile.existingDebtInstruments,
         }),
@@ -1045,11 +1176,131 @@ const CapitalPlanningTool = () => {
         deleteUtilityOperatingBudgetsNotIn(
           targetUtility,
           updatedProfile.operatingBudget.map((row) => row.year)
-
         ),
       ]);
     } catch (error) {
       console.error("Failed to update budget escalation:", error);
+    }
+  };
+
+  const addCustomOperatingLineItem = async (
+    utilityKey,
+    category,
+    lineConfig = {}
+  ) => {
+    if (isReadOnly) {
+      return;
+    }
+
+    const normalizedCategory =
+      category === "expense" ? "expense" : "revenue";
+    const label = typeof lineConfig.label === "string" ? lineConfig.label.trim() : "";
+
+    if (!label) {
+      return;
+    }
+
+    const targetUtility = utilityKey || activeUtility;
+    const existingProfile =
+      utilityProfiles[targetUtility] || createDefaultUtilityProfile(currentYear);
+
+    const normalizedBudget = ensureBudgetYears(
+      existingProfile.operatingBudget,
+      existingProfile.financialConfig.startYear,
+      existingProfile.financialConfig.projectionYears
+    );
+
+    const existingBase = normalizeBudgetRow(normalizedBudget[0] || {});
+    const existingItems =
+      normalizedCategory === "expense"
+        ? existingBase.expenseLineItems
+        : existingBase.revenueLineItems;
+    const duplicate = existingItems.some(
+      (item) => item && item.label?.toLowerCase() === label.toLowerCase()
+    );
+
+    if (duplicate) {
+      return;
+    }
+
+    const newId = generateLineItemId(normalizedCategory, label);
+    const revenueType =
+      normalizedCategory === "revenue" && lineConfig.revenueType === "nonOperating"
+        ? "nonOperating"
+        : "operating";
+
+    const updatedBudget = normalizedBudget.map((row) => {
+      const normalizedRow = normalizeBudgetRow(row);
+      const key = normalizedCategory === "expense" ? "expenseLineItems" : "revenueLineItems";
+      const items = Array.isArray(normalizedRow[key]) ? normalizedRow[key] : [];
+
+      if (items.some((item) => item?.id === newId)) {
+        return normalizedRow;
+      }
+
+      const newItem = {
+        id: newId,
+        label,
+        description: lineConfig.description || "Custom entry",
+        category: normalizedCategory,
+        revenueType: normalizedCategory === "revenue" ? revenueType : null,
+        isCustom: true,
+        amount: 0,
+      };
+
+      return normalizeBudgetRow({
+        ...normalizedRow,
+        [key]: [...items.map((item) => ({ ...item })), newItem],
+      });
+    });
+
+    const escalationsWithCustom = {
+      ...existingProfile.budgetEscalations,
+      [newId]: 0,
+    };
+    const mergedEscalations = ensureBudgetEscalationCoverage(
+      updatedBudget,
+      escalationsWithCustom
+    );
+
+    const recalculatedBudget = recalculateOperatingBudget(
+      updatedBudget,
+      mergedEscalations
+    );
+
+    const { profile: updatedProfile } = applyExistingDebtToBudget(
+      {
+        ...existingProfile,
+        operatingBudget: recalculatedBudget,
+        budgetEscalations: mergedEscalations,
+      },
+      recalculatedBudget
+    );
+
+    setUtilityProfiles((previous) => ({
+      ...previous,
+      [targetUtility]: updatedProfile,
+    }));
+
+    try {
+      await Promise.all([
+        saveUtilityProfile(targetUtility, {
+          financialConfig: updatedProfile.financialConfig,
+          budgetEscalations: updatedProfile.budgetEscalations,
+          existingDebtManualTotals: updatedProfile.existingDebtManualTotals,
+          existingDebtInstruments: updatedProfile.existingDebtInstruments,
+        }),
+        upsertUtilityOperatingBudgetRows(
+          targetUtility,
+          updatedProfile.operatingBudget
+        ),
+        deleteUtilityOperatingBudgetsNotIn(
+          targetUtility,
+          updatedProfile.operatingBudget.map((row) => row.year)
+        ),
+      ]);
+    } catch (error) {
+      console.error("Failed to add custom operating line item:", error);
     }
   };
 
@@ -1205,6 +1456,7 @@ const CapitalPlanningTool = () => {
       console.error("Failed to remove existing debt instrument:", error);
     }
   };
+  
   const handleUpdateProjectTypeUtility = async (typeId, utilityValue) => {
     if (isReadOnly) {
       return;
@@ -2616,31 +2868,34 @@ const CapitalPlanningTool = () => {
               updateFinancialConfiguration(activeUtility, updates)
             }
             budgetEscalations={activeUtilityProfile.budgetEscalations}
-          onUpdateBudgetEscalation={(field, value) =>
-            updateBudgetEscalation(activeUtility, field, value)
-          }
-          fundingSourceAssumptions={fundingSourceAssumptions}
-          onUpdateFundingSourceAssumption={updateFundingSourceAssumption}
-          activeUtility={activeUtility}
-          onChangeUtility={(utility) => setActiveUtility(utility)}
-          utilityOptions={UTILITY_OPTIONS}
-          projectTypeUtilities={projectTypeUtilities}
-          onUpdateProjectTypeUtility={handleUpdateProjectTypeUtility}
-          isReadOnly={isReadOnly}
-          existingDebtManualTotals={activeUtilityProfile.existingDebtManualTotals}
-          existingDebtInstruments={activeUtilityProfile.existingDebtInstruments}
-          onUpdateExistingDebtManual={(year, value) =>
-            updateExistingDebtManualValue(activeUtility, year, value)
-          }
-          onAddExistingDebtInstrument={(instrument) =>
-            addExistingDebtInstrument(activeUtility, instrument)
-          }
-          onRemoveExistingDebtInstrument={(instrumentId) =>
-            removeExistingDebtInstrument(activeUtility, instrumentId)
-          }
-        />
+            onUpdateBudgetEscalation={(field, value) =>
+              updateBudgetEscalation(activeUtility, field, value)
+            }
+            onAddCustomLineItem={(category, config) =>
+              addCustomOperatingLineItem(activeUtility, category, config)
+            }
+            fundingSourceAssumptions={fundingSourceAssumptions}
+            onUpdateFundingSourceAssumption={updateFundingSourceAssumption}
+            activeUtility={activeUtility}
+            onChangeUtility={(utility) => setActiveUtility(utility)}
+            utilityOptions={UTILITY_OPTIONS}
+            projectTypeUtilities={projectTypeUtilities}
+            onUpdateProjectTypeUtility={handleUpdateProjectTypeUtility}
+            isReadOnly={isReadOnly}
+            existingDebtManualTotals={activeUtilityProfile.existingDebtManualTotals}
+            existingDebtInstruments={activeUtilityProfile.existingDebtInstruments}
+            onUpdateExistingDebtManual={(year, value) =>
+              updateExistingDebtManualValue(activeUtility, year, value)
+            }
+            onAddExistingDebtInstrument={(instrument) =>
+              addExistingDebtInstrument(activeUtility, instrument)
+            }
+            onRemoveExistingDebtInstrument={(instrumentId) =>
+              removeExistingDebtInstrument(activeUtility, instrumentId)
+            }
+          />
       )}
-      
+
         <div className="bg-white rounded-lg shadow-sm p-6">
           <h3 className="text-lg font-semibold mb-4">Data Management</h3>
           <div className="flex flex-wrap gap-4 items-center">

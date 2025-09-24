@@ -3,12 +3,9 @@ import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { normalizeProjectBudgetBreakdown } from '../utils/projectBudgets';
 import {
-  normalizeEffortTemplate,
-  sanitizeTemplateHours,
-} from '../utils/projectEffortTemplates';
-import {
   sanitizeExistingDebtInstrumentList,
   sanitizeExistingDebtManualTotals,
+  normalizeBudgetRow,
 } from '../utils/financialModeling';
 
 const toCamelCaseKey = (key) =>
@@ -179,35 +176,6 @@ const staffAssignmentToRow = (assignment, organizationId) => ({
   construction_hours: normalizeNullable(assignment.constructionHours) ?? 0,
 });
 
-const projectEffortTemplateFromRow = (row) => {
-  const camel = camelizeRecord(row);
-
-  return {
-    ...camel,
-    hoursByCategory: sanitizeTemplateHours(
-      parseJsonField(camel.hoursByCategory, {})
-    ),
-  };
-};
-
-const projectEffortTemplateToRow = (template, organizationId) => {
-  const normalized = normalizeEffortTemplate(template || {});
-  const hoursByCategory = sanitizeTemplateHours(
-    normalized.hoursByCategory || {}
-  );
-
-  return {
-    organization_id: organizationId,
-    name: normalized.name || '',
-    project_type_id: normalizeNullable(normalized.projectTypeId),
-    size_category: normalized.sizeCategory || null,
-    delivery_type: normalized.deliveryType || null,
-    notes: normalized.notes || null,
-    hours_by_category:
-      Object.keys(hoursByCategory).length > 0 ? hoursByCategory : null,
-  };
-};
-
 const UTILITY_KEYS = new Set(['water', 'sewer', 'power', 'gas', 'stormwater']);
 
 const normalizeUtilityKey = (value) => {
@@ -236,14 +204,20 @@ const sanitizeFinancialConfig = (rawConfig = {}) => {
   };
 };
 
-const sanitizeBudgetEscalations = (rawEscalations = {}) => ({
-  operatingRevenue: Number(rawEscalations.operatingRevenue) || 0,
-  nonOperatingRevenue: Number(rawEscalations.nonOperatingRevenue) || 0,
-  omExpenses: Number(rawEscalations.omExpenses) || 0,
-  salaries: Number(rawEscalations.salaries) || 0,
-  adminExpenses: Number(rawEscalations.adminExpenses) || 0,
-  existingDebtService: Number(rawEscalations.existingDebtService) || 0,
-});
+const sanitizeBudgetEscalations = (rawEscalations = {}) => {
+  if (!rawEscalations || typeof rawEscalations !== 'object') {
+    return {};
+  }
+
+  return Object.entries(rawEscalations).reduce((accumulator, [key, value]) => {
+    if (!key) {
+      return accumulator;
+    }
+    const numeric = Number(value);
+    accumulator[key] = Number.isFinite(numeric) ? numeric : 0;
+    return accumulator;
+  }, {});
+};
 
 const utilityProfileFromRow = (row) => {
   if (!row) {
@@ -261,7 +235,6 @@ const utilityProfileFromRow = (row) => {
     existingDebtInstruments: sanitizeExistingDebtInstrumentList(
       parseJsonField(row.existing_debt_instruments, [])
     ),
-
   };
 };
 
@@ -283,7 +256,6 @@ const utilityProfileToRow = (organizationId, utilityKey, profile = {}) => {
     budget_escalations: JSON.stringify(budgetEscalations),
     existing_debt_manual_totals: JSON.stringify(manualTotals),
     existing_debt_instruments: JSON.stringify(instruments),
-
   };
 };
 
@@ -292,30 +264,116 @@ const operatingBudgetFromRow = (row) => {
     return null;
   }
 
-  return {
-    year: Number(row.fiscal_year),
-    operatingRevenue: Number(row.operating_revenue) || 0,
-    nonOperatingRevenue: Number(row.non_operating_revenue) || 0,
-    omExpenses: Number(row.om_expenses) || 0,
-    salaries: Number(row.salaries) || 0,
-    adminExpenses: Number(row.admin_expenses) || 0,
-    existingDebtService: Number(row.existing_debt_service) || 0,
-    rateIncreasePercent: Number(row.rate_increase_percent) || 0,
-  };
+  const revenueLineItems = parseJsonField(row.revenue_line_items, null);
+  const expenseLineItems = parseJsonField(row.expense_line_items, null);
+
+  let normalized = normalizeBudgetRow({
+    year: row.fiscal_year,
+    revenueLineItems,
+    expenseLineItems,
+    rateIncreasePercent: row.rate_increase_percent,
+    existingDebtService: row.existing_debt_service,
+  });
+
+  const hasRevenueDetail = Array.isArray(revenueLineItems) && revenueLineItems.length > 0;
+  const hasExpenseDetail = Array.isArray(expenseLineItems) && expenseLineItems.length > 0;
+
+  if (!hasRevenueDetail) {
+    const operatingRevenue = Number(row.operating_revenue) || 0;
+    const nonOperatingRevenue = Number(row.non_operating_revenue) || 0;
+    const adjustedRevenue = normalized.revenueLineItems.map((item) => {
+      if (item.id === 'utilitySales') {
+        return { ...item, amount: operatingRevenue };
+      }
+      if (item.id === 'nonOperatingRevenue') {
+        return { ...item, amount: nonOperatingRevenue };
+      }
+      return { ...item, amount: 0 };
+    });
+    normalized = normalizeBudgetRow({
+      ...normalized,
+      revenueLineItems: adjustedRevenue,
+    });
+  }
+
+  if (!hasExpenseDetail) {
+    const omExpenses = Number(row.om_expenses) || 0;
+    const salaries = Number(row.salaries) || 0;
+    const adminExpenses = Number(row.admin_expenses) || 0;
+    const adjustedExpenses = normalized.expenseLineItems.map((item) => {
+      if (item.id === 'operationsMaintenance') {
+        return { ...item, amount: omExpenses };
+      }
+      if (item.id === 'plantPayroll') {
+        return { ...item, amount: salaries };
+      }
+      if (item.id === 'otherAdministrative') {
+        return { ...item, amount: adminExpenses };
+      }
+      return { ...item, amount: 0 };
+    });
+    normalized = normalizeBudgetRow({
+      ...normalized,
+      expenseLineItems: adjustedExpenses,
+    });
+  }
+
+  return normalized;
 };
 
-const operatingBudgetToRow = (organizationId, utilityKey, row) => ({
-  organization_id: organizationId,
-  utility_key: normalizeUtilityKey(utilityKey),
-  fiscal_year: Number(row.year),
-  operating_revenue: normalizeNullable(row.operatingRevenue) ?? 0,
-  non_operating_revenue: normalizeNullable(row.nonOperatingRevenue) ?? 0,
-  om_expenses: normalizeNullable(row.omExpenses) ?? 0,
-  salaries: normalizeNullable(row.salaries) ?? 0,
-  admin_expenses: normalizeNullable(row.adminExpenses) ?? 0,
-  existing_debt_service: normalizeNullable(row.existingDebtService) ?? 0,
-  rate_increase_percent: normalizeNullable(row.rateIncreasePercent) ?? 0,
-});
+const operatingBudgetToRow = (organizationId, utilityKey, row) => {
+  const normalized = normalizeBudgetRow(row);
+  const revenueItems = Array.isArray(normalized.revenueLineItems)
+    ? normalized.revenueLineItems
+    : [];
+  const expenseItems = Array.isArray(normalized.expenseLineItems)
+    ? normalized.expenseLineItems
+    : [];
+
+  const sumByIds = (items, ids) =>
+    items.reduce((sum, item) => {
+      if (!item || !ids.includes(item.id)) {
+        return sum;
+      }
+      const amount = Number(item.amount);
+      return sum + (Number.isFinite(amount) ? amount : 0);
+    }, 0);
+
+  const omExpenses = sumByIds(expenseItems, [
+    'purchasedSupplyProduction',
+    'purchasedEnergy',
+    'chemicalsSupplies',
+    'testingLabServices',
+    'plantUtilities',
+    'operationsMaintenance',
+    'distributionPlant',
+    'repairsMaintenance',
+    'vehiclesFuel',
+    'toolsUniformsEquipment',
+  ]);
+  const salaryExpenses = sumByIds(expenseItems, ['plantPayroll', 'administrativeSalaries']);
+  const adminExpenses = sumByIds(expenseItems, [
+    'employeeBenefits',
+    'payrollTaxes',
+    'insurance',
+    'otherAdministrative',
+  ]);
+
+  return {
+    organization_id: organizationId,
+    utility_key: normalizeUtilityKey(utilityKey),
+    fiscal_year: Number(normalized.year),
+    operating_revenue: normalizeNullable(normalized.operatingRevenue) ?? 0,
+    non_operating_revenue: normalizeNullable(normalized.nonOperatingRevenue) ?? 0,
+    om_expenses: normalizeNullable(omExpenses) ?? 0,
+    salaries: normalizeNullable(salaryExpenses) ?? 0,
+    admin_expenses: normalizeNullable(adminExpenses) ?? 0,
+    existing_debt_service: normalizeNullable(normalized.existingDebtService) ?? 0,
+    rate_increase_percent: normalizeNullable(normalized.rateIncreasePercent) ?? 0,
+    revenue_line_items: JSON.stringify(revenueItems),
+    expense_line_items: JSON.stringify(expenseItems),
+  };
+};
 
 const projectTypeUtilityFromRow = (row) => {
   if (!row) {

@@ -13,16 +13,369 @@ const sanitizePercent = (value, fallback = 0) => {
   return Number.isFinite(numeric) ? numeric : fallback;
 };
 
-const cloneBudgetRow = (year, template) => ({
-  year,
-  operatingRevenue: sanitizeNumber(template?.operatingRevenue),
-  nonOperatingRevenue: sanitizeNumber(template?.nonOperatingRevenue),
-  omExpenses: sanitizeNumber(template?.omExpenses),
-  salaries: sanitizeNumber(template?.salaries),
-  adminExpenses: sanitizeNumber(template?.adminExpenses),
-  existingDebtService: sanitizeNumber(template?.existingDebtService),
-  rateIncreasePercent: sanitizePercent(template?.rateIncreasePercent),
-});
+const sanitizeLineItemId = (id, label, prefix) => {
+  if (id !== undefined && id !== null) {
+    const stringId = String(id).trim();
+    if (stringId) {
+      return stringId;
+    }
+  }
+
+  if (typeof label === "string") {
+    const slug = label
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+    if (slug) {
+      return slug;
+    }
+  }
+
+  const base = prefix || "line";
+  return `${base}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
+export const DEFAULT_OPERATING_REVENUE_LINE_ITEMS = [
+  {
+    id: "utilitySales",
+    label: "Utility Sales (Water/Electric/Gas/Sewer)",
+    description: "Base service sales and volumetric charges.",
+    category: "revenue",
+    revenueType: "operating",
+  },
+  {
+    id: "sewerCharges",
+    label: "Sewer Charges",
+    description: "Usage-based sewer fees when applicable.",
+    category: "revenue",
+    revenueType: "operating",
+  },
+  {
+    id: "customerPenalties",
+    label: "Customer Penalties / Late Fees",
+    description: "Delinquency and reconnection penalties.",
+    category: "revenue",
+    revenueType: "operating",
+  },
+  {
+    id: "serviceCharges",
+    label: "Service Charges",
+    description: "Connection, reconnection, and account service fees.",
+    category: "revenue",
+    revenueType: "operating",
+  },
+  {
+    id: "tapMeterFees",
+    label: "Tap & Meter Fees",
+    description: "Tap, meter set, and related installation fees.",
+    category: "revenue",
+    revenueType: "operating",
+  },
+  {
+    id: "fireProtectionFees",
+    label: "Fire Protection / Sprinkler Fees",
+    description: "Dedicated fire protection and sprinkler service fees.",
+    category: "revenue",
+    revenueType: "operating",
+  },
+  {
+    id: "otherServiceFees",
+    label: "Other Service Fees",
+    description: "Miscellaneous billed service activity.",
+    category: "revenue",
+    revenueType: "operating",
+  },
+  {
+    id: "otherOperatingRevenue",
+    label: "Other Operating Revenues",
+    description: "All other recurring operating revenue streams.",
+    category: "revenue",
+    revenueType: "operating",
+  },
+  {
+    id: "nonOperatingRevenue",
+    label: "Non-Operating Revenues",
+    description: "Interest income, grants, and other non-operating receipts.",
+    category: "revenue",
+    revenueType: "nonOperating",
+  },
+];
+
+export const DEFAULT_OPERATING_EXPENSE_LINE_ITEMS = [
+  {
+    id: "purchasedSupplyProduction",
+    label: "Purchased Supply & Production",
+    description: "Purchased water/power and production costs.",
+    category: "expense",
+  },
+  {
+    id: "purchasedEnergy",
+    label: "Purchased Power/Gas/Water",
+    description: "Wholesale energy or water purchases.",
+    category: "expense",
+  },
+  {
+    id: "plantPayroll",
+    label: "Plant Payroll",
+    description: "Operations staff wages for treatment plants.",
+    category: "expense",
+  },
+  {
+    id: "chemicalsSupplies",
+    label: "Chemicals & Supplies",
+    description: "Chemicals and consumable supplies.",
+    category: "expense",
+  },
+  {
+    id: "testingLabServices",
+    label: "Testing & Lab Services",
+    description: "Laboratory and regulatory testing services.",
+    category: "expense",
+  },
+  {
+    id: "plantUtilities",
+    label: "Plant Utilities",
+    description: "Utilities for treatment and production facilities.",
+    category: "expense",
+  },
+  {
+    id: "operationsMaintenance",
+    label: "Operations & Maintenance",
+    description: "Field operations, routine maintenance, and supplies.",
+    category: "expense",
+  },
+  {
+    id: "distributionPlant",
+    label: "Distribution Plant/Mains/Meters",
+    description: "Distribution system maintenance and replacements.",
+    category: "expense",
+  },
+  {
+    id: "repairsMaintenance",
+    label: "Repairs & Maintenance",
+    description: "Unplanned repairs and corrective maintenance.",
+    category: "expense",
+  },
+  {
+    id: "vehiclesFuel",
+    label: "Vehicles & Fuel",
+    description: "Fleet and fuel costs.",
+    category: "expense",
+  },
+  {
+    id: "toolsUniformsEquipment",
+    label: "Tools, Uniforms, Equipment",
+    description: "Tools, safety gear, and equipment purchases.",
+    category: "expense",
+  },
+  {
+    id: "administrativeSalaries",
+    label: "Administrative Salaries",
+    description: "Administration and support staff salaries.",
+    category: "expense",
+  },
+  {
+    id: "employeeBenefits",
+    label: "Employee Benefits",
+    description: "Benefits, pensions, and healthcare costs.",
+    category: "expense",
+  },
+  {
+    id: "payrollTaxes",
+    label: "Payroll Taxes",
+    description: "Payroll-related taxes and contributions.",
+    category: "expense",
+  },
+  {
+    id: "insurance",
+    label: "Insurance",
+    description: "Property, liability, and other insurance premiums.",
+    category: "expense",
+  },
+  {
+    id: "otherAdministrative",
+    label: "Other Administrative",
+    description: "Remaining administrative costs not captured above.",
+    category: "expense",
+  },
+];
+
+const buildDefaultDefinitionMaps = (defaults) => {
+  const byId = new Map();
+  const byLabel = new Map();
+
+  defaults.forEach((definition) => {
+    if (!definition) {
+      return;
+    }
+
+    const sanitizedId = sanitizeLineItemId(
+      definition.id,
+      definition.label,
+      definition.category
+    );
+    const normalizedDefinition = {
+      ...definition,
+      id: sanitizedId,
+    };
+
+    byId.set(sanitizedId, normalizedDefinition);
+    if (definition.label) {
+      byLabel.set(definition.label.toLowerCase(), normalizedDefinition);
+    }
+  });
+
+  return { byId, byLabel };
+};
+
+const normalizeLineItemArray = (items, defaults, category) => {
+  const normalized = [];
+  const seen = new Set();
+  const sourceItems = Array.isArray(items) ? items : [];
+  const { byId, byLabel } = buildDefaultDefinitionMaps(defaults);
+
+  const appendItem = (definition, override = {}, isCustom = false) => {
+    const merged = {
+      ...definition,
+      ...override,
+    };
+    const finalId = sanitizeLineItemId(merged.id, merged.label, category);
+    const baseDescription =
+      override.description !== undefined
+        ? override.description
+        : definition?.description;
+
+    normalized.push({
+      id: finalId,
+      label: merged.label || definition?.label || finalId,
+      description: baseDescription || (isCustom ? "Custom entry" : ""),
+      category,
+      revenueType:
+        category === "revenue"
+          ? merged.revenueType || definition?.revenueType || "operating"
+          : null,
+      isCustom: merged.isCustom ?? isCustom ?? false,
+      amount: sanitizeNumber(merged.amount, 0),
+    });
+
+    seen.add(finalId);
+  };
+
+  sourceItems.forEach((item) => {
+    if (!item) {
+      return;
+    }
+
+    const lookupId = sanitizeLineItemId(item.id, item.label, category);
+    let definition = byId.get(lookupId);
+
+    if (!definition && item.label) {
+      definition = byLabel.get(item.label.toLowerCase());
+    }
+
+    const finalDefinition = definition
+      ? { ...definition }
+      : { id: lookupId, category };
+
+    appendItem(finalDefinition, { ...item, id: finalDefinition.id }, !definition);
+  });
+
+  defaults.forEach((definition) => {
+    if (!definition) {
+      return;
+    }
+
+    const id = sanitizeLineItemId(definition.id, definition.label, category);
+    if (seen.has(id)) {
+      return;
+    }
+
+    appendItem({ ...definition, id });
+  });
+
+  return normalized;
+};
+
+export const sumLineItems = (items = [], predicate) =>
+  (Array.isArray(items) ? items : []).reduce((sum, item) => {
+    if (!item) {
+      return sum;
+    }
+    if (predicate && !predicate(item)) {
+      return sum;
+    }
+    return sum + sanitizeNumber(item.amount, 0);
+  }, 0);
+
+const attachBudgetTotals = (row) => {
+  const revenueLineItems = normalizeLineItemArray(
+    row.revenueLineItems,
+    DEFAULT_OPERATING_REVENUE_LINE_ITEMS,
+    "revenue"
+  ).map((item) => ({ ...item }));
+
+  const expenseLineItems = normalizeLineItemArray(
+    row.expenseLineItems,
+    DEFAULT_OPERATING_EXPENSE_LINE_ITEMS,
+    "expense"
+  ).map((item) => ({ ...item }));
+
+  const operatingRevenue = sumLineItems(
+    revenueLineItems,
+    (item) => item.revenueType !== "nonOperating"
+  );
+  const nonOperatingRevenue = sumLineItems(
+    revenueLineItems,
+    (item) => item.revenueType === "nonOperating"
+  );
+  const totalOperatingExpenses = sumLineItems(expenseLineItems);
+
+  return {
+    ...row,
+    revenueLineItems,
+    expenseLineItems,
+    operatingRevenue,
+    nonOperatingRevenue,
+    totalOperatingExpenses,
+  };
+};
+
+export const normalizeBudgetRow = (row = {}) => {
+  const numericYear = Number(row.year);
+  const normalizedYear = Number.isFinite(numericYear)
+    ? numericYear
+    : sanitizePositiveInteger(row.year, null);
+
+  return attachBudgetTotals({
+    year: normalizedYear,
+    revenueLineItems: row.revenueLineItems,
+    expenseLineItems: row.expenseLineItems,
+    rateIncreasePercent: sanitizePercent(row.rateIncreasePercent),
+    existingDebtService: sanitizeNumber(row.existingDebtService),
+  });
+};
+
+const cloneBudgetRow = (year, template) => {
+  const normalizedTemplate = template ? normalizeBudgetRow(template) : null;
+
+  return attachBudgetTotals({
+    year,
+    revenueLineItems: normalizedTemplate
+      ? normalizedTemplate.revenueLineItems.map((item) => ({ ...item }))
+      : DEFAULT_OPERATING_REVENUE_LINE_ITEMS.map((item) => ({
+          ...item,
+          amount: 0,
+        })),
+    expenseLineItems: normalizedTemplate
+      ? normalizedTemplate.expenseLineItems.map((item) => ({ ...item }))
+      : DEFAULT_OPERATING_EXPENSE_LINE_ITEMS.map((item) => ({
+          ...item,
+          amount: 0,
+        })),
+    rateIncreasePercent: normalizedTemplate?.rateIncreasePercent ?? 0,
+    existingDebtService: normalizedTemplate?.existingDebtService ?? 0,
+  });
+};
 
 export const generateDefaultOperatingBudget = (startYear, years = 5) => {
   const baseYear = sanitizePositiveInteger(startYear, new Date().getFullYear());
@@ -30,17 +383,7 @@ export const generateDefaultOperatingBudget = (startYear, years = 5) => {
   const rows = [];
 
   for (let i = 0; i < totalYears; i += 1) {
-    rows.push(
-      cloneBudgetRow(baseYear + i, {
-        operatingRevenue: 0,
-        nonOperatingRevenue: 0,
-        omExpenses: 0,
-        salaries: 0,
-        adminExpenses: 0,
-        existingDebtService: 0,
-        rateIncreasePercent: 0,
-      })
-    );
+    rows.push(cloneBudgetRow(baseYear + i));
   }
 
   return rows;
@@ -56,7 +399,7 @@ export const ensureBudgetYears = (rows, startYear, projectionYears) => {
 
   (rows || []).forEach((row) => {
     if (row && Number.isFinite(row.year)) {
-      existingMap.set(Number(row.year), { ...row, year: Number(row.year) });
+      existingMap.set(Number(row.year), normalizeBudgetRow(row));
     }
   });
 
@@ -67,15 +410,13 @@ export const ensureBudgetYears = (rows, startYear, projectionYears) => {
     const year = desiredStart + offset;
     if (existingMap.has(year)) {
       const existing = existingMap.get(year);
-      result.push({
-        ...existing,
-        year,
-      });
+      result.push(normalizeBudgetRow(existing));
       lastTemplate = existing;
     } else {
       const template = lastTemplate || existingMap.get(year - 1);
-      result.push(cloneBudgetRow(year, template));
-      lastTemplate = template;
+      const cloned = cloneBudgetRow(year, template);
+      result.push(cloned);
+      lastTemplate = cloned;
     }
   }
 
@@ -1064,8 +1405,14 @@ export const calculateFinancialForecast = ({
   const startingCash = sanitizeNumber(financialConfig?.startingCashBalance, 0);
   const targetCoverageRatio = sanitizeNumber(financialConfig?.targetCoverageRatio, 1.25);
 
-  const normalizedBudget = ensureBudgetYears(operatingBudget, startYear, projectionYears);
-  const budgetMap = new Map(normalizedBudget.map((row) => [row.year, row]));
+  const normalizedBudget = ensureBudgetYears(
+    operatingBudget,
+    startYear,
+    projectionYears
+  );
+  const budgetMap = new Map(
+    normalizedBudget.map((row) => [row.year, normalizeBudgetRow(row)])
+  );
 
   const spendPlan = buildProjectSpendPlan(projectTimelines);
   const {
@@ -1087,27 +1434,6 @@ export const calculateFinancialForecast = ({
     years.push(startYear + i);
   }
 
-  const projectionYearKeys = new Set(years.map((year) => String(year)));
-
-  const spendPlanWithinWindow = {};
-  Object.entries(spendPlan || {}).forEach(([yearKey, entry]) => {
-    if (projectionYearKeys.has(yearKey)) {
-      spendPlanWithinWindow[yearKey] = entry;
-    }
-  });
-
-  const cashUsesWithinWindow = {};
-  years.forEach((year) => {
-    const value = sanitizeNumber(cashUsesByYear?.[year], 0);
-    cashUsesWithinWindow[year] = Math.abs(value) > 1e-9 ? value : 0;
-  });
-
-  const filteredDebtIssuedBySource = Object.fromEntries(
-    Object.entries(debtIssuedBySource || {})
-      .map(([key, amount]) => [key, sanitizeNumber(amount, 0)])
-      .filter(([, amount]) => Math.abs(amount) > 1e-9)
-  );
-
   const forecast = [];
   let runningCash = startingCash;
   let minCoverage = Number.POSITIVE_INFINITY;
@@ -1115,18 +1441,33 @@ export const calculateFinancialForecast = ({
   let maxAdditionalRateIncrease = 0;
 
   years.forEach((year) => {
-    const budgetRow = budgetMap.get(year) || cloneBudgetRow(year, null);
-    const baseOperatingRevenue = sanitizeNumber(budgetRow.operatingRevenue, 0);
-    const plannedRateIncreasePercent = sanitizePercent(budgetRow.rateIncreasePercent, 0);
+    const budgetRow = normalizeBudgetRow(
+      budgetMap.get(year) || { year }
+    );
+    const plannedRateIncreasePercent = sanitizePercent(
+      budgetRow.rateIncreasePercent,
+      0
+    );
+    const operatingRevenueLineItems = budgetRow.revenueLineItems
+      .filter((item) => item.revenueType !== "nonOperating")
+      .map((item) => ({ ...item }));
+    const nonOperatingRevenueLineItems = budgetRow.revenueLineItems
+      .filter((item) => item.revenueType === "nonOperating")
+      .map((item) => ({ ...item }));
+    const expenseLineItems = budgetRow.expenseLineItems.map((item) => ({
+      ...item,
+    }));
+
+    const baseOperatingRevenue = sumLineItems(operatingRevenueLineItems);
+    const nonOperatingRevenue = sumLineItems(nonOperatingRevenueLineItems);
     const adjustedOperatingRevenue =
       baseOperatingRevenue * (1 + plannedRateIncreasePercent / 100);
-    const nonOperatingRevenue = sanitizeNumber(budgetRow.nonOperatingRevenue, 0);
-    const omExpenses = sanitizeNumber(budgetRow.omExpenses, 0);
-    const salaries = sanitizeNumber(budgetRow.salaries, 0);
-    const adminExpenses = sanitizeNumber(budgetRow.adminExpenses, 0);
-    const existingDebtService = sanitizeNumber(budgetRow.existingDebtService, 0);
+    const totalOperatingExpenses = sumLineItems(expenseLineItems);
+    const existingDebtService = sanitizeNumber(
+      budgetRow.existingDebtService,
+      0
+    );
 
-    const totalOperatingExpenses = omExpenses + salaries + adminExpenses;
     const netRevenueBeforeDebt =
       adjustedOperatingRevenue + nonOperatingRevenue - totalOperatingExpenses;
 
@@ -1153,8 +1494,7 @@ export const calculateFinancialForecast = ({
     }
 
     const operatingCashFlow = netRevenueBeforeDebt - totalDebtService;
-    const cashCapex = sanitizeNumber(cashUsesWithinWindow[year], 0);
-
+    const cashCapex = sanitizeNumber(cashUsesByYear[year], 0);
     runningCash += operatingCashFlow - cashCapex;
 
     const daysCashOnHand =
@@ -1172,9 +1512,9 @@ export const calculateFinancialForecast = ({
       adjustedOperatingRevenue,
       plannedRateIncreasePercent,
       nonOperatingRevenue,
-      omExpenses,
-      salaries,
-      adminExpenses,
+      operatingRevenueLineItems,
+      nonOperatingRevenueLineItems,
+      expenseLineItems,
       totalOperatingExpenses,
       netRevenueBeforeDebt,
       existingDebtService,
@@ -1183,7 +1523,7 @@ export const calculateFinancialForecast = ({
       coverageRatio,
       additionalRateIncreaseNeeded,
       cashFundedCapex: cashCapex,
-      cipSpend: sanitizeNumber(spendPlanWithinWindow[year]?.totalSpend, 0),
+      cipSpend: sanitizeNumber(spendPlan[year]?.totalSpend, 0),
       endingCashBalance: runningCash,
       daysCashOnHand,
     });
@@ -1198,27 +1538,26 @@ export const calculateFinancialForecast = ({
   }
 
   const totalCapitalSpend = years.reduce(
-    (sum, year) =>
-      sum + sanitizeNumber(spendPlanWithinWindow?.[year]?.totalSpend, 0),
+    (sum, year) => sum + sanitizeNumber(spendPlan?.[year]?.totalSpend, 0),
     0
   );
   const totalCashCapex = years.reduce(
-    (sum, year) => sum + sanitizeNumber(cashUsesWithinWindow?.[year], 0),
+    (sum, year) => sum + sanitizeNumber(cashUsesByYear?.[year], 0),
     0
   );
-  const totalDebtIssued = Object.values(filteredDebtIssuedBySource).reduce(
+  const totalDebtIssued = Object.values(debtIssuedBySource).reduce(
     (sum, value) => sum + sanitizeNumber(value, 0),
     0
   );
 
   return {
     forecast,
-    spendPlan: spendPlanWithinWindow,
+    spendPlan,
     debtServiceByYear,
     debtServiceInterestByYear,
     debtServicePrincipalByYear,
-    cashUsesByYear: cashUsesWithinWindow,
-    debtIssuedBySource: filteredDebtIssuedBySource,
+    cashUsesByYear,
+    debtIssuedBySource,
     financingSchedules,
     totals: {
       totalCapitalSpend,

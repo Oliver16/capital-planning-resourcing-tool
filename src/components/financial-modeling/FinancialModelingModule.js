@@ -100,6 +100,8 @@ const FinancialModelingModule = ({
   onUpdateProjectTypeUtility,
   budgetEscalations = {},
   onUpdateBudgetEscalation,
+  onAddCustomLineItem,
+
   existingDebtManualTotals = {},
   existingDebtInstruments = [],
   onUpdateExistingDebtManual,
@@ -310,6 +312,8 @@ const FinancialModelingModule = ({
           onUpdateOperatingBudget={onUpdateOperatingBudget}
           budgetEscalations={budgetEscalations}
           onUpdateBudgetEscalation={onUpdateBudgetEscalation}
+          onAddCustomLineItem={onAddCustomLineItem}
+
           activeUtilityLabel={activeUtilityOption?.label}
           isReadOnly={isReadOnly}
         />
@@ -344,7 +348,6 @@ const FinancialModelingModule = ({
           utilityOptions={utilityOptions}
           onUpdateProjectTypeUtility={onUpdateProjectTypeUtility}
           onUpdateFinancialConfig={onUpdateFinancialConfig}
-
           isReadOnly={isReadOnly}
         />
       ) : null}

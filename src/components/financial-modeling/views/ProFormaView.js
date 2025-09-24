@@ -96,164 +96,196 @@ const ProFormaView = ({ forecastResult, financialConfig }) => {
     [totals, financialConfig.targetCoverageRatio]
   );
 
-  const proFormaRows = useMemo(
-    () => [
-      { type: "section", label: "Operating Revenues" },
-      {
-        key: "baseOperatingRevenue",
-        label: "Base Operating Revenue",
-        getValue: (row) => row.baseOperatingRevenue,
-        formatter: (value) => formatCurrency(value),
+  const proFormaRows = useMemo(() => {
+    const firstRow = forecast[0] || {};
+    const operatingRevenueDefinitions = firstRow.operatingRevenueLineItems || [];
+    const nonOperatingRevenueDefinitions = firstRow.nonOperatingRevenueLineItems || [];
+    const expenseDefinitions = firstRow.expenseLineItems || [];
+
+    const sumAmounts = (items = []) =>
+      items.reduce((sum, item) => {
+        const amount = Number(item?.amount);
+        return sum + (Number.isFinite(amount) ? amount : 0);
+      }, 0);
+
+    const rows = [];
+
+    rows.push({ type: "section", label: "Operating Revenues" });
+    operatingRevenueDefinitions.forEach((item) => {
+      rows.push({
+        key: `opRev:${item.id}`,
+        label: item.label,
         indentLevel: 1,
-      },
-      {
-        key: "plannedRateIncreasePercent",
-        label: "Planned Rate Adjustment",
-        getValue: (row) => row.plannedRateIncreasePercent,
-        formatter: (value) => formatPercent(value, { decimals: 1 }),
+        getValue: (row) => {
+          const match = (row.operatingRevenueLineItems || []).find(
+            (entry) => entry.id === item.id
+          );
+          return match ? match.amount : 0;
+        },
+        formatter: (value) => formatCurrency(value),
+      });
+    });
+    rows.push({
+      key: "plannedRateIncreasePercent",
+      label: "Planned Rate Adjustment",
+      getValue: (row) => row.plannedRateIncreasePercent,
+      formatter: (value) => formatPercent(value, { decimals: 1 }),
+      indentLevel: 1,
+    });
+    rows.push({
+      key: "adjustedOperatingRevenue",
+      label: "Adjusted Operating Revenue",
+      getValue: (row) => row.adjustedOperatingRevenue,
+      formatter: (value) => formatCurrency(value),
+      isSubtotal: true,
+      highlight: true,
+    });
+
+    rows.push({ type: "section", label: "Non-Operating Revenues" });
+    nonOperatingRevenueDefinitions.forEach((item) => {
+      rows.push({
+        key: `nonOpRev:${item.id}`,
+        label: item.label,
         indentLevel: 1,
-      },
-      {
-        key: "adjustedOperatingRevenue",
-        label: "Adjusted Operating Revenue",
-        getValue: (row) => row.adjustedOperatingRevenue,
+        getValue: (row) => {
+          const match = (row.nonOperatingRevenueLineItems || []).find(
+            (entry) => entry.id === item.id
+          );
+          return match ? match.amount : 0;
+        },
         formatter: (value) => formatCurrency(value),
-        highlight: true,
+      });
+    });
+    rows.push({
+      key: "totalNonOperatingRevenues",
+      label: "Total Non-Operating Revenues",
+      getValue: (row) => sumAmounts(row.nonOperatingRevenueLineItems),
+      formatter: (value) => formatCurrency(value),
+      isSubtotal: true,
+    });
+    rows.push({
+      key: "totalRevenues",
+      label: "Total Revenues",
+      getValue: (row) =>
+        (row.adjustedOperatingRevenue || 0) +
+        sumAmounts(row.nonOperatingRevenueLineItems),
+      formatter: (value) => formatCurrency(value),
+      isSubtotal: true,
+      highlight: true,
+    });
+
+    rows.push({ type: "section", label: "Operating Expenses" });
+    expenseDefinitions.forEach((item) => {
+      rows.push({
+        key: `expense:${item.id}`,
+        label: item.label,
         indentLevel: 1,
-      },
-      {
-        key: "nonOperatingRevenue",
-        label: "Non-Operating Revenue",
-        getValue: (row) => row.nonOperatingRevenue,
+        getValue: (row) => {
+          const match = (row.expenseLineItems || []).find(
+            (entry) => entry.id === item.id
+          );
+          return match ? match.amount : 0;
+        },
         formatter: (value) => formatCurrency(value),
-        indentLevel: 1,
-      },
-      {
-        key: "totalRevenue",
-        label: "Total Revenues",
-        getValue: (row) =>
-          (row.adjustedOperatingRevenue || 0) + (row.nonOperatingRevenue || 0),
-        formatter: (value) => formatCurrency(value),
-        isSubtotal: true,
-      },
-      { type: "section", label: "Operating Expenses" },
-      {
-        key: "omExpenses",
-        label: "Operations & Maintenance",
-        getValue: (row) => row.omExpenses,
-        formatter: (value) => formatCurrency(value),
-        indentLevel: 1,
-      },
-      {
-        key: "salaries",
-        label: "Salaries & Wages",
-        getValue: (row) => row.salaries,
-        formatter: (value) => formatCurrency(value),
-        indentLevel: 1,
-      },
-      {
-        key: "adminExpenses",
-        label: "Administration",
-        getValue: (row) => row.adminExpenses,
-        formatter: (value) => formatCurrency(value),
-        indentLevel: 1,
-      },
-      {
-        key: "totalOperatingExpenses",
-        label: "Total Operating Expenses",
-        getValue: (row) => row.totalOperatingExpenses,
-        formatter: (value) => formatCurrency(value),
-        isSubtotal: true,
-      },
-      { type: "section", label: "Net Position Before Debt" },
-      {
-        key: "netRevenueBeforeDebt",
-        label: "Net Revenue Before Debt",
-        getValue: (row) => row.netRevenueBeforeDebt,
-        formatter: (value) => formatCurrency(value),
-        highlight: true,
-        isSubtotal: true,
-      },
-      { type: "section", label: "Debt Service" },
-      {
-        key: "existingDebtService",
-        label: "Existing Debt Service",
-        getValue: (row) => row.existingDebtService,
-        formatter: (value) => formatCurrency(value),
-        indentLevel: 1,
-      },
-      {
-        key: "newDebtService",
-        label: "New Debt Service",
-        getValue: (row) => row.newDebtService,
-        formatter: (value) => formatCurrency(value),
-        indentLevel: 1,
-      },
-      {
-        key: "totalDebtService",
-        label: "Total Debt Service",
-        getValue: (row) => row.totalDebtService,
-        formatter: (value) => formatCurrency(value),
-        isSubtotal: true,
-      },
-      {
-        key: "netAfterDebt",
-        label: "Net After Debt Service",
-        getValue: (row) =>
-          (row.netRevenueBeforeDebt || 0) - (row.totalDebtService || 0),
-        formatter: (value) => formatCurrency(value),
-        highlight: true,
-        isSubtotal: true,
-      },
-      { type: "section", label: "Capital & Coverage" },
-      {
-        key: "cashFundedCapex",
-        label: "Cash-Funded CIP",
-        getValue: (row) => row.cashFundedCapex,
-        formatter: (value) => formatCurrency(value),
-        indentLevel: 1,
-      },
-      {
-        key: "cipSpend",
-        label: "Total CIP Spend",
-        getValue: (row) => row.cipSpend,
-        formatter: (value) => formatCurrency(value),
-        indentLevel: 1,
-      },
-      {
-        key: "endingCashBalance",
-        label: "Ending Cash Balance",
-        getValue: (row) => row.endingCashBalance,
-        formatter: (value) => formatCurrency(value),
-        highlight: true,
-        isSubtotal: true,
-      },
-      {
-        key: "daysCashOnHand",
-        label: "Days Cash on Hand",
-        getValue: (row) => row.daysCashOnHand,
-        formatter: (value) => formatDaysCash(value),
-        minThreshold: 180,
-      },
-      {
-        key: "coverageRatio",
-        label: "Debt Service Coverage",
-        getValue: (row) => row.coverageRatio,
-        formatter: (value) => formatCoverageRatio(value, 2),
-        emphasizeThreshold: financialConfig.targetCoverageRatio,
-      },
-      {
-        key: "additionalRateIncreaseNeeded",
-        label: "Additional Rate Increase Needed",
-        getValue: (row) => row.additionalRateIncreaseNeeded,
-        formatter: (value) =>
-          value && value > 0
-            ? formatPercent(value, { decimals: 1 })
-            : "Met",
-      },
-    ],
-    [financialConfig.targetCoverageRatio]
-  );
+      });
+    });
+    rows.push({
+      key: "totalOperatingExpenses",
+      label: "Total Operating Expenses",
+      getValue: (row) => sumAmounts(row.expenseLineItems),
+      formatter: (value) => formatCurrency(value),
+      isSubtotal: true,
+    });
+
+    rows.push({ type: "section", label: "Net Position Before Debt" });
+    rows.push({
+      key: "netRevenueBeforeDebt",
+      label: "Net Revenue Before Debt",
+      getValue: (row) => row.netRevenueBeforeDebt,
+      formatter: (value) => formatCurrency(value),
+      highlight: true,
+      isSubtotal: true,
+    });
+
+    rows.push({ type: "section", label: "Debt Service" });
+    rows.push({
+      key: "existingDebtService",
+      label: "Existing Debt Service",
+      getValue: (row) => row.existingDebtService,
+      formatter: (value) => formatCurrency(value),
+      indentLevel: 1,
+    });
+    rows.push({
+      key: "newDebtService",
+      label: "New Debt Service",
+      getValue: (row) => row.newDebtService,
+      formatter: (value) => formatCurrency(value),
+      indentLevel: 1,
+    });
+    rows.push({
+      key: "totalDebtService",
+      label: "Total Debt Service",
+      getValue: (row) => row.totalDebtService,
+      formatter: (value) => formatCurrency(value),
+      isSubtotal: true,
+    });
+    rows.push({
+      key: "netAfterDebt",
+      label: "Net After Debt Service",
+      getValue: (row) =>
+        (row.netRevenueBeforeDebt || 0) - (row.totalDebtService || 0),
+      formatter: (value) => formatCurrency(value),
+      highlight: true,
+      isSubtotal: true,
+    });
+
+    rows.push({ type: "section", label: "Capital & Coverage" });
+    rows.push({
+      key: "cashFundedCapex",
+      label: "Cash-Funded CIP",
+      getValue: (row) => row.cashFundedCapex,
+      formatter: (value) => formatCurrency(value),
+      indentLevel: 1,
+    });
+    rows.push({
+      key: "cipSpend",
+      label: "Total CIP Spend",
+      getValue: (row) => row.cipSpend,
+      formatter: (value) => formatCurrency(value),
+      indentLevel: 1,
+    });
+    rows.push({
+      key: "endingCashBalance",
+      label: "Ending Cash Balance",
+      getValue: (row) => row.endingCashBalance,
+      formatter: (value) => formatCurrency(value),
+      highlight: true,
+      isSubtotal: true,
+    });
+    rows.push({
+      key: "daysCashOnHand",
+      label: "Days Cash on Hand",
+      getValue: (row) => row.daysCashOnHand,
+      formatter: (value) => formatDaysCash(value),
+      minThreshold: 180,
+    });
+    rows.push({
+      key: "coverageRatio",
+      label: "Debt Service Coverage",
+      getValue: (row) => row.coverageRatio,
+      formatter: (value) => formatCoverageRatio(value, 2),
+      emphasizeThreshold: financialConfig.targetCoverageRatio,
+    });
+    rows.push({
+      key: "additionalRateIncreaseNeeded",
+      label: "Additional Rate Increase Needed",
+      getValue: (row) => row.additionalRateIncreaseNeeded,
+      formatter: (value) =>
+        value && value > 0 ? formatPercent(value, { decimals: 1 }) : "Met",
+    });
+
+    return rows;
+  }, [forecast, financialConfig.targetCoverageRatio]);
 
   return (
     <div className="space-y-6">

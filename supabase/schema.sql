@@ -237,7 +237,6 @@ create table if not exists public.utility_financial_profiles (
   budget_escalations jsonb not null default '{}'::jsonb,
   existing_debt_manual_totals jsonb not null default '{}'::jsonb,
   existing_debt_instruments jsonb not null default '[]'::jsonb,
-
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now()),
   constraint utility_financial_profiles_utility_key_check
@@ -256,6 +255,8 @@ create table if not exists public.utility_operating_budgets (
   om_expenses numeric default 0,
   salaries numeric default 0,
   admin_expenses numeric default 0,
+  revenue_line_items jsonb default '[]'::jsonb,
+  expense_line_items jsonb default '[]'::jsonb,
   existing_debt_service numeric default 0,
   rate_increase_percent numeric default 0,
   created_at timestamptz not null default timezone('utc', now()),

@@ -11,7 +11,6 @@ const SettingsView = ({
   utilityOptions = [],
   onUpdateProjectTypeUtility,
   onUpdateFinancialConfig,
-
   isReadOnly,
 }) => {
   const assignmentOptions = useMemo(

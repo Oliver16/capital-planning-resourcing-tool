@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from "react";
-
 import {
   FINANCING_TYPE_OPTIONS,
   formatCurrency,
@@ -538,7 +537,6 @@ const DebtServiceView = ({
                             event.target.value
                           )
                         }
-
                         className={`${numberInputClasses} ${isReadOnly ? readOnlyClasses : ""}`}
                         disabled={isReadOnly}
                       >
@@ -566,7 +564,6 @@ const DebtServiceView = ({
                               event.target.value
                             )
                           }
-
                           className={`${numberInputClasses} text-right ${isReadOnly ? readOnlyClasses : ""}`}
                           disabled={isReadOnly}
                         />
