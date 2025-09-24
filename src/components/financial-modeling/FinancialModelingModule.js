@@ -4,6 +4,7 @@ import {
   ensureBudgetYears,
   buildProjectSpendBreakdown,
   calculateExistingDebtSchedule,
+
 } from "../../utils/financialModeling";
 import CipSummaryView from "./views/CipSummaryView";
 import OperatingBudgetView from "./views/OperatingBudgetView";
@@ -104,6 +105,7 @@ const FinancialModelingModule = ({
   onUpdateExistingDebtManual,
   onAddExistingDebtInstrument,
   onRemoveExistingDebtInstrument,
+
 }) => {
   const [activeView, setActiveView] = useState("cip");
 
@@ -218,6 +220,7 @@ const FinancialModelingModule = ({
       financialConfig.projectionYears,
     ]
   );
+
 
   return (
     <div className="space-y-6">
@@ -341,6 +344,7 @@ const FinancialModelingModule = ({
           utilityOptions={utilityOptions}
           onUpdateProjectTypeUtility={onUpdateProjectTypeUtility}
           onUpdateFinancialConfig={onUpdateFinancialConfig}
+
           isReadOnly={isReadOnly}
         />
       ) : null}

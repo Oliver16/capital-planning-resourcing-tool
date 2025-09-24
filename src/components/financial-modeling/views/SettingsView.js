@@ -11,6 +11,7 @@ const SettingsView = ({
   utilityOptions = [],
   onUpdateProjectTypeUtility,
   onUpdateFinancialConfig,
+
   isReadOnly,
 }) => {
   const assignmentOptions = useMemo(
@@ -132,7 +133,6 @@ const SettingsView = ({
             />
           </label>
         </div>
-
         <dl className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {configItems.map((item) => (
             <div key={item.label} className="rounded-md bg-slate-50 px-4 py-3">

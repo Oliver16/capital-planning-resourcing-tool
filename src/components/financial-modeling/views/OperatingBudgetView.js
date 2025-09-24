@@ -262,6 +262,7 @@ const OperatingBudgetView = ({
                               isReadOnly ? readOnlyClasses : ""
                             }`}
                             disabled={isReadOnly || !hasBaseYear || line.isReadOnly}
+
                           />
                         )
                       ) : (
@@ -271,11 +272,13 @@ const OperatingBudgetView = ({
                     <td className="px-4 py-3">
                       {supportsEscalation ? (
                         isReadOnly || line.isReadOnly ? (
+
                           <span className="block text-right text-slate-700">
                             {formatPercent(escalationValue, { decimals: 1 })}
                           </span>
                         ) : (
                           <div className="flex min-w-[10rem] items-center justify-end gap-2">
+
                             <input
                               type="number"
                               step={0.1}
