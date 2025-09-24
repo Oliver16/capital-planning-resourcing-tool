@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import LoginView from './LoginView';
 import OrganizationSetup from './OrganizationSetup';
 import SuperuserAdminPanel from '../admin/SuperuserAdminPanel';
+import TechnicalGuidePage from '../help/TechnicalGuidePage';
 
 const AuthGate = ({ children }) => {
   const {
@@ -19,6 +20,8 @@ const AuthGate = ({ children }) => {
     hasSuperuserAccess,
   } = useAuth();
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+  const [activeView, setActiveView] = useState('workspace');
+  const isHelpView = activeView === 'help';
   if (authLoading) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center">
@@ -89,6 +92,22 @@ const AuthGate = ({ children }) => {
             )}
             <button
               type="button"
+              onClick={() =>
+                setActiveView((current) =>
+                  current === 'help' ? 'workspace' : 'help'
+                )
+              }
+              className={`inline-flex items-center rounded-md border px-3 py-2 text-sm font-medium shadow-sm transition ${
+                isHelpView
+                  ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              }`}
+              aria-pressed={isHelpView}
+            >
+              Help
+            </button>
+            <button
+              type="button"
               onClick={signOut}
               className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50"
             >
@@ -105,7 +124,12 @@ const AuthGate = ({ children }) => {
         </div>
       )}
 
-      <div className="flex-1 overflow-auto">{children}</div>
+      <div className="flex-1 overflow-auto">
+        <div className={isHelpView ? 'hidden h-full' : 'block h-full'}>{children}</div>
+        {isHelpView && (
+          <TechnicalGuidePage onClose={() => setActiveView('workspace')} />
+        )}
+      </div>
 
       {hasSuperuserAccess && isAdminPanelOpen && (
         <SuperuserAdminPanel onClose={() => setIsAdminPanelOpen(false)} />
