@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   PlusCircle,
   Copy,
@@ -20,8 +20,6 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  ComposedChart,
-  Bar,
 } from "recharts";
 import {
   analyzeScenario,
@@ -100,6 +98,37 @@ const currencyFormatter = new Intl.NumberFormat("en-US", {
   currency: "USD",
   maximumFractionDigits: 0,
 });
+
+const BASELINE_DESIGN_COLOR = "#bfdbfe";
+const BASELINE_CONSTRUCTION_COLOR = "#fde68a";
+const BASELINE_PROGRAM_COLOR = "#ddd6fe";
+const SCENARIO_DESIGN_COLOR = "#2563eb";
+const SCENARIO_CONSTRUCTION_COLOR = "#ea580c";
+const SCENARIO_PROGRAM_COLOR = "#7c3aed";
+
+const getBaselineSegmentColor = (phase) => {
+  if (phase === "construction") {
+    return BASELINE_CONSTRUCTION_COLOR;
+  }
+
+  if (phase === "program") {
+    return BASELINE_PROGRAM_COLOR;
+  }
+
+  return BASELINE_DESIGN_COLOR;
+};
+
+const getScenarioSegmentColor = (phase) => {
+  if (phase === "construction") {
+    return SCENARIO_CONSTRUCTION_COLOR;
+  }
+
+  if (phase === "program") {
+    return SCENARIO_PROGRAM_COLOR;
+  }
+
+  return SCENARIO_DESIGN_COLOR;
+};
 
 const ScenariosTab = ({
   projects,
@@ -313,41 +342,15 @@ const ScenariosTab = ({
       .slice(0, 12);
   }, [baselineAnalysis, activeAnalysis]);
 
-  const earliestStart = useMemo(() => {
-    const dates = [];
-    if (baselineAnalysis?.startDate) {
-      const date =
-        baselineAnalysis.startDate instanceof Date
-          ? baselineAnalysis.startDate
-          : new Date(baselineAnalysis.startDate);
-      if (!Number.isNaN(date.getTime())) {
-        dates.push(date.getTime());
-      }
-    }
-    if (activeAnalysis?.startDate) {
-      const date =
-        activeAnalysis.startDate instanceof Date
-          ? activeAnalysis.startDate
-          : new Date(activeAnalysis.startDate);
-      if (!Number.isNaN(date.getTime())) {
-        dates.push(date.getTime());
-      }
-    }
-
-    if (dates.length === 0) {
-      const fallback = new Date();
-      fallback.setDate(1);
-      return fallback;
-    }
-
-    const earliest = new Date(Math.min(...dates));
-    earliest.setDate(1);
-    return earliest;
-  }, [baselineAnalysis, activeAnalysis]);
-
-  const ganttData = useMemo(() => {
-    if (!baselineAnalysis || !activeAnalysis) {
-      return [];
+  const timelineComparison = useMemo(() => {
+    if (!baselineAnalysis || !activeAnalysis || selectedProjects.length === 0) {
+      return {
+        rows: [],
+        start: null,
+        end: null,
+        totalMonths: 0,
+        yearMarkers: [],
+      };
     }
 
     const baselineTimelineMap = new Map(
@@ -356,40 +359,259 @@ const ScenariosTab = ({
     const scenarioTimelineMap = new Map(
       (activeAnalysis.timelines || []).map((project) => [project.id, project])
     );
-    const scenarioProjectsMap = new Map(
-      (activeAnalysis.projects || []).map((project) => [project.id, project])
-    );
 
-    return (projects || [])
-      .filter((project) => project.type === "project")
+    let earliestStartDate = null;
+    let latestEndDate = null;
+
+    const trackRange = (value) => {
+      if (!value) {
+        return;
+      }
+
+      const date = value instanceof Date ? value : new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return;
+      }
+
+      if (!earliestStartDate || date.getTime() < earliestStartDate.getTime()) {
+        earliestStartDate = new Date(date);
+      }
+
+      if (!latestEndDate || date.getTime() > latestEndDate.getTime()) {
+        latestEndDate = new Date(date);
+      }
+    };
+
+    const addSegment = (collection, start, end, phase) => {
+      if (!start || !end) {
+        return;
+      }
+
+      const startDate = start instanceof Date ? start : new Date(start);
+      const endDate = end instanceof Date ? end : new Date(end);
+
+      if (
+        Number.isNaN(startDate.getTime()) ||
+        Number.isNaN(endDate.getTime()) ||
+        endDate.getTime() <= startDate.getTime()
+      ) {
+        return;
+      }
+
+      collection.push({
+        phase,
+        start: startDate,
+        end: endDate,
+      });
+
+      trackRange(startDate);
+      trackRange(endDate);
+    };
+
+    const rows = selectedProjects
       .map((project) => {
         const baselineTimeline = baselineTimelineMap.get(project.id);
-        const scenarioTimeline = scenarioTimelineMap.get(project.id) || baselineTimeline;
-        const scenarioProject = scenarioProjectsMap.get(project.id) || project;
+        const scenarioTimeline =
+          scenarioTimelineMap.get(project.id) || baselineTimeline;
+        const isProgram = project.type === "program";
 
-        const baselineStart = baselineTimeline?.designStart;
-        const scenarioStart = scenarioTimeline?.designStart || baselineStart;
-        const totalBaselineDuration =
-          (project.designDuration || 0) + (project.constructionDuration || 0);
-        const totalScenarioDuration =
-          (scenarioProject.designDuration || 0) +
-          (scenarioProject.constructionDuration || 0);
+        const baselineSegmentsRaw = [];
+        const scenarioSegmentsRaw = [];
+
+        if (baselineTimeline) {
+          if (isProgram) {
+            addSegment(
+              baselineSegmentsRaw,
+              baselineTimeline.designStart,
+              baselineTimeline.designEnd,
+              "program"
+            );
+          } else {
+            addSegment(
+              baselineSegmentsRaw,
+              baselineTimeline.designStart,
+              baselineTimeline.designEnd,
+              "design"
+            );
+            addSegment(
+              baselineSegmentsRaw,
+              baselineTimeline.constructionStart,
+              baselineTimeline.constructionEnd,
+              "construction"
+            );
+          }
+        }
+
+        if (scenarioTimeline) {
+          if (isProgram) {
+            addSegment(
+              scenarioSegmentsRaw,
+              scenarioTimeline.designStart,
+              scenarioTimeline.designEnd,
+              "program"
+            );
+          } else {
+            addSegment(
+              scenarioSegmentsRaw,
+              scenarioTimeline.designStart,
+              scenarioTimeline.designEnd,
+              "design"
+            );
+            addSegment(
+              scenarioSegmentsRaw,
+              scenarioTimeline.constructionStart,
+              scenarioTimeline.constructionEnd,
+              "construction"
+            );
+          }
+        }
+
+        if (baselineSegmentsRaw.length === 0 && scenarioSegmentsRaw.length === 0) {
+          return null;
+        }
+
+        const baselineStart =
+          baselineTimeline?.designStart || baselineSegmentsRaw[0]?.start || null;
+        const baselineEnd =
+          (isProgram
+            ? baselineTimeline?.designEnd
+            : baselineTimeline?.constructionEnd) ||
+          baselineSegmentsRaw[baselineSegmentsRaw.length - 1]?.end ||
+          null;
+        const scenarioStart =
+          scenarioTimeline?.designStart ||
+          scenarioSegmentsRaw[0]?.start ||
+          baselineStart;
+        const scenarioEnd =
+          (isProgram
+            ? scenarioTimeline?.designEnd
+            : scenarioTimeline?.constructionEnd) ||
+          scenarioSegmentsRaw[scenarioSegmentsRaw.length - 1]?.end ||
+          baselineEnd;
+
+        trackRange(baselineStart);
+        trackRange(baselineEnd);
+        trackRange(scenarioStart);
+        trackRange(scenarioEnd);
+
+        const designShift = calculateMonthDifference(
+          baselineTimeline?.designStart || baselineStart,
+          scenarioTimeline?.designStart || scenarioStart
+        );
+        const constructionShift = calculateMonthDifference(
+          baselineTimeline?.constructionStart || baselineStart,
+          scenarioTimeline?.constructionStart || scenarioStart
+        );
+        const programEndShift = calculateMonthDifference(
+          baselineTimeline?.constructionEnd || baselineEnd,
+          scenarioTimeline?.constructionEnd || scenarioEnd
+        );
 
         return {
-          projectId: project.id,
-          name: project.name,
-          baselineOffset: baselineStart
-            ? calculateMonthDifference(earliestStart, baselineStart)
-            : 0,
-          baselineDuration: Math.max(0, totalBaselineDuration),
-          scenarioOffset: scenarioStart
-            ? calculateMonthDifference(earliestStart, scenarioStart)
-            : 0,
-          scenarioDuration: Math.max(0, totalScenarioDuration),
+          project,
+          projectType: projectTypeMap.get(project.projectTypeId),
+          baselineTimeline,
+          scenarioTimeline,
+          baselineSegmentsRaw,
+          scenarioSegmentsRaw,
+          baselineStart,
+          baselineEnd,
+          scenarioStart,
+          scenarioEnd,
+          designShift,
+          constructionShift,
+          programEndShift,
+          isProgram,
         };
       })
-      .filter((row) => Number.isFinite(row.baselineOffset));
-  }, [projects, baselineAnalysis, activeAnalysis, earliestStart]);
+      .filter(Boolean);
+
+    if (rows.length === 0 || !earliestStartDate || !latestEndDate) {
+      return {
+        rows: [],
+        start: null,
+        end: null,
+        totalMonths: 0,
+        yearMarkers: [],
+      };
+    }
+
+    const normalizedStart = new Date(earliestStartDate);
+    normalizedStart.setDate(1);
+    normalizedStart.setHours(0, 0, 0, 0);
+
+    const paddedEnd = new Date(latestEndDate);
+    paddedEnd.setDate(1);
+    paddedEnd.setHours(0, 0, 0, 0);
+    paddedEnd.setMonth(paddedEnd.getMonth() + 1);
+
+    const totalMonths = Math.max(
+      1,
+      calculateMonthDifference(normalizedStart, paddedEnd)
+    );
+
+    const yearMarkers = [];
+    const totalYears = Math.ceil(totalMonths / 12);
+    for (let i = 0; i <= totalYears; i += 1) {
+      const markerDate = new Date(normalizedStart);
+      markerDate.setMonth(markerDate.getMonth() + i * 12);
+      yearMarkers.push({
+        label: markerDate.getFullYear(),
+        offsetPercent: Math.min(100, (i * 12 * 100) / totalMonths),
+      });
+    }
+
+    const buildSegments = (segments) =>
+      segments
+        .map((segment) => {
+          const offsetMonths = Math.max(
+            0,
+            calculateMonthDifference(normalizedStart, segment.start)
+          );
+          const endOffset = Math.max(
+            0,
+            calculateMonthDifference(normalizedStart, segment.end)
+          );
+          const rawDuration = Math.max(0, endOffset - offsetMonths);
+          const maxDuration = Math.max(0, totalMonths - offsetMonths);
+          const duration = Math.min(Math.max(rawDuration, 0.5), maxDuration);
+
+          if (duration <= 0) {
+            return null;
+          }
+
+          return {
+            ...segment,
+            offsetPercent: (offsetMonths / totalMonths) * 100,
+            widthPercent: (duration / totalMonths) * 100,
+          };
+        })
+        .filter(Boolean);
+
+    const normalizedRows = rows.map((row) => ({
+      ...row,
+      baselineSegments: buildSegments(row.baselineSegmentsRaw),
+      scenarioSegments: buildSegments(row.scenarioSegmentsRaw),
+    }));
+
+    return {
+      rows: normalizedRows,
+      start: normalizedStart,
+      end: paddedEnd,
+      totalMonths,
+      yearMarkers,
+    };
+  }, [
+    baselineAnalysis,
+    activeAnalysis,
+    selectedProjects,
+    projectTypeMap,
+  ]);
+
+  const hasProgramProjects = useMemo(
+    () => timelineComparison.rows.some((row) => row.isProgram),
+    [timelineComparison.rows]
+  );
 
   const budgetRows = activeAnalysis?.budgetImpacts?.differences || [];
   const conflictCards = useMemo(
@@ -402,22 +624,6 @@ const ScenariosTab = ({
       : [
           "Scenario aligns with baseline staffing capacity. No major conflicts detected.",
         ];
-
-  const timelineTickFormatter = useCallback(
-    (value = 0) => {
-      if (!(earliestStart instanceof Date) || Number.isNaN(earliestStart.getTime())) {
-        return `Month ${Math.round(value) + 1}`;
-      }
-
-      const tickDate = new Date(earliestStart);
-      tickDate.setMonth(tickDate.getMonth() + Math.round(value));
-      return tickDate.toLocaleDateString("en-US", {
-        month: "short",
-        year: "numeric",
-      });
-    },
-    [earliestStart]
-  );
 
   const gapSummary = activeAnalysis?.gapSummary || {
     totalGap: 0,
@@ -1079,75 +1285,205 @@ const ScenariosTab = ({
         </div>
 
         <div className="border border-gray-200 rounded-lg p-4 mt-6">
-          <h4 className="font-semibold text-gray-900 mb-2">Baseline vs scenario timelines</h4>
-          <div className="h-[26rem]">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart
-                data={ganttData}
-                layout="vertical"
-                margin={{ top: 24, right: 32, left: 80, bottom: 56 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  type="number"
-                  domain={[0, "dataMax + 6"]}
-                  allowDecimals={false}
-                  tick={{ fontSize: 14, fill: "#374151" }}
-                  tickFormatter={timelineTickFormatter}
-                  label={{
-                    value: "Months from earliest project start",
-                    position: "bottom",
-                    offset: 24,
-                    fontSize: 14,
-                    fill: "#374151",
-                  }}
-                />
-                <YAxis
-                  dataKey="name"
-                  type="category"
-                  width={220}
-                  tick={{ fontSize: 14, fill: "#111827" }}
-                />
-                <Tooltip
-                  labelFormatter={timelineTickFormatter}
-                  formatter={(value, name, props) => {
-                    if (props?.dataKey === "baselineOffset" || props?.dataKey === "scenarioOffset") {
-                      return null;
-                    }
-                    const formattedValue = `${Number(value).toFixed(0)} mo`;
-                    return [formattedValue, name];
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: 14 }} />
-                <Bar
-                  dataKey="baselineOffset"
-                  stackId="baseline"
-                  fill="transparent"
-                  isAnimationActive={false}
-                />
-                <Bar
-                  dataKey="baselineDuration"
-                  name="Baseline"
-                  stackId="baseline"
-                  fill="#93c5fd"
-                  radius={[0, 0, 0, 0]}
-                />
-                <Bar
-                  dataKey="scenarioOffset"
-                  stackId="scenario"
-                  fill="transparent"
-                  isAnimationActive={false}
-                />
-                <Bar
-                  dataKey="scenarioDuration"
-                  name="Scenario"
-                  stackId="scenario"
-                  fill="#fca5a5"
-                  radius={[0, 0, 0, 0]}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <h4 className="font-semibold text-gray-900">Baseline vs scenario schedules</h4>
+            {timelineComparison.rows.length > 0 && (
+              <span className="text-xs text-gray-500">
+                Showing {timelineComparison.rows.length} project
+                {timelineComparison.rows.length === 1 ? "" : "s"} added to this scenario.
+              </span>
+            )}
           </div>
+          <p className="text-sm text-gray-500 mt-1">
+            Visualize how scenario adjustments shift the delivery windows for each selected project.
+          </p>
+
+          {selectedProjects.length === 0 ? (
+            <div className="mt-6 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-500">
+              Add projects to the scenario to compare their schedules.
+            </div>
+          ) : timelineComparison.rows.length === 0 ? (
+            <div className="mt-6 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-500">
+              Timeline data is unavailable for the selected projects.
+            </div>
+          ) : (
+            <>
+              <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-gray-600">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="h-2 w-6 rounded-full"
+                    style={{ backgroundColor: BASELINE_DESIGN_COLOR }}
+                  />
+                  <span>Baseline design/start</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className="h-2 w-6 rounded-full"
+                    style={{ backgroundColor: BASELINE_CONSTRUCTION_COLOR }}
+                  />
+                  <span>
+                    Baseline {hasProgramProjects ? "construction/program end" : "construction"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className="h-2 w-6 rounded-full"
+                    style={{ backgroundColor: SCENARIO_DESIGN_COLOR }}
+                  />
+                  <span>Scenario design/start</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className="h-2 w-6 rounded-full"
+                    style={{ backgroundColor: SCENARIO_CONSTRUCTION_COLOR }}
+                  />
+                  <span>
+                    Scenario {hasProgramProjects ? "construction/program end" : "construction"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-6 space-y-5">
+                {timelineComparison.rows.map((row) => {
+                  const primaryLabel = row.isProgram
+                    ? "Program start shift"
+                    : "Design start shift";
+                  const secondaryLabel = row.isProgram
+                    ? "Program end shift"
+                    : "Construction start shift";
+                  const primaryBadge = formatShiftBadge(row.designShift);
+                  const secondaryValue = row.isProgram
+                    ? row.programEndShift
+                    : row.constructionShift;
+                  const secondaryBadge = formatShiftBadge(secondaryValue);
+
+                  return (
+                    <div
+                      key={row.project.id}
+                      className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
+                    >
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div>
+                          <div className="flex items-center gap-3">
+                            <h5 className="text-base font-semibold text-gray-900">
+                              {row.project.name}
+                            </h5>
+                            {row.projectType?.name && (
+                              <span
+                                className="text-xs font-medium px-2 py-0.5 rounded-full"
+                                style={{
+                                  backgroundColor: `${row.projectType.color || "#e2e8f0"}1A`,
+                                  color: row.projectType.color || "#1f2937",
+                                }}
+                              >
+                                {row.projectType.name}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs uppercase tracking-wide text-gray-400 mt-1">
+                            {row.project.type === "project"
+                              ? "Capital Project"
+                              : "Program"}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2 text-xs text-gray-600">
+                          <div className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1">
+                            <span className="font-medium text-gray-700">{primaryLabel}</span>
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${primaryBadge.className}`}
+                            >
+                              {primaryBadge.text}
+                            </span>
+                          </div>
+                          <div className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1">
+                            <span className="font-medium text-gray-700">{secondaryLabel}</span>
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${secondaryBadge.className}`}
+                            >
+                              {secondaryBadge.text}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4">
+                        <div className="flex justify-between text-[11px] uppercase tracking-wide text-gray-500 mb-1">
+                          <span>Baseline (top)</span>
+                          <span>Scenario (bottom)</span>
+                        </div>
+                        <div className="relative h-16 overflow-hidden rounded-md bg-gray-100">
+                          {timelineComparison.yearMarkers.map((marker, index) => (
+                            <div
+                              key={`${marker.label}-${index}`}
+                              className="pointer-events-none absolute inset-y-0"
+                              style={{ left: `${marker.offsetPercent}%` }}
+                            >
+                              {index !== 0 && (
+                                <div className="absolute inset-y-0 -translate-x-1/2 border-l border-slate-300/60" />
+                              )}
+                              <div className="absolute bottom-1 -translate-x-1/2 text-[10px] font-medium text-slate-500">
+                                {marker.label}
+                              </div>
+                            </div>
+                          ))}
+                          {row.baselineSegments.map((segment, index) => (
+                            <div
+                              key={`baseline-${row.project.id}-${segment.phase}-${index}`}
+                              className="absolute top-[22%] h-3 rounded-full shadow-sm"
+                              style={{
+                                left: `${segment.offsetPercent}%`,
+                                width: `${segment.widthPercent}%`,
+                                backgroundColor: getBaselineSegmentColor(segment.phase),
+                              }}
+                              title={`${
+                                segment.phase === "program"
+                                  ? "Program"
+                                  : segment.phase === "construction"
+                                  ? "Construction"
+                                  : "Design"
+                              } • Baseline: ${formatDate(segment.start)} – ${formatDate(segment.end)}`}
+                            />
+                          ))}
+                          {row.scenarioSegments.map((segment, index) => (
+                            <div
+                              key={`scenario-${row.project.id}-${segment.phase}-${index}`}
+                              className="absolute bottom-[22%] h-3 rounded-full shadow-sm"
+                              style={{
+                                left: `${segment.offsetPercent}%`,
+                                width: `${segment.widthPercent}%`,
+                                backgroundColor: getScenarioSegmentColor(segment.phase),
+                              }}
+                              title={`${
+                                segment.phase === "program"
+                                  ? "Program"
+                                  : segment.phase === "construction"
+                                  ? "Construction"
+                                  : "Design"
+                              } • Scenario: ${formatDate(segment.start)} – ${formatDate(segment.end)}`}
+                            />
+                          ))}
+                        </div>
+                        <div className="mt-2 grid gap-2 text-[11px] text-gray-600 sm:grid-cols-2">
+                          <div>
+                            <span className="font-semibold text-gray-700">Baseline</span>
+                            <span className="ml-2">
+                              {formatDate(row.baselineStart)} – {formatDate(row.baselineEnd)}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="font-semibold text-gray-700">Scenario</span>
+                            <span className="ml-2">
+                              {formatDate(row.scenarioStart)} – {formatDate(row.scenarioEnd)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
