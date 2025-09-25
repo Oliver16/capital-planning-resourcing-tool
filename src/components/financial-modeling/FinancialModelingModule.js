@@ -156,8 +156,11 @@ const FinancialModelingModule = ({
   );
 
   const projectSpendBreakdown = useMemo(
-    () => buildProjectSpendBreakdown(filteredProjectTimelines),
-    [filteredProjectTimelines]
+    () =>
+      buildProjectSpendBreakdown(filteredProjectTimelines, {
+        fiscalYearStartMonth: financialConfig?.fiscalYearStartMonth,
+      }),
+    [filteredProjectTimelines, financialConfig?.fiscalYearStartMonth]
   );
 
   const projectTypeSummaries = useMemo(() => {

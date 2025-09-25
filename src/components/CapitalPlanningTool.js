@@ -270,6 +270,7 @@ const createDefaultFinancialConfig = (startYear) => ({
   projectionYears: 10,
   startingCashBalance: 2500000,
   targetCoverageRatio: 1.5,
+  fiscalYearStartMonth: 1,
 });
 
 const createDefaultUtilityProfile = (startYear) => ({

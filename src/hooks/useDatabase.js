@@ -255,6 +255,7 @@ const sanitizeFinancialConfig = (rawConfig = {}) => {
   const projectionYears = Number(rawConfig.projectionYears);
   const startingCashBalance = Number(rawConfig.startingCashBalance);
   const targetCoverageRatio = Number(rawConfig.targetCoverageRatio);
+  const fiscalYearStartMonth = Number(rawConfig.fiscalYearStartMonth);
 
   return {
     startYear: sanitizeFiscalYear(rawConfig.startYear, currentYear),

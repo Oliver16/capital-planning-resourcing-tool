@@ -1,49 +1,113 @@
-# Vector – Technical Guide
+# Vector – Help & Technical Guide
 
-This guide documents the application architecture, data model, and analytic
-methodology that power Vector. It is intended for engineers who need to extend
-the system or audit its planning assumptions.
+Vector blends capital planning, staffing intelligence, and utility financial
+modeling into a single React application. Use this document inside the in-app
+Help view or directly from the repository to understand core workflows and the
+underlying architecture.
 
-## 1. Application architecture
+## How to use Vector
 
-- **Frontend stack** – React 18 with functional components and hooks, Tailwind
-  CSS utility classes, Lucide icons, Recharts visualizations, and
-  `react-markdown` for in-app documentation. The CRA toolchain is customized
-  through `react-app-rewired` to keep the bundle lean while integrating the
-  Supabase client and Markdown assets.
-- **Modules** – The authenticated shell renders two primary modules: the
-  capital planning workspace (tabbed project/staff views) and the financial
-  modeling suite. A Help view reuses the Markdown guide for contextual
-  documentation.
-- **State orchestration** – `CapitalPlanningTool` owns planning state, loads
-  default data, synchronizes with the database service, and renders feature
-  tabs. The financial suite receives derived planning data and maintains its own
-  configuration state per utility.
+### 1. Navigate the workspace
+=======
+
+- **Header actions** – Switch between the capital planning workspace, financial
+  modeling suite, admin console (superusers), and this Help view. The active
+  organization name and quick access to sign out live in the same header.
+- **Tab navigation** – Each major workflow (Projects & Programs, People,
+  Assignments, etc.) lives under a tab. Tabs persist state while you move around,
+  so edits in one area stay intact as you explore the rest of the app.
+- **Scenario selector** – Use the dropdown in the workspace header to jump
+  between the live plan and “what-if” scenarios.
+
+### 2. Maintain the capital plan
+
+1. **Seed data** – Under **Settings**, create project types, funding sources, and
+   staff categories. These lookups power default values, filters, and reports.
+2. **Capture projects & programs** – Enter durations, delivery approach, budget
+   details, and (for annual programs) continuous effort settings in **Projects &
+   Programs**. Import/export CSV files using the bundled template for bulk edits.
+3. **Model effort** – Configure effort templates on the project record or via
+   **Effort Projections** to distribute hours by category and phase. Continuous
+   effort programs apply the configured monthly hours automatically.
+4. **Manage people** – In **People**, add staff categories with rate/capacity
+   data and individual staff members with per-phase availability.
+5. **Staff assignments** – Let **Assignments** auto-balance demand or manually
+   adjust person-by-project hours. Utilization, unfilled demand callouts, and
+   reset helpers keep assignments healthy.
+6. **Review forecasts** – **Schedule View**, **Resource Forecast**, and
+   **Reports** summarize timelines, FTE demand vs. availability, and exportable
+   briefings for leadership.
+
+### 3. Run utility financial models
+
+1. **Assign utilities** – Map project types to utilities inside **Model
+   Settings** so CIP spend flows into the correct financial model.
+2. **Track operating budgets** – Enter annual revenue and expense assumptions in
+   **Operating Budget**, including manual adjustments for existing debt service.
+3. **Configure financing** – Define funding source financing assumptions
+   (interest rate, term, coverage ratios) to drive new debt schedules in
+   **Debt Service**.
+4. **Generate projections** – The **CIP Plan** and **Pro Forma** tabs combine
+   project spend, operating budgets, and debt plans to show cash balance,
+   coverage ratio, and reserve trajectories per utility.
+
+### 4. Manage data & exports
+
+- **Export organization data** – From **Settings → Export data**, download the
+  full organization snapshot as JSON for backups or support requests.
+- **Import data** – Upload a compatible export to seed another environment (UI
+  shipping soon; helper functions already handle the shape).
+- **Default content** – New organizations auto-populate default project types,
+  funding sources, projects, staff, effort templates, assignments, and financial
+  profiles from `src/data/defaultData.js`.
+
+### 5. Troubleshooting tips
+
+- **Authentication issues** – If you land on the sign-in screen unexpectedly,
+  verify your Supabase session has not expired and that your user belongs to the
+  active organization.
+- **Role-based access** – Only superusers see the admin console. Editors can
+  modify data within their organizations; viewers receive read-only access.
+- **Data sync** – The client writes directly to Supabase. If something looks
+  stale, refresh to re-fetch the latest rows scoped to your organization.
+
+## Technical Guide
+
+### 1. Application architecture
+
+- **Frontend stack** – React 18 functional components with hooks, Tailwind CSS,
+  Lucide icons, Recharts visualizations, and `react-markdown` for in-app
+  documentation. A `react-app-rewired` override adjusts webpack to load Supabase
+  and Markdown assets cleanly.
+- **Modules** – The authenticated shell renders the capital planning workspace,
+  the financial modeling suite, and the Markdown Help view. The main workspace
+  stays mounted so context persists when toggling Help.
+- **State orchestration** – `CapitalPlanningTool` owns the planning state, loads
+  default data, syncs edits with Supabase, and renders feature tabs. Financial
+  components receive derived planning data and maintain their own configuration
+  state per utility.
 - **Authentication & routing** – `AuthGate` wraps Supabase Auth, loads
   organization memberships, and conditionally displays the workspace, admin
-  console, or the Markdown guide based on the selected header action.
+  console, or Help view based on the selected header action.
 
-## 2. Data persistence layer
+### 2. Data persistence layer
 
-Vector stores application data and authentication state in Supabase. The browser
-communicates directly with Supabase Postgres through the official JavaScript
-client and every request carries the user's JWT for authorization.
+Vector stores application data and authentication state in Supabase Postgres.
+The browser talks directly to Supabase through the official JavaScript client;
+all requests include the user's JWT for row-level security enforcement.
 
 1. **Authentication orchestration** – `AuthContext` surfaces the active session,
-   memberships, and user roles, and exposes helpers such as `signOut` and
-   `hasSuperuserAccess`.
-2. **Organization scoping** – `useDatabase` gates reads and writes on
-   `activeOrganizationId` and enforces permission checks via
-   `canEditActiveOrg` before mutating data.
-3. **Default data seeding** – Empty organizations are populated with project
-   types, funding sources, projects/programs, staff categories, staff, effort
-   templates, assignments, and financial defaults from
-   `src/data/defaultData.js`.
-4. **Exports/imports** – Helper methods collect all organization-scoped rows
-   into a JSON payload for export and bulk insert/update incoming payloads during
-   import (import UI coming soon).
+   memberships, and role helpers (`signOut`, `hasSuperuserAccess`, etc.).
+2. **Organization scoping** – `useDatabase` gates reads/writes on
+   `activeOrganizationId` and checks `canEditActiveOrg` before mutating data.
+3. **Default data seeding** – Empty organizations populate project types,
+   funding sources, projects/programs, staff categories, staff, effort templates,
+   assignments, and financial defaults from `src/data/defaultData.js`.
+4. **Exports/imports** – Helper methods gather organization-scoped rows into a
+   JSON payload for export and bulk insert/update incoming payloads during
+   import.
 
-### 2.1 Schema overview
+#### 2.1 Schema overview
 
 `useDatabase.js` provisions the following tables:
 
@@ -51,33 +115,30 @@ client and every request carries the user's JWT for authorization.
 | --- | --- | --- |
 | `project_types` | Lookup values for theming, filtering, and utility mapping. | `organization_id`, `name`, `color`, `description` |
 | `funding_sources` | Catalog of funding mechanisms and assumptions. | `organization_id`, `name`, `description` |
-| `projects` | Capital projects and annual programs. | `organization_id`, phase durations/dates, budgets, delivery type, continuous effort config |
-| `project_effort_templates` | Reusable effort distributions for new projects. | `organization_id`, `project_type_id`, per-phase hours, category overrides |
+| `projects` | Capital projects and annual programs. | `organization_id`, `phase_dates`, `budget_total`, `delivery_type`, `continuous_effort` |
+| `project_effort_templates` | Reusable effort distributions for new projects. | `organization_id`, `project_type_id`, `phase_hours`, `category_overrides` |
 | `staff_categories` | Labor roles with capacity and rate data. | `organization_id`, `hourly_rate`, `pm_capacity`, `design_capacity`, `construction_capacity` |
-| `staff_members` | Named individuals and their availability. | `organization_id`, `category_id`, phase-specific availability hours |
+| `staff_members` | Named individuals and their availability. | `organization_id`, `category_id`, `pm_hours`, `design_hours`, `construction_hours` |
 | `staff_allocations` | Level-of-effort assignments per project/category. | `organization_id`, `project_id`, `category_id`, `pm_hours`, `design_hours`, `construction_hours` |
-| `staff_assignments` | Manual overrides of person-by-project allocations. | `organization_id`, `project_id`, `staff_id`, per-phase hours |
-| `utility_financial_profiles` | Model settings and financial config per utility. | `organization_id`, `utility_key`, `financial_config`, `budget_escalations`, `existing_debt_*` |
-| `utility_operating_budgets` | Revenue & expense line items per utility/year. | `organization_id`, `utility_key`, `year`, `category`, `amount`, metadata JSON |
+| `staff_assignments` | Manual overrides of person-by-project allocations. | `organization_id`, `project_id`, `staff_id`, `phase_hours` |
+| `utility_financial_profiles` | Model settings and financial config per utility. | `organization_id`, `utility_key`, `financial_config`, `budget_escalations`, `existing_debt` |
+| `utility_operating_budgets` | Revenue & expense line items per utility/year. | `organization_id`, `utility_key`, `year`, `category`, `amount`, `metadata` |
 | `project_type_utilities` | Mapping of project types to utilities. | `organization_id`, `project_type_id`, `utility_key` |
 | `funding_source_financing_assumptions` | Financing rules for debt modeling. | `organization_id`, `funding_source_id`, `financing_type`, `interest_rate`, `term_years`, `coverage_ratio` |
 
-Foreign key constraints and unique indices preserve referential integrity
-between projects, categories, utilities, and assignments.
+Foreign keys and unique indices preserve referential integrity across projects,
+utilities, assignments, and financial settings.
 
-## 3. Capital planning workspace
-
-The tabbed workspace focuses on day-to-day project, staffing, and reporting
-workflows:
+### 3. Capital planning workspace internals
 
 - **Overview** – Aggregates portfolio totals, budget magnitudes, and critical
   staffing gaps for quick briefings.
-- **Projects & Programs** – Inline editable grid that supports CSV import,
-  delivery strategy tips, budget normalization, and continuous effort for annual
-  programs.
-- **People** – Manages staff categories (capacity + hourly rates) and the staff
-  roster (availability per phase). Validation keeps combined category capacity
-  at or below one FTE per month.
+- **Projects & Programs** – Inline editable grid supporting CSV import, delivery
+  strategy tips, budget normalization, and continuous effort for annual programs.
+- **People** – Manage staff categories (capacity + rates) and the staff roster
+  (availability per phase). Validation keeps combined category capacity within
+  realistic limits.
+
 - **Assignments** – `StaffAssignmentsTab` blends automated demand balancing with
   manual overrides. Utilization summaries, unfilled demand callouts, and reset
   actions keep project staffing aligned with available people.
@@ -95,10 +156,9 @@ workflows:
 - **Settings** – Manage project types, funding sources, and helper defaults that
   seed new organizations.
 
-## 4. Staffing intelligence
+### 4. Staffing intelligence utilities
 
-The assignment planner and forecasting layers share a suite of utilities under
-`src/utils/`:
+Shared utilities under `src/utils/` power staffing calculations:
 
 - **Timeline derivation** – `calculateTimelines` converts project inputs into
   explicit design/construction windows. Annual programs treat the program window
@@ -107,16 +167,15 @@ The assignment planner and forecasting layers share a suite of utilities under
   `normalizeEffortTemplate` keep budget and effort data consistent across
   imports, templates, and manual edits.
 - **Assignment engine** – `buildStaffAssignmentPlan` aggregates demand per
-  project/category, converts total hours to monthly rates, and assigns individual
-  staff based on availability and overrides. Utilization, unfilled demand, and
-  recommended actions are generated alongside the assignments.
-- **Scenario adjustments** – `normalizeEffortTemplate` and scenario helpers keep
-  adjustments scoped to valid project IDs and categories even as portfolio data
-  changes.
+  project/category, converts total hours to monthly rates, and assigns
+  individuals based on availability and overrides. Utilization, unfilled demand,
+  and recommended actions are generated alongside the assignments.
+- **Scenario adjustments** – Scenario helpers keep overrides scoped to valid
+  project IDs and categories even as the portfolio changes.
 
-## 5. Forecasting & analytics methodology
+### 5. Forecasting & analytics methodology
 
-### 5.1 Resource forecast generation
+#### 5.1 Resource forecast generation
 
 `generateResourceForecast` produces a month-by-month dataset that feeds both the
 Resource Forecast and Schedule View tabs.
@@ -130,25 +189,25 @@ Resource Forecast and Schedule View tabs.
    totals.
 4. **Project demand** – Discrete projects spread design/construction allocations
    evenly across their respective months while project management spans the
-   combined duration. Annual programs apply continuous monthly hours either from
-   per-category settings or the legacy aggregate totals.
-5. **FTE normalization** – All hours are converted to FTE using
+   combined duration. Annual programs apply continuous monthly hours from
+   per-category settings or legacy aggregate totals.
+5. **FTE normalization** – All hours convert to FTE using
    `hours ÷ (4.33 × 40)` (173.33 hours per month).
 
-### 5.2 Staffing gap detection
+#### 5.2 Staffing gap detection
 
 `calculateStaffingGaps` scans the forecast for categories where required FTE
-exceed actual FTE by more than 0.1. Each gap records the month label, required
-versus available FTE, and the magnitude of the shortage. The UI escalates gaps
-greater than 1 FTE as “Critical.”
+exceed actual FTE by more than 0.1. Gaps include the month label, required versus
+available FTE, and the magnitude of the shortage. The UI escalates gaps greater
+than 1 FTE as “Critical.”
 
-### 5.3 Scenario analysis & reporting
+#### 5.3 Scenario analysis & reporting
 
 Scenarios reuse the forecast engine with per-project adjustments applied on the
 fly. Reports and dashboards read from the same normalized datasets, ensuring the
 Overview, Resource Forecast, Schedule View, and Reports tabs remain in sync.
 
-## 6. Financial modeling suite
+### 6. Financial modeling suite internals
 
 The financial module operates on utility-scoped data derived from the project
 portfolio:
@@ -160,7 +219,7 @@ portfolio:
   custom line items per utility.
 - **Pro Forma (`ProFormaView`)** – `calculateFinancialForecast` blends CIP spend
   curves, operating assumptions, existing debt service, and financing rules to
-  produce cash balance, coverage ratio, and reserve projections.
+  project cash balance, coverage ratio, and reserve levels.
 - **Debt Service (`DebtServiceView`)** – Models new debt issuances using funding
   source financing assumptions and existing debt instruments. Schedules feed
   directly into the pro forma outputs.
@@ -168,22 +227,21 @@ portfolio:
   cash, coverage targets, and assign project types to utilities. Utility
   selection drives which subset of projects feed the financial views.
 
-## 7. Data management & documentation
+### 7. Data management & documentation
 
 - **Exports** – `handleExport` gathers all organization data into a JSON snapshot
-  for point-in-time backups or support requests. Imports reuse the same shape and
-  are planned for a future release.
+  for point-in-time backups or support requests. Imports reuse the same shape
+  (UI shipping soon).
 - **Help view** – The header Help button renders this Markdown guide in-app via
-  `TechnicalGuidePage`, ensuring operators always have the latest technical
-  reference.
+  `TechnicalGuidePage`, ensuring operators always have the latest reference.
 
-## 8. Extensibility considerations
+### 8. Extensibility considerations
 
 - **Additional phases** – Calculation utilities isolate phase-specific handling,
-  so adding environmental review or commissioning phases involves extending
-  allocation objects and the forecast converter.
-- **Staffing heuristics** – `buildStaffAssignmentPlan` centralizes demand/ supply
-  balancing. Plug in alternative assignment strategies or optimization logic
+  so adding environmental review or commissioning phases primarily involves
+  extending allocation objects and the forecast converter.
+- **Staffing heuristics** – `buildStaffAssignmentPlan` centralizes demand/supply
+  balancing. Swap in alternative assignment strategies or optimization logic
   without rewriting the UI.
 - **Service integrations** – `useDatabase` centralizes Supabase access, so
   replacing Supabase with another backend (or layering server-side APIs) only
@@ -191,14 +249,13 @@ portfolio:
 - **Financial model extensions** – Operating budget line items, financing rules,
   and projection views reference normalized utility data, making it easy to add
   sensitivity analysis or export pipelines.
-- **Authentication** – Supabase roles can be extended beyond viewer/editor to
-  support finer-grained permissions or billing-driven entitlements. Superusers
-  bypass organization scoping to administer memberships globally.
+- **Authentication** – Supabase roles can expand beyond viewer/editor to support
+  finer-grained permissions or billing-driven entitlements. Superusers bypass
+  organization scoping to administer memberships globally.
 
-## 9. Related documentation
+### 9. Related documentation
 
 - [`README.md`](../README.md) – High-level introduction, setup instructions, and
   workflow overview.
 - Source code under `src/` for implementation details referenced above.
 - In-app Help (header button) for this guide rendered in Markdown.
-
