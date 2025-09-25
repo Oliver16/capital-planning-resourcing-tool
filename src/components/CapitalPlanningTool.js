@@ -15,6 +15,7 @@ import {
   FileSpreadsheet,
   ChevronDown,
   LayoutDashboard,
+  Repeat,
 } from "lucide-react";
 
 // Import components
@@ -29,6 +30,7 @@ import PeopleTab from "./tabs/PeopleTab";
 import ScenariosTab from "./tabs/ScenariosTab";
 import ReportsTab from "./tabs/ReportsTab";
 import StaffAssignmentsTab from "./tabs/StaffAssignmentsTab";
+import ProgramEffortTab from "./tabs/ProgramEffortTab";
 import FinancialModelingModule from "./financial-modeling/FinancialModelingModule";
 import { isProjectOrProgram } from "../utils/projectTypes.js";
 
@@ -415,8 +417,8 @@ const CapitalPlanningTool = () => {
     generateDefaultFundingAssumptions(defaultFundingSources)
   );
   const [staffAssignmentOverrides, setStaffAssignmentOverrides] = useState({});
-  const [activeTab, setActiveTab] = useState("overview");
-  const [activeModule, setActiveModule] = useState("planning");
+  const [activeTab, setActiveTab] = useState("capital-overview");
+  const [activeModule, setActiveModule] = useState("capital");
   const [activeDropdown, setActiveDropdown] = useState(null);
   const dropdownRefs = useRef({});
   const [timeHorizon, setTimeHorizon] = useState(60);
@@ -942,12 +944,58 @@ const CapitalPlanningTool = () => {
     [resourceForecast, staffCategories, staffAvailabilityByCategory]
   );
 
+  const DEFAULT_TAB_BY_MODULE = {
+    capital: "capital-overview",
+    resource: "resource-overview",
+  };
+
+  const capitalNavigation = [
+    { id: "capital-overview", label: "Overview", icon: Calendar },
+    {
+      id: "projects",
+      label: "Projects & Programs",
+      icon: FolderOpen,
+    },
+    {
+      id: "schedule",
+      label: "Schedule View",
+      icon: CalendarClock,
+    },
+    { id: "capital-reports", label: "Reports", icon: FileSpreadsheet },
+    { id: "settings", label: "Settings", icon: Settings },
+  ];
+
+  const resourceNavigation = [
+    { id: "resource-overview", label: "Overview", icon: LayoutDashboard },
+    {
+      type: "dropdown",
+      id: "people-menu",
+      label: "People",
+      icon: Users,
+      items: [
+        { id: "people", label: "Staff", icon: UserCircle },
+        { id: "assignments", label: "Assignments", icon: Users },
+        { id: "staff", label: "Categories", icon: Settings },
+      ],
+    },
+    { id: "project-effort", label: "Project Effort", icon: Edit3 },
+    { id: "program-effort", label: "Program Effort", icon: Repeat },
+    { id: "scenarios", label: "Scenarios", icon: GitBranch },
+    { id: "resource-reports", label: "Reports", icon: FileSpreadsheet },
+  ];
+
   const moduleOptions = [
     {
-      id: "planning",
+      id: "capital",
       label: "Capital Planning Workspace",
-      description: "Projects, people, scheduling, and reporting.",
+      description: "Projects, schedules, and portfolio reporting.",
       icon: LayoutDashboard,
+    },
+    {
+      id: "resource",
+      label: "Resource Planning Workspace",
+      description: "People, staffing plans, and utilization insights.",
+      icon: Users,
     },
     {
       id: "financial",
@@ -960,8 +1008,9 @@ const CapitalPlanningTool = () => {
   const handleSelectModule = (moduleId) => {
     setActiveDropdown(null);
     setActiveModule(moduleId);
-    if (moduleId === "planning" && activeTab === "finance") {
-      setActiveTab("overview");
+    const defaultTab = DEFAULT_TAB_BY_MODULE[moduleId];
+    if (defaultTab) {
+      setActiveTab(defaultTab);
     }
   };
 
@@ -2566,7 +2615,7 @@ const CapitalPlanningTool = () => {
           })}
         </div>
 
-        {activeModule === "planning" ? (
+        {activeModule !== "financial" ? (
           <>
             <div className="bg-white rounded-lg shadow-sm relative">
               {isSaving && (
@@ -2577,43 +2626,7 @@ const CapitalPlanningTool = () => {
               )}
               <div className="border-b border-gray-200">
                 <nav className="flex space-x-8 px-6">
-                  {[
-                    { id: "overview", label: "Overview", icon: Calendar },
-                    {
-                      id: "projects",
-                      label: "Projects & Programs",
-                      icon: FolderOpen,
-                    },
-                    {
-                      type: "dropdown",
-                      id: "people-menu",
-                      label: "People",
-                      icon: Users,
-                      items: [
-                        { id: "people", label: "Staff", icon: UserCircle },
-                        { id: "assignments", label: "Assignments", icon: Users },
-                        { id: "staff", label: "Categories", icon: Settings },
-                      ],
-                    },
-                    {
-                      id: "allocations",
-                      label: "Effort Projections",
-                      icon: Edit3,
-                    },
-                    { id: "scenarios", label: "Scenarios", icon: GitBranch },
-                    {
-                      id: "schedule",
-                      label: "Schedule View",
-                      icon: CalendarClock,
-                    },
-                    {
-                      id: "forecast",
-                      label: "Resource Forecast",
-                      icon: AlertTriangle,
-                    },
-                    { id: "reports", label: "Reports", icon: FileSpreadsheet },
-                    { id: "settings", label: "Settings", icon: Settings },
-                  ].map((tab) => {
+                  {(activeModule === "capital" ? capitalNavigation : resourceNavigation).map((tab) => {
                     if (tab.type === "dropdown") {
                       const Icon = tab.icon;
                       const isActive = tab.items.some((item) => item.id === activeTab);
@@ -2709,153 +2722,188 @@ const CapitalPlanningTool = () => {
             </div>
 
             <div className="space-y-6">
-              {activeTab === "overview" && (
-                <Overview
-                  projects={projects}
-                  projectTypes={projectTypes}
-                  staffingGaps={staffingGaps}
-                  projectTimelines={projectTimelines}
-                />
-              )}
-
-              {activeTab === "projects" && (
-                <ProjectsPrograms
-                  projects={projects}
-                  projectTypes={projectTypes}
-                  fundingSources={fundingSources}
-                  staffCategories={staffCategories}
-                  addProject={addProject}
-                  updateProject={updateProject}
-                  deleteProject={deleteProject}
-                  handleImport={handleImport}
-                  isReadOnly={isReadOnly}
-                />
-              )}
-              {activeTab === "staff" && (
-                <StaffCategories
-                  staffCategories={staffCategories}
-                  addStaffCategory={addStaffCategory}
-                  updateStaffCategory={updateStaffCategory}
-                  deleteStaffCategory={deleteStaffCategory}
-                  capacityWarnings={categoryCapacityWarnings}
-                  maxMonthlyFteHours={MAX_MONTHLY_FTE_HOURS}
-                  isReadOnly={isReadOnly}
-                />
-              )}
-
-              {activeTab === "people" && (
-                <PeopleTab
-                  staffMembers={staffMembers}
-                  staffCategories={staffCategories}
-                  addStaffMember={addStaffMember}
-                  updateStaffMember={updateStaffMember}
-                  deleteStaffMember={deleteStaffMember}
-                  staffAvailabilityByCategory={staffAvailabilityByCategory}
-                  isReadOnly={isReadOnly}
-                />
-              )}
-
-              {activeTab === "assignments" && (
-                <StaffAssignmentsTab
-                  projects={projects.filter((project) =>
-                    isProjectOrProgram(project)
+              {activeModule === "capital" && (
+                <>
+                  {activeTab === "capital-overview" && (
+                    <Overview
+                      projects={projects}
+                      projectTypes={projectTypes}
+                      staffingGaps={staffingGaps}
+                      projectTimelines={projectTimelines}
+                      showStaffingGaps={false}
+                    />
                   )}
-                  staffMembers={staffMembers}
-                  staffCategories={staffCategories}
-                  staffAllocations={staffAllocations}
-                  assignmentOverrides={staffAssignmentOverrides}
-                  assignmentPlan={staffAssignmentPlan}
-                  onUpdateAssignment={updateStaffAssignmentOverride}
-                  onResetProjectAssignments={resetProjectAssignments}
-                  staffAvailabilityByCategory={staffAvailabilityByCategory}
-                  isReadOnly={isReadOnly}
-                />
+
+                  {activeTab === "projects" && (
+                    <ProjectsPrograms
+                      projects={projects}
+                      projectTypes={projectTypes}
+                      fundingSources={fundingSources}
+                      staffCategories={staffCategories}
+                      addProject={addProject}
+                      updateProject={updateProject}
+                      deleteProject={deleteProject}
+                      handleImport={handleImport}
+                      isReadOnly={isReadOnly}
+                      enableStaffing={false}
+                    />
+                  )}
+
+                  {activeTab === "schedule" && (
+                    <ScheduleView
+                      projectTimelines={projectTimelines}
+                      projectTypes={projectTypes}
+                      staffCategories={staffCategories}
+                      staffAllocations={staffAllocations}
+                      staffAvailabilityByCategory={staffAvailabilityByCategory}
+                      scheduleHorizon={scheduleHorizon}
+                      setScheduleHorizon={setScheduleHorizon}
+                    />
+                  )}
+
+                  {activeTab === "capital-reports" && (
+                    <ReportsTab
+                      projects={projects}
+                      projectTypes={projectTypes}
+                      fundingSources={fundingSources}
+                      projectTimelines={projectTimelines}
+                      staffCategories={staffCategories}
+                      staffAllocations={staffAllocations}
+                      staffingGaps={staffingGaps}
+                      resourceForecast={resourceForecast}
+                      staffMembers={staffMembers}
+                      staffAssignmentPlan={staffAssignmentPlan}
+                      visibleReports={["cip"]}
+                    />
+                  )}
+
+                  {activeTab === "settings" && (
+                    <SettingsTab
+                      projectTypes={projectTypes}
+                      fundingSources={fundingSources}
+                      addProjectType={addProjectType}
+                      updateProjectType={updateProjectType}
+                      deleteProjectType={deleteProjectType}
+                      addFundingSource={addFundingSource}
+                      updateFundingSource={updateFundingSource}
+                      deleteFundingSource={deleteFundingSource}
+                      isReadOnly={isReadOnly}
+                    />
+                  )}
+                </>
               )}
 
-              {activeTab === "allocations" && (
-                <StaffAllocations
-                  projects={projects.filter((p) => p.type === "project")}
-                  projectTypes={projectTypes}
-                  staffCategories={staffCategories}
-                  staffAllocations={staffAllocations}
-                  updateStaffAllocation={updateStaffAllocation}
-                  projectEffortTemplates={projectEffortTemplates}
-                  onSaveProjectEffortTemplate={upsertProjectEffortTemplate}
-                  onDeleteProjectEffortTemplate={removeProjectEffortTemplate}
-                  onApplyEffortTemplate={applyProjectEffortTemplate}
-                  fundingSources={fundingSources}
-                  isReadOnly={isReadOnly}
-                />
-              )}
+              {activeModule === "resource" && (
+                <>
+                  {activeTab === "resource-overview" && (
+                    <ResourceForecast
+                      resourceForecast={resourceForecast}
+                      staffCategories={staffCategories}
+                      staffingGaps={staffingGaps}
+                      timeHorizon={timeHorizon}
+                      setTimeHorizon={setTimeHorizon}
+                    />
+                  )}
 
-              {activeTab === "scenarios" && (
-                <ScenariosTab
-                  projects={projects}
-                  projectTypes={projectTypes}
-                  staffCategories={staffCategories}
-                  staffAllocations={staffAllocations}
-                  staffAvailabilityByCategory={staffAvailabilityByCategory}
-                  scenarios={scenarios}
-                  activeScenarioId={activeScenarioId}
-                  onSelectScenario={setActiveScenarioId}
-                  onCreateScenario={createScenario}
-                  onDuplicateScenario={duplicateScenario}
-                  onUpdateScenarioMeta={updateScenarioMeta}
-                  onUpdateScenarioAdjustment={updateScenarioAdjustment}
-                  onResetScenarioProject={resetScenarioProject}
-                  timeHorizon={timeHorizon}
-                  isReadOnly={isReadOnly}
-                />
-              )}
+                  {activeTab === "people" && (
+                    <PeopleTab
+                      staffMembers={staffMembers}
+                      staffCategories={staffCategories}
+                      addStaffMember={addStaffMember}
+                      updateStaffMember={updateStaffMember}
+                      deleteStaffMember={deleteStaffMember}
+                      staffAvailabilityByCategory={staffAvailabilityByCategory}
+                      isReadOnly={isReadOnly}
+                    />
+                  )}
 
-              {activeTab === "schedule" && (
-                <ScheduleView
-                  projectTimelines={projectTimelines}
-                  projectTypes={projectTypes}
-                  staffCategories={staffCategories}
-                  staffAllocations={staffAllocations}
-                  staffAvailabilityByCategory={staffAvailabilityByCategory}
-                  scheduleHorizon={scheduleHorizon}
-                  setScheduleHorizon={setScheduleHorizon}
-                />
-              )}
-              {activeTab === "forecast" && (
-                <ResourceForecast
-                  resourceForecast={resourceForecast}
-                  staffCategories={staffCategories}
-                  staffingGaps={staffingGaps}
-                  timeHorizon={timeHorizon}
-                  setTimeHorizon={setTimeHorizon}
-                />
-              )}
+                  {activeTab === "assignments" && (
+                    <StaffAssignmentsTab
+                      projects={projects.filter((project) =>
+                        isProjectOrProgram(project)
+                      )}
+                      staffMembers={staffMembers}
+                      staffCategories={staffCategories}
+                      staffAllocations={staffAllocations}
+                      assignmentOverrides={staffAssignmentOverrides}
+                      assignmentPlan={staffAssignmentPlan}
+                      onUpdateAssignment={updateStaffAssignmentOverride}
+                      onResetProjectAssignments={resetProjectAssignments}
+                      staffAvailabilityByCategory={staffAvailabilityByCategory}
+                      isReadOnly={isReadOnly}
+                    />
+                  )}
 
-              {activeTab === "reports" && (
-                <ReportsTab
-                  projects={projects}
-                  projectTypes={projectTypes}
-                  fundingSources={fundingSources}
-                  projectTimelines={projectTimelines}
-                  staffCategories={staffCategories}
-                  staffAllocations={staffAllocations}
-                  staffingGaps={staffingGaps}
-                  resourceForecast={resourceForecast}
-                  staffMembers={staffMembers}
-                  staffAssignmentPlan={staffAssignmentPlan}
-                />
-              )}
+                  {activeTab === "staff" && (
+                    <StaffCategories
+                      staffCategories={staffCategories}
+                      addStaffCategory={addStaffCategory}
+                      updateStaffCategory={updateStaffCategory}
+                      deleteStaffCategory={deleteStaffCategory}
+                      capacityWarnings={categoryCapacityWarnings}
+                      maxMonthlyFteHours={MAX_MONTHLY_FTE_HOURS}
+                      isReadOnly={isReadOnly}
+                    />
+                  )}
 
-              {activeTab === "settings" && (
-                <SettingsTab
-                  projectTypes={projectTypes}
-                  fundingSources={fundingSources}
-                  addProjectType={addProjectType}
-                  updateProjectType={updateProjectType}
-                  deleteProjectType={deleteProjectType}
-                  addFundingSource={addFundingSource}
-                  updateFundingSource={updateFundingSource}
-                  deleteFundingSource={deleteFundingSource}
-                  isReadOnly={isReadOnly}
-                />
+                  {activeTab === "project-effort" && (
+                    <StaffAllocations
+                      projects={projects.filter((p) => p.type === "project")}
+                      projectTypes={projectTypes}
+                      staffCategories={staffCategories}
+                      staffAllocations={staffAllocations}
+                      updateStaffAllocation={updateStaffAllocation}
+                      fundingSources={fundingSources}
+                      isReadOnly={isReadOnly}
+                    />
+                  )}
+
+                  {activeTab === "program-effort" && (
+                    <ProgramEffortTab
+                      programs={projects.filter((p) => p.type === "program")}
+                      projectTypes={projectTypes}
+                      staffCategories={staffCategories}
+                      updateProject={updateProject}
+                      isReadOnly={isReadOnly}
+                    />
+                  )}
+
+                  {activeTab === "scenarios" && (
+                    <ScenariosTab
+                      projects={projects}
+                      projectTypes={projectTypes}
+                      staffCategories={staffCategories}
+                      staffAllocations={staffAllocations}
+                      staffAvailabilityByCategory={staffAvailabilityByCategory}
+                      scenarios={scenarios}
+                      activeScenarioId={activeScenarioId}
+                      onSelectScenario={setActiveScenarioId}
+                      onCreateScenario={createScenario}
+                      onDuplicateScenario={duplicateScenario}
+                      onUpdateScenarioMeta={updateScenarioMeta}
+                      onUpdateScenarioAdjustment={updateScenarioAdjustment}
+                      onResetScenarioProject={resetScenarioProject}
+                      timeHorizon={timeHorizon}
+                      isReadOnly={isReadOnly}
+                    />
+                  )}
+
+                  {activeTab === "resource-reports" && (
+                    <ReportsTab
+                      projects={projects}
+                      projectTypes={projectTypes}
+                      fundingSources={fundingSources}
+                      projectTimelines={projectTimelines}
+                      staffCategories={staffCategories}
+                      staffAllocations={staffAllocations}
+                      staffingGaps={staffingGaps}
+                      resourceForecast={resourceForecast}
+                      staffMembers={staffMembers}
+                      staffAssignmentPlan={staffAssignmentPlan}
+                      visibleReports={["cipEffort", "utilization", "gap"]}
+                    />
+                  )}
+                </>
               )}
             </div>
           </>

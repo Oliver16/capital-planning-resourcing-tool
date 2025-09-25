@@ -81,7 +81,13 @@ const ReportsTab = ({
   resourceForecast = [],
   staffMembers = [],
   staffAssignmentPlan = null,
+  visibleReports = ["cip", "cipEffort", "gap", "utilization"],
 }) => {
+  const showReport = useCallback(
+    (key) => visibleReports.includes(key),
+    [visibleReports]
+  );
+
   const formatCount = (value) => {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) {
@@ -414,7 +420,8 @@ const ReportsTab = ({
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-        <ReportCard
+        {showReport("cip") && (
+          <ReportCard
           title="Capital Improvement Plan"
           description="Portfolio-level export summarizing each project and program with schedule, budget, and delivery details."
           icon={FileSpreadsheet}
@@ -429,9 +436,11 @@ const ReportsTab = ({
               onClick: handleCipPdfDownload,
             },
           ]}
-        />
+          />
+        )}
 
-        <ReportCard
+        {showReport("cipEffort") && (
+          <ReportCard
           title="CIP Effort by Category"
           description="Detailed view of planned hours, FTE, and costs for every project-category combination to support resource planning."
           icon={BarChart3}
@@ -442,9 +451,11 @@ const ReportsTab = ({
               onClick: () => downloadReport(cipEffortReport),
             },
           ]}
-        />
+          />
+        )}
 
-        <ReportCard
+        {showReport("utilization") && (
+          <ReportCard
           title="Staff Utilization"
           description="Optimized and manual staff assignments by project and phase, with visibility into overrides and unmet demand."
           icon={Users}
@@ -459,9 +470,11 @@ const ReportsTab = ({
               onClick: handleStaffUtilizationPdfDownload,
             },
           ]}
-        />
+          />
+        )}
 
-        <ReportCard
+        {showReport("gap") && (
+          <ReportCard
           title="Staffing Gap Analysis"
           description="Month-by-month shortage report highlighting where demand exceeds available staffing capacity."
           icon={AlertTriangle}
@@ -476,7 +489,8 @@ const ReportsTab = ({
               onClick: () => downloadReport(gapReport),
             },
           ]}
-        />
+          />
+        )}
       </div>
     </div>
   );

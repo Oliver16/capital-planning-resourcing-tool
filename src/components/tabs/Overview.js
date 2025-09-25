@@ -6,6 +6,7 @@ const Overview = ({
   projectTypes,
   staffingGaps,
   projectTimelines,
+  showStaffingGaps = true,
 }) => {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -48,33 +49,35 @@ const Overview = ({
         </div>
 
         {/* Critical Staffing Gaps */}
-        <div className="bg-white p-6 rounded-lg shadow-sm">
-          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <AlertTriangle className="text-red-500" size={20} />
-            Critical Staffing Gaps
-          </h3>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {staffingGaps.slice(0, 10).map((gap, index) => (
-              <div
-                key={index}
-                className="flex justify-between items-center p-2 bg-red-50 rounded"
-              >
-                <div>
-                  <span className="font-medium">{gap.category}</span>
-                  <span className="text-sm text-gray-600 ml-2">
-                    ({gap.monthLabel})
-                  </span>
+        {showStaffingGaps && (
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <AlertTriangle className="text-red-500" size={20} />
+              Critical Staffing Gaps
+            </h3>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {staffingGaps.slice(0, 10).map((gap, index) => (
+                <div
+                  key={index}
+                  className="flex justify-between items-center p-2 bg-red-50 rounded"
+                >
+                  <div>
+                    <span className="font-medium">{gap.category}</span>
+                    <span className="text-sm text-gray-600 ml-2">
+                      ({gap.monthLabel})
+                    </span>
+                  </div>
+                  <span className="text-red-600 font-medium">-{gap.gap} FTE</span>
                 </div>
-                <span className="text-red-600 font-medium">-{gap.gap} FTE</span>
-              </div>
-            ))}
-            {staffingGaps.length === 0 && (
-              <p className="text-gray-500 text-center py-4">
-                No critical staffing gaps identified
-              </p>
-            )}
+              ))}
+              {staffingGaps.length === 0 && (
+                <p className="text-gray-500 text-center py-4">
+                  No critical staffing gaps identified
+                </p>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Project Timeline */}
