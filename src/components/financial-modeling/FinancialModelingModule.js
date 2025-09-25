@@ -265,7 +265,7 @@ const FinancialModelingModule = ({
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:[grid-template-columns:repeat(auto-fit,_minmax(340px,_1fr))]">
         {MODULE_VIEWS.map((view) => {
           const Icon = view.icon;
           const isActive = activeView === view.id;

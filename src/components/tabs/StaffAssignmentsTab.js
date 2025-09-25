@@ -428,7 +428,7 @@ const StaffAssignmentsTab = ({
               optimization engine distributes remaining hours.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:[grid-template-columns:repeat(auto-fit,_minmax(340px,_1fr))]">
             {summaryCards.map((card) => (
               <div
                 key={card.label}

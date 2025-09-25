@@ -44,7 +44,7 @@ const AuthGate = ({ children }) => {
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
       <header className="bg-white border-b border-slate-200 shadow-sm">
-        <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4 gap-6">
+        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between px-6 py-4 gap-6">
           <div>
             <h1 className="text-lg font-semibold text-slate-900">Vector</h1>
             <p className="text-xs text-slate-500 uppercase tracking-wide">Capital Planning</p>

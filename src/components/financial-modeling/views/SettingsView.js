@@ -120,7 +120,7 @@ const SettingsView = ({
           Configure the fiscal window, opening reserves, and policy targets that guide every pro forma scenario.
         </p>
 
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:[grid-template-columns:repeat(auto-fit,_minmax(340px,_1fr))]">
           <label className="text-sm font-medium text-slate-700">
             <span>Start Fiscal Year</span>
             <input
