@@ -2779,6 +2779,10 @@ const CapitalPlanningTool = () => {
                   staffCategories={staffCategories}
                   staffAllocations={staffAllocations}
                   updateStaffAllocation={updateStaffAllocation}
+                  projectEffortTemplates={projectEffortTemplates}
+                  onSaveProjectEffortTemplate={upsertProjectEffortTemplate}
+                  onDeleteProjectEffortTemplate={removeProjectEffortTemplate}
+                  onApplyEffortTemplate={applyProjectEffortTemplate}
                   fundingSources={fundingSources}
                   isReadOnly={isReadOnly}
                 />
