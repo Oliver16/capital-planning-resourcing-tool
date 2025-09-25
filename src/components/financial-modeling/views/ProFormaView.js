@@ -289,7 +289,7 @@ const ProFormaView = ({ forecastResult, financialConfig }) => {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:[grid-template-columns:repeat(auto-fit,_minmax(340px,_1fr))]">
         {summaryCards.map((card) => (
           <SummaryCard key={card.title} {...card} />
         ))}
