@@ -220,25 +220,55 @@ const normalizeUtilityKey = (value) => {
   return UTILITY_KEYS.has(normalized) ? normalized : null;
 };
 
+const sanitizeFiscalYear = (value, fallback = null) => {
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) {
+    const rounded = Math.round(numeric);
+    if (rounded >= 1900 && rounded <= 9999) {
+      return rounded;
+    }
+  }
+
+  const stringValue = String(value);
+  const parsed = parseInt(stringValue, 10);
+  if (Number.isFinite(parsed) && parsed >= 1900 && parsed <= 9999) {
+    return parsed;
+  }
+
+  const match = stringValue.match(/(19|20)\d{2}/);
+  if (match) {
+    const extracted = Number(match[0]);
+    if (Number.isFinite(extracted) && extracted >= 1900 && extracted <= 9999) {
+      return extracted;
+    }
+  }
+
+  return fallback;
+};
+
 const sanitizeFinancialConfig = (rawConfig = {}) => {
   const currentYear = new Date().getFullYear();
-  const startYear = Number(rawConfig.startYear);
   const projectionYears = Number(rawConfig.projectionYears);
   const startingCashBalance = Number(rawConfig.startingCashBalance);
   const targetCoverageRatio = Number(rawConfig.targetCoverageRatio);
   const fiscalYearStartMonth = Number(rawConfig.fiscalYearStartMonth);
 
   return {
-    startYear: Number.isFinite(startYear) ? startYear : currentYear,
-    projectionYears: Number.isFinite(projectionYears) && projectionYears > 0
-      ? Math.round(projectionYears)
-      : 10,
-    startingCashBalance: Number.isFinite(startingCashBalance) ? startingCashBalance : 0,
-    targetCoverageRatio: Number.isFinite(targetCoverageRatio) ? targetCoverageRatio : 1.5,
-    fiscalYearStartMonth:
-      Number.isFinite(fiscalYearStartMonth) && fiscalYearStartMonth >= 1 && fiscalYearStartMonth <= 12
-        ? Math.round(fiscalYearStartMonth)
-        : 1,
+    startYear: sanitizeFiscalYear(rawConfig.startYear, currentYear),
+    projectionYears:
+      Number.isFinite(projectionYears) && projectionYears > 0
+        ? Math.round(projectionYears)
+        : 10,
+    startingCashBalance: Number.isFinite(startingCashBalance)
+      ? startingCashBalance
+      : 0,
+    targetCoverageRatio: Number.isFinite(targetCoverageRatio)
+      ? targetCoverageRatio
+      : 1.5,
   };
 };
 
@@ -368,6 +398,16 @@ const operatingBudgetToRow = (organizationId, utilityKey, row) => {
     ? normalized.expenseLineItems
     : [];
 
+  const normalizedKey = normalizeUtilityKey(utilityKey);
+  const fiscalYear = sanitizeFiscalYear(normalized.year);
+
+  // Supabase enforces a check constraint that fiscal_year must be >= 1900.
+  // If we cannot confidently coerce the provided value into a valid year we
+  // bail out instead of attempting a write that would be rejected.
+  if (!normalizedKey || fiscalYear === null) {
+    return null;
+  }
+
   const sumByIds = (items, ids) =>
     items.reduce((sum, item) => {
       if (!item || !ids.includes(item.id)) {
@@ -399,8 +439,8 @@ const operatingBudgetToRow = (organizationId, utilityKey, row) => {
 
   return {
     organization_id: organizationId,
-    utility_key: normalizeUtilityKey(utilityKey),
-    fiscal_year: Number(normalized.year),
+    utility_key: normalizedKey,
+    fiscal_year: fiscalYear,
     operating_revenue: normalizeNullable(normalized.operatingRevenue) ?? 0,
     non_operating_revenue: normalizeNullable(normalized.nonOperatingRevenue) ?? 0,
     om_expenses: normalizeNullable(omExpenses) ?? 0,
@@ -1418,8 +1458,8 @@ export const useDatabase = (defaultData = {}) => {
       assertCanEdit();
 
       const payload = rows
-        .filter((row) => Number.isFinite(Number(row?.year)))
-        .map((row) => operatingBudgetToRow(organizationId, utilityKey, row));
+        .map((row) => operatingBudgetToRow(organizationId, utilityKey, row))
+        .filter((row) => row && Number.isFinite(row.fiscal_year));
 
       if (!payload.length) {
         return;
@@ -1452,12 +1492,18 @@ export const useDatabase = (defaultData = {}) => {
         .eq('organization_id', organizationId)
         .eq('utility_key', normalizedKey);
 
-      const sanitizedYears = (yearsToKeep || [])
-        .map((value) => Number(value))
-        .filter((value) => Number.isFinite(value));
+      const sanitizedYears = Array.from(
+        new Set(
+          (yearsToKeep || [])
+            .map((value) => sanitizeFiscalYear(value))
+            .filter((value) => value !== null)
+        )
+      );
 
       if (sanitizedYears.length > 0) {
         query = query.not('fiscal_year', 'in', `(${sanitizedYears.join(',')})`);
+      } else {
+        return;
       }
 
       const { error: deleteError } = await query;
@@ -1698,4 +1744,10 @@ export const useDatabase = (defaultData = {}) => {
       importDatabase,
     ]
   );
+};
+
+export const __TEST_ONLY = {
+  sanitizeFinancialConfig,
+  sanitizeFiscalYear,
+  operatingBudgetToRow,
 };
