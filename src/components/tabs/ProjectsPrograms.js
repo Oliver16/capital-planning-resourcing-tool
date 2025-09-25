@@ -596,6 +596,7 @@ const ProgramCard = ({
   deleteProject,
   onConfigureCategoryHours,
   isReadOnly = false,
+  enableStaffing = true,
 }) => {
   const { label: typeLabel, color: typeColor } = getProjectTypeInfo(
     projectTypes,
@@ -842,68 +843,76 @@ const ProgramCard = ({
         </Field>
 
         <div className="md:col-span-2">
-          <Field
-            label="Continuous staffing (hrs per month)"
-            hint={
-              categoryCount > 0
-                ? `Detailed staffing defined for ${categoryCount} ${
-                    categoryCount === 1 ? "category" : "categories"
-                  } • ${formatHoursSummary(totalCategoryHours)} hrs/month total`
-                : "Configure by staff category to define monthly PM, design, and construction hours."
-            }
-          >
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex-1 space-y-4">
-                <div className="flex items-center justify-between rounded-lg border border-purple-200 bg-purple-50 px-4 py-2 text-sm font-semibold text-purple-700 shadow-sm">
-                  <span>Total hours/month</span>
-                  <span className="flex items-baseline gap-1 text-lg font-semibold text-purple-900">
-                    {formatHoursSummary(combinedContinuousHours)}
-                    <span className="text-xs font-medium uppercase text-purple-500">
-                      hrs/mo
+          {enableStaffing ? (
+            <Field
+              label="Continuous staffing (hrs per month)"
+              hint={
+                categoryCount > 0
+                  ? `Detailed staffing defined for ${categoryCount} ${
+                      categoryCount === 1 ? "category" : "categories"
+                    } • ${formatHoursSummary(totalCategoryHours)} hrs/month total`
+                  : "Configure by staff category to define monthly PM, design, and construction hours."
+              }
+            >
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex-1 space-y-4">
+                  <div className="flex items-center justify-between rounded-lg border border-purple-200 bg-purple-50 px-4 py-2 text-sm font-semibold text-purple-700 shadow-sm">
+                    <span>Total hours/month</span>
+                    <span className="flex items-baseline gap-1 text-lg font-semibold text-purple-900">
+                      {formatHoursSummary(combinedContinuousHours)}
+                      <span className="text-xs font-medium uppercase text-purple-500">
+                        hrs/mo
+                      </span>
                     </span>
-                  </span>
+                  </div>
+                  <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    {hoursBreakdown.map((item) => (
+                      <div
+                        key={item.key}
+                        className="rounded-lg border border-purple-100 bg-white p-3 shadow-sm"
+                      >
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-purple-600">
+                          {item.label}
+                        </dt>
+                        <dd className="mt-1 flex items-baseline gap-2 text-2xl font-semibold text-purple-900">
+                          {formatHoursSummary(item.value)}
+                          <span className="text-xs font-medium uppercase text-purple-500">
+                            hrs/mo
+                          </span>
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
                 </div>
-                <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  {hoursBreakdown.map((item) => (
-                    <div
-                      key={item.key}
-                      className="rounded-lg border border-purple-100 bg-white p-3 shadow-sm"
-                    >
-                      <dt className="text-xs font-semibold uppercase tracking-wide text-purple-600">
-                        {item.label}
-                      </dt>
-                      <dd className="mt-1 flex items-baseline gap-2 text-2xl font-semibold text-purple-900">
-                        {formatHoursSummary(item.value)}
-                        <span className="text-xs font-medium uppercase text-purple-500">
-                          hrs/mo
-                        </span>
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
+                <div className="sm:pl-4 sm:pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isReadOnly) {
+                        return;
+                      }
+                      onConfigureCategoryHours?.(program);
+                    }}
+                    disabled={isReadOnly}
+                    className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-1 sm:w-auto ${
+                      isReadOnly
+                        ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                        : "bg-purple-600 text-white transition hover:bg-purple-700 focus:ring-purple-400"
+                    }`}
+                  >
+                    <SlidersHorizontal size={16} className="text-purple-100" />
+                    Configure by staff category
+                  </button>
+                </div>
               </div>
-              <div className="sm:pl-4 sm:pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isReadOnly) {
-                      return;
-                    }
-                    onConfigureCategoryHours?.(program);
-                  }}
-                  disabled={isReadOnly}
-                  className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-1 sm:w-auto ${
-                    isReadOnly
-                      ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                      : "bg-purple-600 text-white transition hover:bg-purple-700 focus:ring-purple-400"
-                  }`}
-                >
-                  <SlidersHorizontal size={16} className="text-purple-100" />
-                  Configure by staff category
-                </button>
+            </Field>
+          ) : (
+            <Field label="Continuous staffing (hrs per month)">
+              <div className="rounded-lg border border-dashed border-purple-200 bg-purple-50 p-4 text-sm text-purple-700">
+                Staffing configuration is managed from the Resource Planning module. Use the Program Effort tab to define hours by staff category.
               </div>
-            </div>
-          </Field>
+            </Field>
+          )}
         </div>
       </div>
     </div>
@@ -1162,6 +1171,7 @@ const ProjectsPrograms = ({
   deleteProject,
   handleImport,
   isReadOnly = false,
+  enableStaffing = true,
 }) => {
   const projectGroups = useMemo(
     () => groupProjectsByType(projects, projectTypes),
@@ -1187,7 +1197,7 @@ const ProjectsPrograms = ({
 
   const openCategoryModal = useCallback(
     (program) => {
-      if (!program) {
+      if (!enableStaffing || !program) {
         return;
       }
 
@@ -1203,7 +1213,7 @@ const ProjectsPrograms = ({
         hadExistingValues,
       });
     },
-    [staffCategories]
+    [enableStaffing, staffCategories]
   );
 
   const closeCategoryModal = useCallback(() => {
@@ -1242,6 +1252,10 @@ const ProjectsPrograms = ({
         return previous;
       }
 
+      if (!enableStaffing) {
+        return defaultCategoryModalState;
+      }
+
       const { sanitizedConfig, totals } = buildCategoryUpdatesForSave(
         previous.config,
         staffCategories,
@@ -1268,12 +1282,16 @@ const ProjectsPrograms = ({
 
       return defaultCategoryModalState;
     });
-  }, [staffCategories, updateProject]);
+  }, [enableStaffing, staffCategories, updateProject]);
 
   const clearCategoryModal = useCallback(() => {
     setCategoryModalState((previous) => {
       if (!previous?.isOpen) {
         return previous;
+      }
+
+      if (!enableStaffing) {
+        return defaultCategoryModalState;
       }
 
       if (previous.programId != null) {
@@ -1287,7 +1305,7 @@ const ProjectsPrograms = ({
 
       return defaultCategoryModalState;
     });
-  }, [updateProject]);
+  }, [enableStaffing, updateProject]);
 
   const toggleGroup = (key) => {
     setExpandedGroups((previous) => ({
@@ -1502,8 +1520,11 @@ const ProjectsPrograms = ({
                               staffCategories={staffCategories}
                               updateProject={updateProject}
                               deleteProject={deleteProject}
-                              onConfigureCategoryHours={openCategoryModal}
+                              onConfigureCategoryHours={
+                                enableStaffing ? openCategoryModal : undefined
+                              }
                               isReadOnly={isReadOnly}
+                              enableStaffing={enableStaffing}
                             />
                         ))}
                       </div>
@@ -1543,25 +1564,27 @@ const ProjectsPrograms = ({
         </div>
       </div>
 
-      <CategoryHoursModal
-        isOpen={categoryModalState.isOpen}
-        programName={categoryModalState.programName}
-        staffCategories={staffCategories}
-        config={categoryModalState.config}
-        onChange={updateModalConfig}
-        onClose={closeCategoryModal}
-        onSave={saveCategoryModal}
-        onClear={clearCategoryModal}
-        hasExistingConfig={
-          categoryModalState.hadExistingValues ||
-          Object.values(categoryModalState.config || {}).some((entry) =>
-            [entry?.pmHours, entry?.designHours, entry?.constructionHours].some(
-              (value) => sanitizeHoursValue(value) > 0
-            )
-          ) ||
-          Object.keys(categoryModalState.extraEntries || {}).length > 0
-        }
-      />
+      {enableStaffing && (
+        <CategoryHoursModal
+          isOpen={categoryModalState.isOpen}
+          programName={categoryModalState.programName}
+          staffCategories={staffCategories}
+          config={categoryModalState.config}
+          onChange={updateModalConfig}
+          onClose={closeCategoryModal}
+          onSave={saveCategoryModal}
+          onClear={clearCategoryModal}
+          hasExistingConfig={
+            categoryModalState.hadExistingValues ||
+            Object.values(categoryModalState.config || {}).some((entry) =>
+              [entry?.pmHours, entry?.designHours, entry?.constructionHours].some(
+                (value) => sanitizeHoursValue(value) > 0
+              )
+            ) ||
+            Object.keys(categoryModalState.extraEntries || {}).length > 0
+          }
+        />
+      )}
     </div>
   );
 };

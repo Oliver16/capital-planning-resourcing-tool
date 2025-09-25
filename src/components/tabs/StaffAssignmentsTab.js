@@ -453,7 +453,7 @@ const StaffAssignmentsTab = ({
         <div className="rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center text-gray-500">
           <p className="text-sm">
             No staffing demand has been defined yet. Add effort projections on
-            the Effort Projections tab to begin assigning individual staff.
+            the Project Effort tab to begin assigning individual staff.
           </p>
         </div>
       ) : (
