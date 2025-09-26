@@ -1,11 +1,5 @@
-import React, { useMemo, useState } from "react";
-import {
-  AlertTriangle,
-  ChevronDown,
-  ChevronRight,
-  Info,
-  RefreshCw,
-} from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Info, RefreshCw } from "lucide-react";
 import {
   getProjectTypeDisplayLabel,
   isProjectOrProgram,
@@ -54,7 +48,7 @@ const StaffAssignmentsTab = ({
   staffAvailabilityByCategory = {},
   isReadOnly = false,
 }) => {
-  const [expandedProjects, setExpandedProjects] = useState({});
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
 
   const staffById = useMemo(() => {
     const map = new Map();
@@ -352,13 +346,6 @@ const StaffAssignmentsTab = ({
       : 0;
   const columnCount = 2 + phaseKeys.length * 2 + 4;
 
-  const toggleProject = (projectId) => {
-    setExpandedProjects((previous) => ({
-      ...previous,
-      [projectId]: !(previous[projectId] ?? true),
-    }));
-  };
-
   const handleManualChange = (projectId, staffId, phase) => (event) => {
     if (!onUpdateAssignment || isReadOnly) {
       return;
@@ -409,6 +396,64 @@ const StaffAssignmentsTab = ({
     },
   ];
 
+  useEffect(() => {
+    if (projectAssignments.length === 0) {
+      setSelectedProjectId(null);
+      return;
+    }
+
+    if (!selectedProjectId) {
+      setSelectedProjectId(projectAssignments[0].projectId);
+      return;
+    }
+
+    const stillExists = projectAssignments.some(
+      (entry) => entry.projectId === selectedProjectId
+    );
+
+    if (!stillExists) {
+      setSelectedProjectId(projectAssignments[0].projectId);
+    }
+  }, [projectAssignments, selectedProjectId]);
+
+  const selectedProject = useMemo(
+    () =>
+      projectAssignments.find(
+        (entry) => entry.projectId === selectedProjectId
+      ) || null,
+    [projectAssignments, selectedProjectId]
+  );
+
+  const projectStaffSummaries = useMemo(() => {
+    return projectAssignments.map((entry) => {
+      const staffRows = entry.categories.flatMap((category) =>
+        category.staffRows
+          .filter((row) =>
+            [row.manualTotal, row.autoTotal, row.finalTotal].some(
+              (value) => Number(value || 0) > 0
+            )
+          )
+          .map((row) => ({
+            staffId: row.staffId,
+            staffName: row.staffName,
+            manualHours: Number(row.manualTotal || 0),
+            autoHours: Number(row.autoTotal || 0),
+            finalHours: Number(row.finalTotal || 0),
+          }))
+      );
+
+      staffRows.sort((a, b) => a.staffName.localeCompare(b.staffName));
+
+      return {
+        projectId: entry.projectId,
+        projectName: entry.project?.name || "Untitled Project",
+        demandHours: Number(entry.summary?.demand?.totalHours || 0),
+        assignedHours: Number(entry.summary?.assigned?.totalHours || 0),
+        staffRows,
+      };
+    });
+  }, [projectAssignments]);
+
   return (
     <div className="space-y-6">
       {isReadOnly && (
@@ -417,7 +462,7 @@ const StaffAssignmentsTab = ({
         </div>
       )}
       <div className="rounded-lg bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h2 className="text-2xl font-semibold text-gray-900">
               Staff Assignment Planner
@@ -428,7 +473,7 @@ const StaffAssignmentsTab = ({
               optimization engine distributes remaining hours.
             </p>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:[grid-template-columns:repeat(auto-fit,_minmax(340px,_1fr))]">
+          <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             {summaryCards.map((card) => (
               <div
                 key={card.label}
@@ -457,272 +502,406 @@ const StaffAssignmentsTab = ({
           </p>
         </div>
       ) : (
-        projectAssignments.map((entry) => {
-          const isExpanded = expandedProjects[entry.projectId] ?? true;
-          const summary = entry.summary || {};
-          const hasUnfilled = Number(summary?.unfilled?.totalHours || 0) > 0;
-          const projectTypeLabel = getProjectTypeDisplayLabel(entry.project);
-          const projectMonthlyDemand = Number(entry.monthlyDemandTotal || 0);
-
-          return (
-            <div key={entry.projectId} className="rounded-lg bg-white shadow-sm">
-              <div className="flex flex-col gap-4 border-b border-gray-200 p-6 lg:flex-row lg:items-center lg:justify-between">
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    className="flex items-center gap-2 text-left text-lg font-semibold text-gray-900"
-                    onClick={() => toggleProject(entry.projectId)}
-                  >
-                    {isExpanded ? (
-                      <ChevronDown size={18} className="text-gray-500" />
-                    ) : (
-                      <ChevronRight size={18} className="text-gray-500" />
-                    )}
-                    <span>{entry.project.name}</span>
-                    <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-indigo-700">
-                      {projectTypeLabel}
-                    </span>
-                  </button>
-                  <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-600">
-                    <span>
-                      Demand: {formatHours(summary?.demand?.totalHours || 0)} hrs total
-                      {projectMonthlyDemand > 0
-                        ? ` (${formatHours(projectMonthlyDemand)} hrs/mo)`
-                        : ""}
-                    </span>
-                    <span>
-                      Assigned: {formatHours(summary?.assigned?.totalHours || 0)} hrs
-                    </span>
-                    <span>
-                      Manual: {formatHours(summary?.manual?.totalHours || 0)} hrs
-                    </span>
-                    <span>
-                      Automated: {formatHours(summary?.auto?.totalHours || 0)} hrs
-                    </span>
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
-                        hasUnfilled
-                          ? "bg-red-100 text-red-800"
-                          : "bg-green-100 text-green-800"
-                      }`}
-                    >
-                      {hasUnfilled
-                        ? `${formatHours(
-                            summary?.unfilled?.totalHours || 0
-                          )} hrs unfilled`
-                        : "Fully covered"}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  {hasUnfilled && (
-                    <div className="inline-flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-                      <AlertTriangle size={16} />
-                      Unassigned demand remains
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${
-                      isReadOnly
-                        ? "border-gray-200 text-gray-400 cursor-not-allowed"
-                        : "border-gray-200 text-gray-700 hover:bg-gray-50"
-                    }`}
-                    onClick={() => {
-                      if (isReadOnly) {
-                        return;
-                      }
-                      onResetProjectAssignments?.(entry.projectId);
-                    }}
-                    disabled={isReadOnly}
-                  >
-                    <RefreshCw size={16} />
-                    Reset overrides
-                  </button>
-                </div>
+        <>
+          <div className="rounded-lg bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Project Staffing Overview
+                </h3>
+                <p className="text-sm text-gray-600">
+                  Quickly review who is staffed on each project and how many
+                  hours they are covering.
+                </p>
               </div>
-
-              {isExpanded && (
-                <div className="space-y-6 p-6">
-                  {entry.unfilledEntries.length > 0 && (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                      <div className="flex items-start gap-2">
-                        <Info size={16} className="mt-0.5" />
-                        <div>
-                          <p className="font-semibold">Remaining demand</p>
-                          <ul className="mt-1 list-disc pl-5">
-                            {entry.unfilledEntries.map((item, index) => (
-                              <li key={`${item.categoryName}-${item.phase}-${index}`}>
-                                {item.categoryName} · {item.phase}: {formatHours(item.hours)} hrs
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
+            </div>
+            <div className="mt-6 space-y-6">
+              {projectStaffSummaries.map((project) => (
+                <div
+                  key={project.projectId}
+                  className="rounded-lg border border-gray-200"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3">
+                    <div>
+                      <h4 className="text-base font-semibold text-gray-900">
+                        {project.projectName}
+                      </h4>
+                      <p className="text-sm text-gray-600">
+                        {formatHours(project.assignedHours)} hrs assigned of {" "}
+                        {formatHours(project.demandHours)} hrs requested
+                      </p>
                     </div>
-                  )}
-
-                  <div
-                    className={`overflow-x-auto ${
-                      isReadOnly ? "pointer-events-none opacity-60" : ""
-                    }`}
-                  >
-                    <table className="min-w-full text-left text-sm">
-                      <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
-                        <tr>
-                          <th className="px-3 py-2">Staff member</th>
-                          <th className="px-3 py-2">Category</th>
-                          {phaseKeys.map((phase) => (
-                            <th key={`${phase.key}-manual`} className="px-3 py-2 text-center">
-                              {phase.label} (Manual hrs/mo)
+                  </div>
+                  {project.staffRows.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead className="bg-white">
+                          <tr>
+                            <th className="px-4 py-2 text-left font-medium uppercase tracking-wide text-gray-500">
+                              Staff Member
                             </th>
-                          ))}
-                          {phaseKeys.map((phase) => (
-                            <th key={`${phase.key}-auto`} className="px-3 py-2 text-center">
-                              {phase.label} (Auto hrs/mo)
+                            <th className="px-4 py-2 text-right font-medium uppercase tracking-wide text-gray-500">
+                              Manual Hours
                             </th>
-                          ))}
-                          <th className="px-3 py-2 text-center">Total Assigned</th>
-                          <th className="px-3 py-2 text-center">Remaining Availability</th>
-                          <th className="px-3 py-2 text-center">Status</th>
-                          <th className="px-3 py-2 text-center">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {entry.categories.map((category) => (
-                          <React.Fragment key={category.categoryId}>
-                            <tr className="bg-gray-100 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                              <td className="px-3 py-2" colSpan={columnCount}>
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="font-semibold text-gray-700">
-                                      {category.categoryName}
-                                    </span>
-                                    <span className="text-xs text-gray-500">
-                                      Demand: {formatHours(category.demand)} hrs total
-                                      {category.monthlyDemand > 0 && (
-                                        <>
-                                          {" · "}
-                                          {formatHours(category.monthlyDemand)} hrs/mo
-                                        </>
-                                      )}
-                                    </span>
-                                  </div>
-                                  <span className="text-gray-500">
-                                    Available: {formatHours(
-                                      staffAvailabilityByCategory?.[category.categoryId]?.total || 0
-                                    )} hrs/mo
-                                  </span>
-                                </div>
+                            <th className="px-4 py-2 text-right font-medium uppercase tracking-wide text-gray-500">
+                              Automated Hours
+                            </th>
+                            <th className="px-4 py-2 text-right font-medium uppercase tracking-wide text-gray-500">
+                              Total Assigned
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 bg-white">
+                          {project.staffRows.map((row) => (
+                            <tr key={row.staffId}>
+                              <td className="px-4 py-2 text-gray-900">
+                                {row.staffName}
+                              </td>
+                              <td className="px-4 py-2 text-right text-gray-600">
+                                {formatHours(row.manualHours)}
+                              </td>
+                              <td className="px-4 py-2 text-right text-gray-600">
+                                {formatHours(row.autoHours)}
+                              </td>
+                              <td className="px-4 py-2 text-right font-medium text-gray-900">
+                                {formatHours(row.finalHours)}
                               </td>
                             </tr>
-                            {category.hasStaff ? (
-                              category.staffRows.map((row) => {
-                                const manualEntry = assignmentOverrides?.[entry.projectId]?.[row.staffId] || {
-                                  pmHours: 0,
-                                  designHours: 0,
-                                  constructionHours: 0,
-                                };
-                                const isManual = row.manualTotal > 0;
-                                return (
-                                  <tr key={`${entry.projectId}-${row.staffId}`} className="bg-white">
-                                    <td className="px-3 py-2 align-top text-gray-900">
-                                      <div className="font-medium">{row.staffName}</div>
-                                      <div className="text-xs text-gray-500">
-                                        Available: {formatHours(row.availability.totalHours)} hrs/mo
-                                      </div>
-                                    </td>
-                                    <td className="px-3 py-2 align-top text-gray-600">
-                                      {category.categoryName}
-                                    </td>
-                                    {phaseKeys.map((phase) => (
-                                      <td key={`${row.staffId}-${phase.key}-manual`} className="px-3 py-2 text-center">
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          step="0.1"
-                                          value={Number(manualEntry?.[`${phase.key}Hours`] || 0)}
-                                          onChange={handleManualChange(
-                                            entry.projectId,
-                                            row.staffId,
-                                            phase.key
-                                          )}
-                                          disabled={isReadOnly}
-                                          className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-gray-700 focus:border-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-100"
-                                        />
-                                      </td>
-                                    ))}
-                                    {phaseKeys.map((phase) => (
-                                      <td key={`${row.staffId}-${phase.key}-auto`} className="px-3 py-2 text-center text-gray-600">
-                                        {formatHours(row.auto?.[`${phase.key}Hours`] || 0)}
-                                      </td>
-                                    ))}
-                                    <td className="px-3 py-2 text-center font-medium text-gray-900">
-                                      {formatHours(row.finalTotal)}
-                                    </td>
-                                    <td className="px-3 py-2 text-center text-gray-600">
-                                      {formatHours(row.remaining.totalHours)}
-                                    </td>
-                                    <td className="px-3 py-2 text-center">
-                                      <span
-                                        className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-                                          row.overbooked
-                                            ? "bg-red-100 text-red-700"
-                                            : isManual
-                                            ? "bg-blue-100 text-blue-700"
-                                            : row.autoTotal > 0
-                                            ? "bg-green-100 text-green-700"
-                                            : "bg-gray-100 text-gray-600"
-                                        }`}
-                                      >
-                                        {row.overbooked
-                                          ? "Overbooked"
-                                          : isManual
-                                          ? "Manual"
-                                          : row.autoTotal > 0
-                                          ? "Auto"
-                                          : "Unassigned"}
-                                      </span>
-                                    </td>
-                                    <td className="px-3 py-2 text-center">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleClearOverride(entry.projectId, row.staffId)}
-                                        className={`text-xs font-medium ${
-                                          isManual && !isReadOnly
-                                            ? "text-blue-600 hover:text-blue-700"
-                                            : "text-gray-400 cursor-not-allowed"
-                                        }`}
-                                        disabled={!isManual || isReadOnly}
-                                      >
-                                        Clear
-                                      </button>
-                                    </td>
-                                  </tr>
-                                );
-                              })
-                            ) : (
-                              <tr>
-                                <td
-                                  colSpan={2 + phaseKeys.length * 2 + 4}
-                                  className="px-3 py-4 text-center text-sm text-gray-500"
-                                >
-                                  No staff available in this category. Consider
-                                  hiring, reallocating, or adding a manual override.
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="px-4 py-3 text-sm text-gray-500">
+                      No staff assignments recorded yet.
+                    </div>
+                  )}
                 </div>
-              )}
+              ))}
             </div>
-          );
-        })
+          </div>
+
+          <div className="rounded-lg bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Detailed Assignment Editor
+                </h3>
+                <p className="text-sm text-gray-600">
+                  Choose a project to adjust manual overrides and review
+                  automated allocations.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                <label
+                  htmlFor="project-selector"
+                  className="text-sm font-medium text-gray-700"
+                >
+                  Project
+                </label>
+                <select
+                  id="project-selector"
+                  value={selectedProjectId || ""}
+                  onChange={(event) => setSelectedProjectId(event.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none sm:w-64"
+                >
+                  {projectAssignments.map((entry) => (
+                    <option key={entry.projectId} value={entry.projectId}>
+                      {entry.project?.name || "Untitled Project"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {!selectedProject ? (
+              <div className="mt-6 rounded-lg border border-dashed border-gray-200 px-6 py-10 text-center text-sm text-gray-500">
+                Select a project to manage detailed assignments.
+              </div>
+            ) : (
+              <ProjectDetail
+                entry={selectedProject}
+                columnCount={columnCount}
+                staffAvailabilityByCategory={staffAvailabilityByCategory}
+                assignmentOverrides={assignmentOverrides}
+                handleManualChange={handleManualChange}
+                handleClearOverride={handleClearOverride}
+                isReadOnly={isReadOnly}
+                onResetProjectAssignments={onResetProjectAssignments}
+              />
+            )}
+          </div>
+        </>
       )}
+    </div>
+  );
+};
+
+const ProjectDetail = ({
+  entry,
+  columnCount,
+  staffAvailabilityByCategory,
+  assignmentOverrides,
+  handleManualChange,
+  handleClearOverride,
+  isReadOnly,
+  onResetProjectAssignments,
+}) => {
+  const summary = entry.summary || {};
+  const hasUnfilled = Number(summary?.unfilled?.totalHours || 0) > 0;
+  const projectTypeLabel = getProjectTypeDisplayLabel(entry.project);
+  const projectMonthlyDemand = Number(entry.monthlyDemandTotal || 0);
+
+  return (
+    <div className="mt-6 rounded-lg border border-gray-200">
+      <div className="flex flex-col gap-4 border-b border-gray-200 bg-gray-50 p-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2 text-left text-lg font-semibold text-gray-900">
+            <span>{entry.project.name}</span>
+            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-indigo-700">
+              {projectTypeLabel}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-600">
+            <span>
+              Demand: {formatHours(summary?.demand?.totalHours || 0)} hrs total
+              {projectMonthlyDemand > 0
+                ? ` (${formatHours(projectMonthlyDemand)} hrs/mo)`
+                : ""}
+            </span>
+            <span>
+              Assigned: {formatHours(summary?.assigned?.totalHours || 0)} hrs
+            </span>
+            <span>
+              Manual: {formatHours(summary?.manual?.totalHours || 0)} hrs
+            </span>
+            <span>
+              Automated: {formatHours(summary?.auto?.totalHours || 0)} hrs
+            </span>
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
+                hasUnfilled
+                  ? "bg-red-100 text-red-800"
+                  : "bg-green-100 text-green-800"
+              }`}
+            >
+              {hasUnfilled
+                ? `${formatHours(summary?.unfilled?.totalHours || 0)} hrs unfilled`
+                : "Fully covered"}
+            </span>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          {hasUnfilled && (
+            <div className="inline-flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+              <AlertTriangle size={16} />
+              Unassigned demand remains
+            </div>
+          )}
+          <div className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700">
+            <Info size={16} />
+            {entry.totalRows} staff rows
+          </div>
+          <button
+            type="button"
+            onClick={() => onResetProjectAssignments?.(entry.projectId)}
+            className="inline-flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isReadOnly}
+          >
+            <RefreshCw size={16} /> Reset overrides
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-6 p-6">
+        {entry.unfilledEntries.length > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={16} className="mt-0.5" />
+              <div>
+                <p className="font-medium">Unfilled demand</p>
+                <ul className="mt-2 space-y-1 text-xs">
+                  {entry.unfilledEntries.map((item, index) => (
+                    <li key={`${item.categoryName}-${item.phase}-${index}`}>
+                      {item.categoryName} – {item.phase}: {formatHours(item.hours)} hrs
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium uppercase tracking-wide text-gray-500">
+                  Staff Member
+                </th>
+                <th className="px-3 py-2 text-left font-medium uppercase tracking-wide text-gray-500">
+                  Category
+                </th>
+                {phaseKeys.map((phase) => (
+                  <th
+                    key={`${phase.key}-manual`}
+                    className="px-3 py-2 text-center font-medium uppercase tracking-wide text-gray-500"
+                  >
+                    {phase.label} (Manual)
+                  </th>
+                ))}
+                {phaseKeys.map((phase) => (
+                  <th
+                    key={`${phase.key}-auto`}
+                    className="px-3 py-2 text-center font-medium uppercase tracking-wide text-gray-500"
+                  >
+                    {phase.label} (Auto)
+                  </th>
+                ))}
+                <th className="px-3 py-2 text-center font-medium uppercase tracking-wide text-gray-500">
+                  Total Assigned
+                </th>
+                <th className="px-3 py-2 text-center font-medium uppercase tracking-wide text-gray-500">
+                  Remaining Capacity
+                </th>
+                <th className="px-3 py-2 text-center font-medium uppercase tracking-wide text-gray-500">
+                  Status
+                </th>
+                <th className="px-3 py-2 text-center font-medium uppercase tracking-wide text-gray-500">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {entry.categories.map((category) => (
+                <React.Fragment key={`${entry.projectId}-${category.categoryId}`}>
+                  <tr className="bg-gray-50">
+                    <td
+                      colSpan={columnCount}
+                      className="px-3 py-2 text-sm font-semibold uppercase tracking-wide text-gray-600"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <span className="rounded bg-indigo-100 px-2 py-1 text-xs font-medium text-indigo-800">
+                            {category.categoryName}
+                          </span>
+                          <span className="inline-flex items-center gap-2 rounded-full bg-gray-200 px-2 py-1 text-xs text-gray-700">
+                            Demand: {formatHours(category.demand)} hrs
+                          </span>
+                          <span className="inline-flex items-center gap-2 rounded-full bg-gray-200 px-2 py-1 text-xs text-gray-700">
+                            Monthly: {formatHours(category.monthlyDemand)} hrs
+                          </span>
+                        </div>
+                        <span className="text-gray-500">
+                          Available: {formatHours(
+                            staffAvailabilityByCategory?.[category.categoryId]?.total || 0
+                          )} hrs/mo
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                  {category.hasStaff ? (
+                    category.staffRows.map((row) => {
+                      const manualEntry =
+                        assignmentOverrides?.[entry.projectId]?.[row.staffId] || {
+                          pmHours: 0,
+                          designHours: 0,
+                          constructionHours: 0,
+                        };
+                      const isManual = row.manualTotal > 0;
+                      return (
+                        <tr key={`${entry.projectId}-${row.staffId}`} className="bg-white">
+                          <td className="px-3 py-2 align-top text-gray-900">
+                            <div className="font-medium">{row.staffName}</div>
+                            <div className="text-xs text-gray-500">
+                              Available: {formatHours(row.availability.totalHours)} hrs/mo
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 align-top text-gray-600">
+                            {category.categoryName}
+                          </td>
+                          {phaseKeys.map((phase) => (
+                            <td key={`${row.staffId}-${phase.key}-manual`} className="px-3 py-2 text-center">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.1"
+                                value={Number(manualEntry?.[`${phase.key}Hours`] || 0)}
+                                onChange={handleManualChange(
+                                  entry.projectId,
+                                  row.staffId,
+                                  phase.key
+                                )}
+                                disabled={isReadOnly}
+                                className="w-20 rounded border border-gray-300 px-2 py-1 text-sm text-gray-700 focus:border-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-100"
+                              />
+                            </td>
+                          ))}
+                          {phaseKeys.map((phase) => (
+                            <td key={`${row.staffId}-${phase.key}-auto`} className="px-3 py-2 text-center text-gray-600">
+                              {formatHours(row.auto?.[`${phase.key}Hours`] || 0)}
+                            </td>
+                          ))}
+                          <td className="px-3 py-2 text-center font-medium text-gray-900">
+                            {formatHours(row.finalTotal)}
+                          </td>
+                          <td className="px-3 py-2 text-center text-gray-600">
+                            {formatHours(row.remaining.totalHours)}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                                row.overbooked
+                                  ? "bg-red-100 text-red-700"
+                                  : isManual
+                                  ? "bg-blue-100 text-blue-700"
+                                  : row.autoTotal > 0
+                                  ? "bg-green-100 text-green-700"
+                                  : "bg-gray-100 text-gray-600"
+                              }`}
+                            >
+                              {row.overbooked
+                                ? "Overbooked"
+                                : isManual
+                                ? "Manual"
+                                : row.autoTotal > 0
+                                ? "Auto"
+                                : "Unassigned"}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleClearOverride(entry.projectId, row.staffId)}
+                              className={`text-xs font-medium ${
+                                isManual && !isReadOnly
+                                  ? "text-blue-600 hover:text-blue-700"
+                                  : "text-gray-400 cursor-not-allowed"
+                              }`}
+                              disabled={!isManual || isReadOnly}
+                            >
+                              Clear
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan={2 + phaseKeys.length * 2 + 4}
+                        className="px-3 py-4 text-center text-sm text-gray-500"
+                      >
+                        No staff available in this category. Consider hiring,
+                        reallocating, or adding a manual override.
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 };
